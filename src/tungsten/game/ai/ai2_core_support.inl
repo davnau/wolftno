@@ -6,8 +6,6 @@
 idAction_MoveToPoint::~idAction_MoveToPoint() = default;
 idAIActionManager::~idAIActionManager() = default;
 idAIDamageInfo::~idAIDamageInfo() = default;
-RECOVERED_METHOD(idAIDamageInfo, GetAttacker)
-RECOVERED_METHOD(idAIDamageInfo, GetInflictor)
 idAIDeathInfo::idAIDeathInfo() = default;
 idAIDeathInfo::~idAIDeathInfo() = default;
 
@@ -52,7 +50,6 @@ RECOVERED_METHOD(idCheckSurroundingsState, TraceVector)
 RECOVERED_METHOD(idCheckSurroundingsState, Update)
 RECOVERED_METHOD(idCheckSurroundingsState, UpdateDirectionDistanceExponent)
 RECOVERED_METHOD(idCheckSurroundingsState, UpdateLookInterests)
-RECOVERED_METHOD(idFocusInfo, HasFocus)
 idFSMCallback::~idFSMCallback() = default;
 idFSMManager::idFSMStack::idFSMStack() = default;
 idFSMManager::~idFSMManager() = default;
@@ -96,7 +93,7 @@ template class idRange<float>;
 using idAIEventHandle = idHandle<int, invalidAIEvent_t, -1>;
 template int idList<eboltControlNode_t, 5>::Append(const eboltControlNode_t&);
 template bool idList<idCrosshairCustomIcon, 5>::Resize(int);
-template void idList<idCrosshairCustomIcon, 5>::SetNum(int);
+template bool idList<idCrosshairCustomIcon, 5>::SetNum(int);
 template int idList<idAIEventHandle, 5>::Append(const idAIEventHandle&);
 template int idList<idAIEventHandle, 5>::Insert(const idAIEventHandle&, int);
 template bool idList<idAIEventHandle, 5>::RemoveIndex(int);

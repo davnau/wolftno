@@ -46,12 +46,15 @@ public:
               idJointIndex impactJoint, bool killed, bool armorPoppedOff,
               bool forceInjured, bool blinded);
 
-  idRecoveredValue GetAttacker(...);
-  idRecoveredValue GetInflictor(...);
+  idEntity* GetAttacker();
+  idEntity* GetInflictor();
   const idEntity* GetAttackerEntity() const { return attacker; }
   const idEntity* GetInflictorEntity() const { return inflictor; }
 
   int NumImpulses() const { return impulses.Num(); }
+  const idDamageImpulse* GetImpulseForTest(int index) const {
+    return index >= 0 && index < impulses.Num() ? &impulses[index] : nullptr;
+  }
   float GetFrameDamage() const { return frameDamage; }
   float GetFrameArmorDamage() const { return frameArmorDamage; }
   float GetRecentUnscaledDamage() const { return recentUnscaledDamage; }

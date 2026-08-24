@@ -113,5 +113,73 @@ struct idIndexBuffer {
   }
 };
 
+// Joint buffers use the same recovered 24-byte handle layout as the other
+// renderer buffer objects.  Their public counts are joints rather than bytes.
+struct idJointBuffer {
+  idJointBuffer() = default;
+  ~idJointBuffer() { FreeBufferObject(); }
+
+  int size{};
+  int offsetInOtherBuffer{};
+  void* apiObject{};
+  bufferUsageType_t usage{};
+
+  void AllocBufferObject(const void* data, int jointCount) {
+    FreeBufferObject();
+    size = jointCount | static_cast<int>(0x80000000U);
+    offsetInOtherBuffer = 0;
+    const std::size_t byteCount =
+        static_cast<std::size_t>(jointCount) * 12U * sizeof(float);
+    apiObject = byteCount != 0 ? static_cast<void*>(new std::byte[byteCount])
+                               : nullptr;
+    usage = BU_DYNAMIC;
+    if (data != nullptr && apiObject != nullptr)
+      std::memcpy(apiObject, data, byteCount);
+  }
+  void Update(const void* data, int jointCount) {
+    if (jointCount > (size & 0x7fffffff)) {
+      AllocBufferObject(data, jointCount);
+      return;
+    }
+    if (data != nullptr && apiObject != nullptr && jointCount > 0) {
+      std::memcpy(apiObject, data,
+                  static_cast<std::size_t>(jointCount) * 12U * sizeof(float));
+    }
+  }
+  void Reference(const idJointBuffer* other, int firstJoint, int jointCount) {
+    if (other == nullptr)
+      return;
+    size = jointCount;
+    offsetInOtherBuffer = firstJoint + (other->offsetInOtherBuffer & 0x7fffffff);
+    apiObject = other->apiObject;
+    usage = other->usage;
+  }
+  void FreeBufferObject() {
+    if ((static_cast<unsigned>(size) & 0x80000000U) != 0U)
+      delete[] static_cast<std::byte*>(apiObject);
+    size = 0;
+    offsetInOtherBuffer = 0;
+    apiObject = nullptr;
+  }
+};
+
+struct idConstantBuffer {
+  idConstantBuffer() = default;
+  ~idConstantBuffer() { FreeBufferObject(); }
+  int size{};
+  int offsetInOtherBuffer{};
+  void* apiObject{};
+  bufferUsageType_t usage{};
+  void FreeBufferObject() {
+    if ((static_cast<unsigned>(size) & 0x80000000U) != 0U)
+      delete[] static_cast<std::byte*>(apiObject);
+    size = 0;
+    offsetInOtherBuffer = 0;
+    apiObject = nullptr;
+  }
+};
+
 static_assert(sizeof(idVertexBuffer) == 24, "idVertexBuffer ABI drift");
 static_assert(sizeof(idIndexBuffer) == 24, "idIndexBuffer ABI drift");
+static_assert(sizeof(idJointBuffer) == 24, "idJointBuffer ABI drift");
+static_assert(sizeof(idConstantBuffer) == 24, "idConstantBuffer ABI drift");

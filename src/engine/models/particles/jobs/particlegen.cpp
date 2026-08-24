@@ -226,21 +226,26 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
                        inputs->distribScale.z;
 
   switch (stage->distribution.type) {
-  case PDIST_RECT:
-    origin = {(stage->distribution.random ? ParticleSignedRandom(gen->random)
-                                          : 1.0f) * scaleX,
-              (stage->distribution.random ? ParticleSignedRandom(gen->random)
-                                          : 1.0f) * scaleY,
-              (stage->distribution.random ? ParticleSignedRandom(gen->random)
-                                          : 1.0f) * scaleZ};
+  case PDIST_RECT: {
+    const float randomZ = stage->distribution.random
+                              ? ParticleSignedRandom(gen->random)
+                              : 1.0f;
+    const float randomY = stage->distribution.random
+                              ? ParticleSignedRandom(gen->random)
+                              : 1.0f;
+    const float randomX = stage->distribution.random
+                              ? ParticleSignedRandom(gen->random)
+                              : 1.0f;
+    origin = {randomX * scaleX, randomY * scaleY, randomZ * scaleZ};
     break;
+  }
   case PDIST_CYLINDER: {
-    const float angle = (stage->distribution.random
-                             ? ParticleSignedRandom(gen->random)
-                             : 1.0f) * 6.2831855f;
     const float vertical = stage->distribution.random
                                ? ParticleSignedRandom(gen->random)
                                : 1.0f;
+    const float angle = (stage->distribution.random
+                             ? ParticleSignedRandom(gen->random)
+                             : 1.0f) * 6.2831855f;
     origin = {std::cos(angle) * scaleX, std::sin(angle) * scaleY,
               vertical * scaleZ};
     break;
@@ -257,9 +262,10 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     break;
   }
   case PDIST_RECT_SURFACE: {
-    idVec3 direction{ParticleSignedRandom(gen->random),
-                     ParticleSignedRandom(gen->random),
-                     ParticleSignedRandom(gen->random)};
+    const float randomZ = ParticleSignedRandom(gen->random);
+    const float randomY = ParticleSignedRandom(gen->random);
+    const float randomX = ParticleSignedRandom(gen->random);
+    idVec3 direction{randomX, randomY, randomZ};
     switch (((NextParticleRandom(gen->random) >> 10) & 0x7fffu) % 6u) {
     case 0: direction.x = 1.0f; break;
     case 1: direction.y = 1.0f; break;
@@ -273,11 +279,12 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     break;
   }
   case PDIST_CYLINDER_SURFACE: {
+    const float vertical = ParticleSignedRandom(gen->random);
     const float angle = ParticleSignedRandom(gen->random) * 6.2831855f;
     const idVec3 direction = NormalizeParticleVector(
         {std::cos(angle), std::sin(angle), 0.0f});
     origin = {direction.x * scaleX, direction.y * scaleY,
-              ParticleSignedRandom(gen->random) * scaleZ};
+              vertical * scaleZ};
     break;
   }
   case PDIST_SPHERE_SURFACE: {
@@ -471,9 +478,9 @@ void ParticleTexCoords(const idParticleStage* stage,
       (stage->systemProperties.textureFlipT == PTEXTURE_FLIP_RANDOM &&
        (gen->index & 1) != 0);
   const float nextS = s + width;
-  const float secondS = std::fmod(nextS, 1.0f);
+  const float secondS = nextS - std::floor(nextS);
   const float nextT = t + height;
-  const float secondT = wrap ? std::fmod(nextT, 1.0f) : nextT;
+  const float secondT = wrap ? nextT - std::floor(nextT) : nextT;
   idVec2 textureS0 = flipS ? idVec2{nextS, s} : idVec2{s, nextS};
   idVec2 textureT0 = flipT ? idVec2{nextT, t} : idVec2{t, nextT};
   idVec2 textureS1 = flipS ? idVec2{secondS + width, secondS}
@@ -552,9 +559,9 @@ void ParticleLeftAndUp(const idParticleStage* const stage,
     const float sy = std::sin(y), cy = std::cos(y);
     const float sz = std::sin(z), cz = std::cos(z);
     left = {cz * cy, sz * cy, -sy};
-    up = {cy * sx * sz - cz * cx,
-          cy * sx * cz + sz * cx,
-          sy * sx};
+    up = {sy * sx * cz - sz * cx,
+          sy * sx * sz + cz * cx,
+          cy * sx};
     return;
   }
 
@@ -606,21 +613,40 @@ static int GenerateStaticMeshVerts(const particleInput_t* inputs,
     ComputeTextureAnimationEx(stage, inputs->tables, gen, width, s, height,
                               t, frameBlend, wrap);
   }
-  const idVec3 meshScale{
-      stage->size.size[0].Compute(inputs->tables, gen->parmVal, gen->random) *
-          inputs->sizeScale,
-      stage->size.size[1].Compute(inputs->tables, gen->parmVal, gen->random) *
-          inputs->sizeScale,
-      stage->size.size[2].Compute(inputs->tables, gen->parmVal, gen->random) *
-          inputs->sizeScale};
-  idVec3 left, up;
-  ParticleLeftAndUp(stage, inputs->tables, gen, inputs->localViewUp,
-                    inputs->localViewLeft, 0.0f, left, up);
-  idVec3 forward = NormalizeParticleVector(left.Cross(up));
+  idVec3 meshScale;
+  for (int component = 0; component < 3; ++component) {
+    meshScale[component] = stage->size.size[component].Compute(
+                               inputs->tables, gen->parmVal, gen->random) *
+                           inputs->sizeScale;
+  }
+  idVec3 initial;
+  idVec3 rotation;
+  for (int component = 0; component < 3; ++component) {
+    initial[component] = stage->initialRotation.initialAngle[component].Compute(
+        inputs->tables, gen->parmVal, gen->random);
+  }
+  for (int component = 0; component < 3; ++component) {
+    rotation[component] = stage->rotation.rotation[component].Compute(
+        inputs->tables, gen->parmVal, gen->random);
+  }
+  const float angleX =
+      (initial.x + rotation.x * gen->particleLife) * kDegreesToRadians;
+  const float angleY =
+      (initial.y + rotation.y * gen->particleLife) * kDegreesToRadians;
+  const float angleZ =
+      (initial.z + rotation.z * gen->particleLife) * kDegreesToRadians;
+  const float sx = std::sin(angleX), cx = std::cos(angleX);
+  const float sy = std::sin(angleY), cy = std::cos(angleY);
+  const float sz = std::sin(angleZ), cz = std::cos(angleZ);
   idMat3 axis{};
-  axis.mat[0] = forward;
-  axis.mat[1] = left;
-  axis.mat[2] = up;
+  axis.mat[0] = {cz * cy, sz * cy, -sy};
+  axis.mat[1] = {sy * sx * cz - sz * cx,
+                 sy * sx * sz + cz * cx, cy * sx};
+  axis.mat[2] = {sy * cx * cz + sz * sx,
+                 sy * cx * sz - cz * sx, cy * cx};
+  if (stage->orientation.type == POR_VIEW) {
+    axis = axis * NormalizeParticleVector(origin - inputs->localViewOrg).ToMat3();
+  }
   axis = axis * inputs->globalAxis;
 
   const bool flipS =
@@ -639,7 +665,7 @@ static int GenerateStaticMeshVerts(const particleInput_t* inputs,
                         source.xyz.z * meshScale.z};
     destination.xyz = axis * scaled + origin;
     float textureS = (flipS ? 1.0f - source.st.x : source.st.x) * width + s;
-    float textureT = (flipT ? 1.0f - source.st.y : source.st.y) * height + t;
+    float textureT = flipT ? 1.0f - source.st.y : source.st.y;
     if ((stage->stageFlags & 4u) != 0) {
       const float halfS = 0.5f /
           (inputs->view->atlasWidth * stage->atlasScaleBias.x);
@@ -673,32 +699,69 @@ static int GenerateAimedVerts(const particleInput_t* inputs,
                               const idVec3& origin,
                               const idVec3& velocity) {
   const idParticleStage* stage = inputs->stage;
+  const idMat3 modelStageAxis = inputs->stageAxis * inputs->modelAxis;
   const float size = stage->size.size[0].Compute(
                          inputs->tables, gen->parmVal, gen->random) *
                      inputs->sizeScale;
-  const float length = stage->size.aspectRatio.Compute(
-                           inputs->tables, gen->parmVal, gen->random) *
-                       size;
-  idVec3 along = NormalizeParticleVector(velocity);
-  idVec3 left = NormalizeParticleVector(along.Cross(inputs->view->viewFwd));
-  if (left.LengthSqr() <= std::numeric_limits<float>::min())
-    left = inputs->localViewLeft;
+  const float aspect = stage->size.aspectRatio.Compute(
+      inputs->tables, gen->parmVal, gen->random);
+  idVec3 along = NormalizeParticleVector(inputs->globalAxis * velocity);
+  const idVec3 viewDirection =
+      NormalizeParticleVector(origin - inputs->localViewOrg);
+  idVec3 left = NormalizeParticleVector(viewDirection.Cross(along));
+  if (stage->orientation.world) {
+    left = modelStageAxis * left;
+    along = modelStageAxis * along;
+  }
+  idVec3 segment = along * (aspect * stage->orientation.segmentLength);
+  const idVec3 center = origin + segment * 0.5f;
+  if (stage->orientation.aimedSafeQuad) {
+    const idVec3 centerView =
+        NormalizeParticleVector(center - inputs->localViewOrg);
+    float alignment = std::fabs(centerView.x * along.x +
+                                centerView.y * along.y +
+                                centerView.z * along.z);
+    const float safeAlign = stage->orientation.aimedSafeQuadAlign;
+    if (safeAlign != 1.0f) {
+      alignment = std::clamp(
+          (alignment - (1.0f - safeAlign)) /
+              std::max(safeAlign, 0.000001f),
+          0.0f, 1.0f);
+    }
+    const idVec3 safeSegment = centerView.Cross(left) * (aspect * size);
+    segment += (safeSegment - segment) * alignment;
+  }
   const idVec3 halfWidth = left * size;
-  const idVec3 halfLength = along * length;
+  const idVec3 halfLength = segment * 0.5f;
   ParticleTexCoords(stage, inputs->tables, gen, {0.0f, 1.0f}, {0.0f, 1.0f},
                     inputs->view->atlasWidth, inputs->view->atlasHeight,
                     outputs->verts);
-  outputs->verts[0].xyz = origin - halfWidth + halfLength;
-  outputs->verts[1].xyz = origin + halfWidth + halfLength;
-  outputs->verts[2].xyz = origin - halfWidth - halfLength;
-  outputs->verts[3].xyz = origin + halfWidth - halfLength;
+  outputs->verts[0].xyz = center + halfLength - halfWidth;
+  outputs->verts[1].xyz = center + halfLength + halfWidth;
+  outputs->verts[2].xyz = center - halfLength - halfWidth;
+  outputs->verts[3].xyz = center - halfLength + halfWidth;
+  if (stage->orientation.viewFade < 1.0f) {
+    const idVec3 fadeAxis = NormalizeParticleVector(segment);
+    const float dot = std::fabs(fadeAxis.x * viewDirection.x +
+                                fadeAxis.y * viewDirection.y +
+                                fadeAxis.z * viewDirection.z);
+    const float fade = std::max(dot - stage->orientation.viewFade, 0.0f) /
+                       (1.0f - stage->orientation.viewFade);
+    for (int vertex = 0; vertex < 4; ++vertex) {
+      for (int channel = 0; channel < 4; ++channel) {
+        const float faded =
+            (1.0f - fade) * gen->vertColor[channel] +
+            inputs->entityColor[channel] *
+                stage->colorAttributes.fadeColor[channel] * fade;
+        outputs->verts[vertex].color[channel] = ParticleByte(faded);
+      }
+    }
+  }
   if (outputs->quadDepth != nullptr) {
-    *outputs->quadDepth = (origin - inputs->view->viewOrg).x *
-                              inputs->view->viewFwd.x +
-                          (origin - inputs->view->viewOrg).y *
-                              inputs->view->viewFwd.y +
-                          (origin - inputs->view->viewOrg).z *
-                              inputs->view->viewFwd.z;
+    const idVec3 depthDelta = center - inputs->view->viewOrg;
+    *outputs->quadDepth = depthDelta.x * inputs->view->viewFwd.x +
+                          depthDelta.y * inputs->view->viewFwd.y +
+                          depthDelta.z * inputs->view->viewFwd.z;
   }
   return 4;
 }
@@ -709,57 +772,106 @@ static int GenerateTrailVerts(const particleInput_t* inputs,
                               const idVec3& origin) {
   const idParticleStage* stage = inputs->stage;
   const int segments = stage->orientation.numTrails + 1;
-  const float segmentTime = stage->orientation.segmentLength != 0.0f
-                                ? stage->orientation.segmentLength
-                                : 0.5f;
-  const particleGen_t saved = *gen;
-  idVec3 previousOrigin = origin;
-  idVec3 previousLeft{};
+  const float size = stage->size.size[0].Compute(
+                         inputs->tables, gen->parmVal, gen->random) *
+                     inputs->sizeScale;
+  const float aspect = stage->size.aspectRatio.Compute(
+      inputs->tables, gen->parmVal, gen->random);
+  const float savedFrac = gen->frac;
+  const float savedCycleAge = gen->cycleAge;
+  const std::uint32_t savedSeed = gen->random.seed;
+  const float inverseLife = 1.0f / gen->particleLife;
+  const float timeStep =
+      aspect * stage->orientation.segmentLength / segments;
+  idVec3 stepOrigin = origin;
+  idVec3 previousSide{};
+  idVec4 previousColor = gen->vertColor;
+  int generatedSegments = 0;
   for (int segment = 0; segment < segments; ++segment) {
-    *gen = saved;
-    gen->cycleAge = saved.cycleAge -
-                    (segment + 1) * segmentTime / segments;
-    gen->frac = gen->particleLife != 0.0f
-                    ? gen->cycleAge / gen->particleLife
-                    : 0.0f;
+    gen->cycleAge = savedCycleAge - (segment + 1) * timeStep;
+    if (gen->cycleAge < 0.0f)
+      continue;
+    gen->random.seed = gen->originalRandom.seed;
+    gen->frac = gen->cycleAge * inverseLife;
     idVec3 oldOrigin;
     ParticleOrigin(inputs, gen, oldOrigin);
-    idVec3 up = NormalizeParticleVector(previousOrigin - oldOrigin);
-    idVec3 left = NormalizeParticleVector(up.Cross(inputs->view->viewFwd));
-    const float size = stage->size.size[0].Compute(
-                           inputs->tables, gen->parmVal, gen->random) *
-                       inputs->sizeScale;
-    left *= size;
-    idTransparencyVert* verts = outputs->verts + segment * 4;
-    if (segment != 0)
-      left = previousLeft;
-    verts[0].xyz = previousOrigin - left;
-    verts[1].xyz = previousOrigin + left;
-    verts[2].xyz = oldOrigin - left;
-    verts[3].xyz = oldOrigin + left;
+    idTransparencyVert* verts = outputs->verts + generatedSegments * 4;
+    std::memmove(verts, outputs->verts, sizeof(idTransparencyVert) * 4);
+    const idVec3 delta = stepOrigin - oldOrigin;
+    const float segmentLength = std::sqrt(std::max(
+        delta.LengthSqr(), std::numeric_limits<float>::min()));
+    const idVec3 direction = delta * (1.0f / segmentLength);
+    const idVec3 center = oldOrigin + delta * 0.5f;
+    const idVec3 centerView =
+        NormalizeParticleVector(center - inputs->localViewOrg);
+    const idVec3 left =
+        NormalizeParticleVector(centerView.Cross(direction));
+    idVec3 generatedSegment = direction * segmentLength;
+    if (stage->orientation.aimedSafeQuad) {
+      float alignment = std::fabs(centerView.x * direction.x +
+                                  centerView.y * direction.y +
+                                  centerView.z * direction.z);
+      const float safeAlign = stage->orientation.aimedSafeQuadAlign;
+      if (safeAlign != 1.0f) {
+        alignment = std::clamp(
+            (alignment - (1.0f - safeAlign)) /
+                std::max(safeAlign, 0.000001f),
+            0.0f, 1.0f);
+      }
+      const idVec3 safeSegment = centerView.Cross(left) * (aspect * size);
+      generatedSegment += (safeSegment - generatedSegment) * alignment;
+    }
+    const idVec3 halfSegment = generatedSegment * 0.5f;
+    const idVec3 side = left * size;
+    const idVec3& topSide = generatedSegments == 0 ? side : previousSide;
+    verts[0].xyz = center + halfSegment - topSide;
+    verts[1].xyz = center + halfSegment + topSide;
+    verts[2].xyz = center - halfSegment - side;
+    verts[3].xyz = center - halfSegment + side;
+    if (stage->orientation.viewFade < 1.0f) {
+      const idVec3 fadeAxis = NormalizeParticleVector(halfSegment);
+      const float dot = std::fabs(fadeAxis.x * centerView.x +
+                                  fadeAxis.y * centerView.y +
+                                  fadeAxis.z * centerView.z);
+      const float fade =
+          std::max(dot - stage->orientation.viewFade, 0.0f) /
+          (1.0f - stage->orientation.viewFade);
+      idVec4 currentColor;
+      for (int channel = 0; channel < 4; ++channel) {
+        currentColor[channel] =
+            (1.0f - fade) * gen->vertColor[channel] +
+            inputs->entityColor[channel] *
+                stage->colorAttributes.fadeColor[channel] * fade;
+      }
+      for (int vertex = 0; vertex < 4; ++vertex) {
+        const idVec4& color =
+            generatedSegments != 0 && vertex < 2 ? previousColor
+                                                  : currentColor;
+        for (int channel = 0; channel < 4; ++channel)
+          verts[vertex].color[channel] = ParticleByte(color[channel]);
+      }
+      previousColor = currentColor;
+    }
     ParticleTexCoords(stage, inputs->tables, gen, {0.0f, 1.0f},
-                      {static_cast<float>(segment) / segments,
+                      {static_cast<float>(generatedSegments) / segments,
                        1.0f / segments},
                       inputs->view->atlasWidth, inputs->view->atlasHeight,
                       verts);
-    std::memcpy(verts[0].color, outputs->verts[0].color, 4);
-    std::memcpy(verts[1].color, outputs->verts[0].color, 4);
-    std::memcpy(verts[2].color, outputs->verts[0].color, 4);
-    std::memcpy(verts[3].color, outputs->verts[0].color, 4);
     if (outputs->quadDepth != nullptr) {
-      outputs->quadDepth[segment] =
-          (previousOrigin - inputs->view->viewOrg).x *
-              inputs->view->viewFwd.x +
-          (previousOrigin - inputs->view->viewOrg).y *
-              inputs->view->viewFwd.y +
-          (previousOrigin - inputs->view->viewOrg).z *
-              inputs->view->viewFwd.z;
+      const idVec3 depthDelta = center - inputs->view->viewOrg;
+      outputs->quadDepth[generatedSegments] =
+          depthDelta.x * inputs->view->viewFwd.x +
+          depthDelta.y * inputs->view->viewFwd.y +
+          depthDelta.z * inputs->view->viewFwd.z;
     }
-    previousOrigin = oldOrigin;
-    previousLeft = left;
+    stepOrigin = oldOrigin;
+    previousSide = side;
+    ++generatedSegments;
   }
-  *gen = saved;
-  return segments * 4;
+  gen->cycleAge = savedCycleAge;
+  gen->random.seed = savedSeed;
+  gen->frac = savedFrac;
+  return generatedSegments * 4;
 }
 
 static int GenerateQuadVerts(const particleInput_t* inputs,
@@ -953,9 +1065,8 @@ void AverageGeneratedDepths(const deferredParticleGenParms_t* parms,
 int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
                      int vertOffset, const prtLocation_t* location) {
   const idParticleStage* stage = parms->stage;
-  if (stage == nullptr || index < 0 ||
-      index >= parms->numModelParticleParms ||
-      stage->systemProperties.material == nullptr || stage->cycleMsec == 0 ||
+  if (stage == nullptr || stage->systemProperties.material == nullptr ||
+      stage->cycleMsec == 0 ||
       (stage->stageFlags & 0x10u) != 0) {
     return 0;
   }
@@ -969,9 +1080,11 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
   inputs.meshDistribution = &parms->meshDistribution;
   inputs.staticVertsSize = parms->staticVertsSize;
   inputs.modelAxis = model.axis;
-  inputs.stageAxis = ParticleStageAxis(
-      stage, (stage->systemProperties.diversity + location->diversity +
-              model.diversity) & 0x7fff);
+  const int diversity =
+      (static_cast<int>(stage->systemProperties.diversity) +
+       location->diversity + model.diversity) &
+      0x7fff;
+  inputs.stageAxis = ParticleStageAxis(stage, diversity);
   const float lodFraction = std::clamp(
       static_cast<float>(model.lod) * stage->lodParms.lerpAmount, 0.0f, 1.0f);
   inputs.totalParticles = static_cast<int>(
@@ -1006,11 +1119,11 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
   inputs.distribScale = model.distribScale;
   inputs.sizeScale = (stage->lodParms.sizeScale - 1.0f) * lodFraction + 1.0f;
   inputs.entityColor = model.color;
-  const idVec3 windDirection = NormalizeParticleVector(
-      {model.wind.x, model.wind.y, model.wind.z});
-  inputs.wind = model.axis * windDirection * model.wind.w;
-  inputs.diversity = (stage->systemProperties.diversity +
-                      location->diversity + model.diversity) & 0x7fff;
+  const idAngles windAngles{model.wind.x, model.wind.y, model.wind.z};
+  inputs.wind = model.axis * (windAngles.ToForward() * model.wind.w);
+  inputs.influenceSpheres = nullptr;
+  inputs.numInfluenceSpheres = 0;
+  inputs.diversity = diversity;
 
   const int cycleMsec = static_cast<int>(
       (stage->maxParticleLife + parms->deadTime) * 1000.0f);
@@ -1023,14 +1136,53 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
       stage->systemProperties.spawnBunching * stage->bunchTime * 1000.0f);
   const int startOffset = vertOffset;
   const int requiredVerts = ParticleVertsPerInstance(parms);
-  std::uint32_t baseSeed = static_cast<std::uint32_t>(inputs.diversity);
+  const int currentCycle = currentMsec / cycleMsec;
+  const int currentCycleAge = currentMsec % cycleMsec;
+  int firstParticle = 0;
+  if ((stage->systemProperties.sortType == PSORT_TYPE_NEWEST_TO_OLDEST ||
+       stage->systemProperties.sortType == PSORT_TYPE_OLDEST_TO_NEWEST) &&
+      inputs.totalParticles > 1) {
+    for (int particle = 1; particle < inputs.totalParticles; ++particle) {
+      const int age = currentMsec -
+                      spawnSpan * particle / inputs.totalParticles;
+      if (age >= 0 && currentCycleAge < age % cycleMsec) {
+        firstParticle = particle;
+        break;
+      }
+    }
+  }
+  const int randomCycle = stage->systemProperties.randomOnCycle
+                              ? currentCycle
+                              : 0;
+  const std::uint32_t steppingBase =
+      static_cast<std::uint32_t>(inputs.diversity ^
+          ((randomCycle & 0x1f) << 10));
+  const std::uint32_t particleBase =
+      static_cast<std::uint32_t>(
+          inputs.diversity ^ (((randomCycle << 10) - 1024) & 0x7fff));
+  std::uint32_t steppingSeed = steppingBase;
+  std::uint32_t particleSeed = particleBase;
   for (int order = 0; order < inputs.totalParticles; ++order) {
-    int particleIndex = order;
-    if (stage->systemProperties.sortType == 1)
-      particleIndex = inputs.totalParticles - order - 1;
-    idRandom2 random{baseSeed};
-    for (int step = 0; step <= particleIndex; ++step)
-      NextParticleRandom(random);
+    int particleIndex = firstParticle + order;
+    if (stage->systemProperties.sortType == PSORT_TYPE_NEWEST_TO_OLDEST)
+      particleIndex = firstParticle + inputs.totalParticles - order - 1;
+    if (stage->systemProperties.sortType == PSORT_TYPE_NEWEST_TO_OLDEST ||
+        stage->systemProperties.sortType == PSORT_TYPE_OLDEST_TO_NEWEST) {
+      particleIndex %= inputs.totalParticles;
+      idRandom2 stepping{steppingBase};
+      idRandom2 particle{particleBase};
+      for (int step = 0; step <= particleIndex; ++step) {
+        NextParticleRandom(stepping);
+        NextParticleRandom(particle);
+      }
+      steppingSeed = stepping.seed;
+      particleSeed = particle.seed;
+    } else {
+      idRandom2 stepping{steppingSeed};
+      idRandom2 particle{particleSeed};
+      steppingSeed = NextParticleRandom(stepping);
+      particleSeed = NextParticleRandom(particle);
+    }
     const int ageMsec = currentMsec -
         spawnSpan * particleIndex / inputs.totalParticles;
     if (ageMsec < 0)
@@ -1045,9 +1197,11 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
         parms->renderView->renderTime - cycleAgeMsec >= model.stopTime) {
       continue;
     }
+    idRandom2 random{cycle == currentCycle ? steppingSeed : particleSeed};
     const float life = stage->systemProperties.particleLife.Compute(
-        parms->tables,
-        static_cast<float>(particleIndex) / inputs.totalParticles, random);
+        parms->tables, static_cast<float>(particleIndex) /
+                           inputs.totalParticles,
+        random);
     if (cycleAgeMsec > static_cast<int>(life * 1000.0f))
       continue;
     if (vertOffset + requiredVerts > parms->maxVertsToGen)
@@ -1072,11 +1226,10 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
     const int generated = CreateParticle(&inputs, &gen, &output);
     CopyGeneratedVerts(parms, vertOffset, localVerts, generated);
     vertOffset += generated;
-    baseSeed = random.seed;
   }
   if (stage->systemProperties.sortType == 1 ||
       stage->systemProperties.sortType == 2) {
-    AverageGeneratedDepths(parms, startOffset, vertOffset - startOffset);
+    AverageGeneratedDepths(parms, 0, vertOffset - startOffset);
   }
   return vertOffset - startOffset;
 }
@@ -1084,8 +1237,7 @@ int GenParticleStage(const deferredParticleGenParms_t* parms, int index,
 int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
                    int vertOffset, const prtLocation_t* location) {
   const idParticleStage* stage = parms->stage;
-  if (stage == nullptr || index < 0 ||
-      index >= parms->numEffectParticleParms)
+  if (stage == nullptr)
     return 0;
   const effectParticleParms_t& effect = parms->effectParticleParms[index];
   particleInput_t inputs{};
@@ -1099,9 +1251,11 @@ int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
   inputs.totalParticles = stage->systemProperties.totalParticles;
   inputs.modelAxis = effect.axis;
   inputs.globalAxis = effect.axis;
-  inputs.stageAxis = ParticleStageAxis(
-      stage, (stage->systemProperties.diversity + location->diversity +
-              effect.diversity) & 0x7fff);
+  const int diversity =
+      (static_cast<int>(stage->systemProperties.diversity) +
+       location->diversity + effect.diversity) &
+      0x7fff;
+  inputs.stageAxis = ParticleStageAxis(stage, diversity);
   inputs.localVelocity = NormalizeParticleVector(effect.axis * effect.velocity);
   inputs.localViewLeft = effect.axis * parms->renderView->viewLeft;
   inputs.localViewUp = effect.axis * parms->renderView->viewUp;
@@ -1116,8 +1270,9 @@ int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
       static_cast<float>((effect.color >> 8) & 0xffu) / 255.0f,
       static_cast<float>((effect.color >> 16) & 0xffu) / 255.0f, 1.0f};
   inputs.wind = effect.wind;
-  inputs.diversity = (stage->systemProperties.diversity +
-                      location->diversity + effect.diversity) & 0x7fff;
+  inputs.influenceSpheres = nullptr;
+  inputs.numInfluenceSpheres = 0;
+  inputs.diversity = diversity;
 
   const int startOffset = vertOffset;
   const int requiredVerts = ParticleVertsPerInstance(parms);
@@ -1125,13 +1280,14 @@ int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
       stage->systemProperties.spawnBunching * stage->bunchTime * 1000.0f);
   std::uint32_t seed = static_cast<std::uint32_t>(inputs.diversity);
   for (int order = 0; order < effect.numParticles; ++order) {
-    const int particleIndex = stage->systemProperties.sortType == 1
-                                  ? effect.numParticles - order - 1
-                                  : order;
-    idRandom2 seedState{seed};
-    NextParticleRandom(seedState);
-    seed = seedState.seed;
+    const int particleIndex =
+        effect.stage != nullptr &&
+                effect.stage->systemProperties.sortType ==
+                    PSORT_TYPE_NEWEST_TO_OLDEST
+            ? effect.numParticles - 1
+            : order;
     idRandom2 random{seed};
+    NextParticleRandom(random);
     const int spawnTime = effect.startTime +
         spawnSpan * particleIndex /
             std::max<int>(stage->systemProperties.totalParticles, 1);
@@ -1141,7 +1297,8 @@ int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
         static_cast<float>(particleIndex) /
             std::max(effect.numParticles, 1),
         random);
-    if (ageMsec < 0 || ageMsec >= static_cast<int>(life * 1000.0f))
+    seed = random.seed;
+    if (ageMsec >= static_cast<int>(life * 1000.0f))
       continue;
     if (vertOffset + requiredVerts > parms->maxVertsToGen)
       break;
@@ -1168,7 +1325,7 @@ int GenEffectStage(const deferredParticleGenParms_t* parms, int index,
     vertOffset += generated;
   }
   if (stage->systemProperties.sortType == 1)
-    AverageGeneratedDepths(parms, startOffset, vertOffset - startOffset);
+    AverageGeneratedDepths(parms, 0, vertOffset - startOffset);
   return vertOffset - startOffset;
 }
 
@@ -1203,8 +1360,12 @@ void ParticleGenJob(const deferredParticleGenParms_t* allParms) {
       }
     }
     if (!allParms->mergedSurfaces || jobIndex == allParms->numJobs - 1) {
-      for (int index = accumulatedVerts; index < parms.maxVertsToGen; ++index)
+      for (int index = accumulatedVerts; index < parms.maxVertsToGen;
+           ++index) {
         parms.verts[index] = {};
+        std::memset(parms.verts[index].color, 0xff,
+                    sizeof(parms.verts[index].color));
+      }
       if (parms.quadDepth != nullptr) {
         for (int index = accumulatedVerts / 4;
              index < parms.maxVertsToGen / 4; ++index) {

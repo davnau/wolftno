@@ -13,7 +13,6 @@ struct idVec1 { float x{0}; idVec1 operator+(const idVec1& o)const{return{x+o.x}
 template<typename T> class idSpring { public: void Update(float dt);void SetConstants(float stiffness,float damping);T value{};T target{};T velocity{};float k{0};float c{0};};
 
 struct decayParams_s { float rate{1};float minimum{0}; };
-struct inputSettings_t { float sensitivity{1};bool invertY{false}; };
 struct viewDof_t { float nearAmount{0};float nearEnd{0};float focusBegin{0};float focusEnd{0};float farBegin{0};float farAmount{0};float skyAmount{0};void Clamp();void Mix(const viewDof_t& other); };
 class idViewCallbacks { public: virtual ~idViewCallbacks(); };
 class idPresentableWeapon;

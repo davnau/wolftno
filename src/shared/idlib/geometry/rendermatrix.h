@@ -63,6 +63,8 @@ struct idRenderMatrix {
                                            const idRenderMatrix& mvp, const idBounds& bounds,
                                            const idVec3& direction, const idPlane& clipPlane,
                                            bool windowSpace);
+  void InverseTransformPlane(const idPlane& input, idPlane& output,
+                             bool normalize) const;
   static void GetFrustumCorners(frustumCorners_t& corners, const idRenderMatrix& transform,
                                 const idBounds& bounds);
   static int CullFrustumCornersToPlane(const frustumCorners_t& corners, const idPlane& plane);

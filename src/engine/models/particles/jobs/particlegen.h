@@ -42,7 +42,7 @@ struct particleRenderView_t {
   idVec3 viewLeft;
   idVec3 viewUp;
   std::int32_t renderTime{};
-  float deltaTime{};
+  std::int32_t deltaTime{};
   std::uint16_t atlasWidth{};
   std::uint16_t atlasHeight{};
   std::uint32_t pad{};
@@ -127,8 +127,8 @@ struct deferredParticleGenParms_t {
   const idParticleStage* stage{};
   const idLookupTable* tables{};
   const idDrawVert* staticVerts{};
-  const influenceSphere_t* visibleInfluenceSpheres{};
-  const prtLocation_t* location{};
+  const visibleInfluenceSpheres_t* visibleInfluenceSpheres{};
+  prtLocation_t* location{};
   particleMeshDist_t meshDistribution{};
   std::uint16_t numEffectParticleParms{};
   std::uint16_t numModelParticleParms{};
@@ -140,7 +140,7 @@ struct deferredParticleGenParms_t {
   idTransparencyVert* verts{};
   float* quadDepth{};
   int* quadsUsed{};
-  std::uint32_t pad[2]{};
+  std::uint32_t pad[1]{};
 };
 
 idMat3 ParticleStageAxis(const idParticleStage* stage, int diversity);

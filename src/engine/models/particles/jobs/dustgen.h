@@ -42,8 +42,8 @@ struct idParticleParm {
 
 enum prtOrientationType_t : std::int32_t {
   POR_VIEW = 0,
-  POR_AIMED = 1,
-  POR_TRAIL = 2,
+  POR_TRAIL = 1,
+  POR_AIMED = 2,
   POR_X = 3,
   POR_Y = 4,
   POR_Z = 5,
@@ -69,7 +69,25 @@ enum prtDistributionType_t : std::int32_t {
 enum prtDirectionType_t : std::int32_t {
   PDIR_CONE = 0,
   PDIR_OUTWARD = 1,
-  PDIR_VECTOR = 2,
+  PDIR_SPEED = 2,
+};
+
+enum prtAnimationType_t : std::int32_t {
+  PANIM_TYPE_CYLE_RATE = 0,
+  PANIM_TYPE_SINGLE_CYCLE_RATE = 1,
+  PANIM_TYPE_SINGLE_CYCLE = 2,
+};
+
+enum prtSortType_t : std::int32_t {
+  PSORT_TYPE_NONE = 0,
+  PSORT_TYPE_NEWEST_TO_OLDEST = 1,
+  PSORT_TYPE_OLDEST_TO_NEWEST = 2,
+};
+
+enum prtLightingType_t : std::int32_t {
+  PLIGHTING_TYPE_OFF = 0,
+  PLIGHTING_TYPE_AVERAGE = 1,
+  PLIGHTING_TYPE_FULL = 2,
 };
 
 enum prtCustomPthType_t : std::int32_t {
@@ -123,28 +141,28 @@ struct idParticleStage {
   };
   struct prtStageProperties_t {
     void* material;
-    std::uint16_t totalParticles;
-    std::uint16_t cycles;
-    float diversity;
+    std::int16_t totalParticles;
+    std::int16_t cycles;
+    std::int32_t diversity;
     idParticleParm particleLife;
     float timeOffset;
     idParticleParm deadTime;
-    std::int32_t useSysTime;
+    float useSysTime;
     float spawnBunching;
     float emissionTime;
     prtTextureFlipMode_t textureFlipS;
     prtTextureFlipMode_t textureFlipT;
     idParticleParm windBias;
-    std::int32_t sortType;
+    prtSortType_t sortType;
     float boundsExpansion;
     bool randomOnCycle;
     std::uint8_t pad109[3];
-    std::int32_t lightingType;
+    prtLightingType_t lightingType;
     std::uint8_t pad116[4];
   };
   struct prtOrientation_t {
     prtOrientationType_t type;
-    std::uint16_t numTrails;
+    std::int16_t numTrails;
     std::uint16_t pad6;
     float segmentLength;
     float viewFade;
@@ -179,7 +197,7 @@ struct idParticleStage {
     idParticleParm aspectRatio;
   };
   struct prtTexAnimation_t {
-    std::int32_t type;
+    prtAnimationType_t type;
     std::uint16_t numColumns;
     std::uint16_t numRows;
     idParticleParm rate;

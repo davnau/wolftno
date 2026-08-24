@@ -12,6 +12,37 @@ struct idSerializer {
   std::uint8_t padding[7]{};
   idBitMsg* msg = nullptr;
 
+  void SerializePacked(int* original);
+
+  template <int Maximum, int Bits> void SerializeUQ(float* value) {
+    constexpr int quantizedMaximum = (1U << Bits) - 1U;
+    constexpr int integerScale = quantizedMaximum / Maximum;
+    if (writing) {
+      const int quantized = static_cast<int>(*value * integerScale);
+      msg->WriteBits(std::max(0, std::min(quantizedMaximum, quantized)),
+                     Bits);
+    } else {
+      *value = static_cast<float>(msg->ReadBits(Bits)) *
+               (static_cast<float>(Maximum) /
+                static_cast<float>(quantizedMaximum));
+    }
+  }
+
+  template <int Maximum, int Bits> void SerializeQ(float* value) {
+    constexpr int quantizedMaximum = (1U << (Bits - 1)) - 1U;
+    constexpr int integerScale = quantizedMaximum / Maximum;
+    if (writing) {
+      const int quantized = static_cast<int>(*value * integerScale);
+      msg->WriteBits(std::max(-quantizedMaximum,
+                             std::min(quantizedMaximum, quantized)),
+                     -Bits);
+    } else {
+      *value = static_cast<float>(msg->ReadBits(-Bits)) *
+               (static_cast<float>(Maximum) /
+                static_cast<float>(quantizedMaximum));
+    }
+  }
+
   void Serialize(idVec3* value) {
     float* components = &value->x;
     for (int index = 0; index < 3; ++index) {

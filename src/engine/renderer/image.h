@@ -71,6 +71,8 @@ public:
   imageState_t ImageState() const;
   void PurgeImage();
   void BackgroundRead(class idFile* file, std::uint64_t offset);
+  void SubImageUpload(int mipLevel, int x, int y, int z, int width,
+                      int height, const void* pixels, int pixelPitch) const;
 
   unsigned sourceFileTime{};
   unsigned binaryFileTime{};

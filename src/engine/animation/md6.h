@@ -64,6 +64,7 @@ public:
   std::uint8_t tailPad[3]{};
 };
 class idMD6Model;
+class idMD6Mesh;
 class idDecl;
 class idParser;
 struct idMD6AliasEntry {
@@ -129,7 +130,9 @@ public:
   idStr morphSkinName;
   std::uint32_t morphSkin = 0;
   std::int32_t numMeshesBeforeSplitting = 0;
-  std::uint8_t modelLists[120]{};
+  idList<idMD6Mesh*, 19> meshes;
+  idList<std::uint8_t, 19> jointRemap;
+  std::uint8_t modelListsTail[72]{};
   idMD6Skel* skeleton = nullptr;
   idVec3 minBoundsExpansion{};
   idVec3 maxBoundsExpansion{};
@@ -180,6 +183,8 @@ static_assert(offsetof(idMD6Anim, translatedBounds)==72);
 static_assert(sizeof(idMD6Model)==328);
 static_assert(offsetof(idMD6Model, name)==8);
 static_assert(offsetof(idMD6Model, skeleton)==296);
+static_assert(offsetof(idMD6Model, meshes)==176);
+static_assert(offsetof(idMD6Model, jointRemap)==200);
 class idMD6Allocator {
 public:
   virtual ~idMD6Allocator()=default;

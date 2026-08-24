@@ -9,8 +9,31 @@
 
 class idAAS2;
 class idAASVisCache;
+class idAIGameState;
+struct idEventDef;
+class idEntity;
 class idPlayer;
 class idWaypoint;
+
+struct idPostedEvent {
+  const idEventDef* eventDefinition{nullptr};
+  int delayMilliseconds{0};
+  const idEntity* entityArgument{nullptr};
+};
+
+struct inputSettings_t {
+  int bindset{0};
+  float mouseSensScale{1.0F};
+  float joySensScale{1.0F};
+  float joyPitchSpeed{0.0F};
+  float joyYawSpeed{0.0F};
+  float mouseSens{0.0F};
+  bool absoluteAngles{false};
+  bool lookInvert{false};
+  idAngles aimAssistAngles{};
+};
+static_assert(sizeof(inputSettings_t) == 40,
+              "inputSettings_t ABI drift");
 
 // Minimal shared game-side contracts used while the recovered Tungsten game
 // translation units are brought back online.  These interfaces model the
@@ -33,11 +56,20 @@ public:
     }();
     return identity;
   }
+  virtual const idVec3& GetGravityNormal() const {
+    static const idVec3 down{0.0F, 0.0F, -1.0F};
+    return down;
+  }
   virtual void SetAxis(const idMat3& axis) { (void)axis; }
   virtual std::uint32_t GetContents() const = 0;
   virtual void SetContents(std::uint32_t contents) = 0;
+  virtual void SetContents(std::uint32_t contents, int bodyId) {
+    if (bodyId == 0) SetContents(contents);
+  }
   virtual void EnableClip() = 0;
   virtual void DisableClip() = 0;
+  virtual void LinkClip() { EnableClip(); }
+  virtual void UnlinkClip() { DisableClip(); }
   virtual int GetNumClipModels() const { return 1; }
   virtual int GetClipMask(int bodyId = -1) const {
     (void)bodyId;
@@ -73,6 +105,16 @@ public:
   }
   virtual void OnShow() { hidden = false; }
   virtual void OnActivate(idEntity* activator) { (void)activator; }
+  virtual void PostEventMS(const idEventDef* eventDefinition,
+                           int delayMilliseconds) {
+    postedEvents.Append({eventDefinition, delayMilliseconds});
+  }
+  virtual void PostEventMS(const idEventDef* eventDefinition,
+                           int delayMilliseconds,
+                           const idEntity* entityArgument) {
+    postedEvents.Append(
+        {eventDefinition, delayMilliseconds, entityArgument});
+  }
   virtual const void* GetAIGroupIdentity() const { return nullptr; }
   virtual bool ProvidesDynamicCover() const { return false; }
   virtual idVec3 GetLinearVelocity() const { return {}; }
@@ -89,11 +131,14 @@ public:
 
   idMat3* GetPresentableAxis();
   const idMat3* GetPresentableAxis() const { return &presentableAxis; }
+  void SetPresentableAxis(const idMat3& value) { presentableAxis = value; }
   const char* GetEntityDefName();
   const char* PeekEntityDefName() const { return entityDefName.c_str(); }
-  std::intptr_t GetPresentableLeftDir(...);
-  std::intptr_t GetPresentableUpDir(...);
-  std::intptr_t GetTarget(...);
+  const idVec3* GetPresentableLeftDir();
+  const idVec3* GetPresentableUpDir();
+  idEntity* GetTarget(int index);
+  void AddTarget(idEntity* target) { targets.Append(target); }
+  void ClearTargets() { targets.Clear(); }
 
   idPhysics* GetPhysics() const { return physics; }
   void SetPhysics(idPhysics* value) { physics = value; }
@@ -109,6 +154,11 @@ public:
   bool IsHidden() const { return hidden; }
   bool IsRemoved() const { return removed; }
   void SetShouldLeaveDormancy(bool value) { leaveDormancy = value; }
+  int GetPostedEventCount() const { return postedEvents.Num(); }
+  const idPostedEvent& GetPostedEvent(int index) const {
+    return postedEvents[index];
+  }
+  void ClearPostedEvents() { postedEvents.Clear(); }
 
 protected:
   idPhysics* physics{nullptr};
@@ -119,6 +169,8 @@ protected:
   idMat3 presentableAxis{};
   int entityNumber{-1};
   bool leaveDormancy{false};
+  idList<idEntity*, 5> targets;
+  idList<idPostedEvent, 5> postedEvents;
 };
 
 class idGameLocal {
@@ -131,6 +183,9 @@ public:
                                      bool enabled,
                                      const char* debugName) = 0;
   virtual int GetFrameNum() const { return 0; }
+  virtual int GetAlarmTimestamp() const { return -1; }
+  virtual std::uint32_t GetRandomSeed() const { return 0; }
+  virtual void SetRandomSeed(std::uint32_t seed) { (void)seed; }
   virtual int GetGameHz(int gameTimeType) const {
     (void)gameTimeType;
     const int millisecondsPerFrame = GetGameMsPerFrame();
@@ -141,6 +196,7 @@ public:
   virtual int GetGameTimeMs() const { return GetFrameNum() * GetGameMsPerFrame(); }
   virtual idRenderWorld* GetRenderWorld() const { return nullptr; }
   virtual idAASVisCache* GetAASVisCache() { return nullptr; }
+  virtual idAIGameState* GetAIGameState() { return nullptr; }
   virtual int GetChallengeMode() const;
   virtual idEntity* GetDebugPlayer() const { return nullptr; }
   virtual idPlayer* GetPlayer(int index) const {
@@ -152,10 +208,33 @@ public:
     (void)index;
     return nullptr;
   }
+  virtual float GetAIIncomingDamageScale() const { return 1.0F; }
+  void AddDyingAI(idEntity* entity) {
+    if (entity == nullptr) return;
+    for (int i = 0; i < dyingAI.Num(); ++i)
+      if (dyingAI[i] == entity) return;
+    dyingAI.Append(entity);
+  }
+  void RemoveDyingAI(idEntity* entity) {
+    for (int i = 0; i < dyingAI.Num(); ++i) {
+      if (dyingAI[i] == entity) {
+        dyingAI.RemoveIndex(i);
+        return;
+      }
+    }
+  }
+  bool HasDyingAI(const idEntity* entity) const {
+    for (int i = 0; i < dyingAI.Num(); ++i)
+      if (dyingAI[i] == entity) return true;
+    return false;
+  }
   std::intptr_t GetDebugEntity(...);
   std::intptr_t GetTensionManager(...);
 
   idList<idWaypoint*, 107> waypointEntities;
+
+private:
+  idList<idEntity*, 5> dyingAI;
 };
 
 inline idGameLocal* gameLocal = nullptr;

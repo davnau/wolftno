@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 enum renderCapture_t : int {
   CAPTURE_VIEW_COLOR,
   CAPTURE_VIEW_DEPTH,
@@ -46,10 +48,16 @@ struct captureParms_t {
   const idDeclRenderProg* progOverlappedDownSample;
   const idDeclRenderProg* progFeedbackDownSample;
   const idDeclRenderProg* progCaptureDepth;
+  const idDeclRenderProg* progCopyToMip01;
+  const idDeclRenderProg* progCopyToMip012;
   const idDeclRenderParm* rpViewColorMap;
   const idDeclRenderParm* rpMipMapSampler;
   const idTextureSampler* mipMapSamplers[16];
   const idDeclRenderParm* rpTargetDepth;
+  const idDeclRenderParm* rpMipGenSrc;
+  const idDeclRenderParm* rpMipGenDst0;
+  const idDeclRenderParm* rpMipGenDst1;
+  const idDeclRenderParm* rpMipGenDst2;
   const idTriangles* unitSquareTris;
   const idImage* imgBlack;
 };
@@ -59,6 +67,19 @@ void CaptureViewDepth(const captureParms_t* parameters);
 void CaptureFeedback(const captureParms_t* parameters);
 void CaptureGlareMap(const captureParms_t* parameters);
 void CaptureGuiImage(const captureParms_t* parameters);
+void CreateColorMips(const captureParms_t* parameters,
+                     const idRenderDestination* texture);
 void RenderCapture(captureParms_t* parameters);
 
-static_assert(sizeof(captureParms_t) == 352, "capture parameters ABI drift");
+static_assert(offsetof(captureParms_t, progCopyToMip01) == 0xB8,
+              "capture copy-to-mip program offset drift");
+static_assert(offsetof(captureParms_t, rpViewColorMap) == 0xC8,
+              "capture view-color parameter offset drift");
+static_assert(offsetof(captureParms_t, rpTargetDepth) == 0x158,
+              "capture target-depth parameter offset drift");
+static_assert(offsetof(captureParms_t, rpMipGenSrc) == 0x160,
+              "capture mip-generation source offset drift");
+static_assert(offsetof(captureParms_t, unitSquareTris) == 0x180,
+              "capture unit-square offset drift");
+static_assert(sizeof(captureParms_t) == 0x190,
+              "capture parameters ABI drift");

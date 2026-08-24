@@ -65,7 +65,7 @@ public:
                                      const idDeclRenderProg* defaultValue = nullptr) const;
   const char* GetString(const idDeclRenderParm* parm, const char* defaultValue = nullptr) const;
   void Save(idFile& file) const;
-  void Load(idFile& file);
+  bool Load(idFile& file);
   void RemoveRedundantOperations();
   void CopyFrom(const idParmBlock& other);
   void AddOp(const expOp_t& operation);

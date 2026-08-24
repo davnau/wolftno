@@ -1,17 +1,9 @@
 #pragma once
 
-#include "shared/idlib/math/vector.h"
+#include "engine/models/water/jobs/oceanjob.h"
 
 #include <cstddef>
 #include <cstdint>
-
-struct COceanVertex {
-  float x;
-  float y;
-  float z;
-  std::int16_t s0;
-  std::int16_t t0;
-};
 
 struct Ocean2TessParams {
   idVec4 m_TessBase;
@@ -23,17 +15,6 @@ struct Ocean2TessParams {
   float m_FarWidth;
   float m_NearPersp;
   float m_FarPersp;
-};
-
-struct idRenderModelOcean_Timers {
-  std::uint64_t m_TicksWave_v;
-  std::uint64_t m_TicksWave_n;
-  std::uint64_t m_TicksUpSample;
-  std::uint64_t m_TicksVertices;
-  std::uint64_t m_TicksNormals;
-  std::uint64_t m_TicksVertSync;
-  std::uint64_t m_TicksTexSync;
-  std::uint64_t m_TicksTexUpload;
 };
 
 struct idRenderModelOcean2_TileJobParams {

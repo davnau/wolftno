@@ -60,6 +60,8 @@ public:
   virtual int GetSectorSize() const { return 1; }
   virtual fsDevice_t GetDevice() const { return FS_DEVICE_MEMORY; }
   virtual bool IsOSNative() const { return false; }
+  template <typename T> std::size_t ReadBig(T& value);
+  template <typename T> std::size_t WriteBig(const T& value);
   std::uint32_t uniqID;
 };
 

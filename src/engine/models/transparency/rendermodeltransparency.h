@@ -23,6 +23,11 @@ public:
 
 class idRenderModelUpdateTools {
 public:
+  void ApproximateLightingForBounds(idRenderModel* model,
+                                    const idBounds* bounds,
+                                    approximateLighting_t* lighting);
+  void GetCurrentResolutionScale(float* x, float* y);
+
   idParallelJobList* renderModelJobList{};
   idRenderModelTransparency* transparencyModel{};
   void* globalShadowMap{};

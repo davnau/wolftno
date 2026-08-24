@@ -49,6 +49,13 @@ struct cmModelStats_t {
 };
 
 struct contactInfo_t {
+  enum contactType_t {
+    CONTACT_NONE = 0,
+    CONTACT_EDGE = 1,
+    CONTACT_TRMVERTEX = 2,
+    CONTACT_SPHERE = 3,
+  };
+
   idVec3 point{};
   idVec3 normal{};
   float distance{};
@@ -57,6 +64,8 @@ struct contactInfo_t {
   int modelFeature{-1};
   int traceFeature{-1};
   int entityNum{-1};
+  contactType_t type{CONTACT_NONE};
+  int trmFeature{-1};
 };
 
 struct trace_t {

@@ -5,6 +5,8 @@
 class idImage;
 
 struct idRenderDestination {
+  void Resize(int width, int height);
+
   bool isDefault;
   unsigned char alignmentPadding[3];
   int targetWidth;
@@ -25,4 +27,3 @@ static_assert(offsetof(idRenderDestination, targetImage) == 0x10,
               "render-destination image table offset drift");
 static_assert(sizeof(idRenderDestination) == 0x50,
               "render-destination ABI drift");
-

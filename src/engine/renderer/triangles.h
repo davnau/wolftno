@@ -16,6 +16,7 @@ struct idVertexScaleAndBias {
 class idTriangles {
 public:
   ~idTriangles();
+  static idTriangles* CreateStandardTriangles(const idTriangles* source);
   static idTriangles* CopyStaticTriSurf(const idTriangles* source);
   static void MergeTriangles(idTriangles* destination,
                              const idTriangles* source);

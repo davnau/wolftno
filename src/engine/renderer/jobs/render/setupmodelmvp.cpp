@@ -1,5 +1,6 @@
 #include "engine/renderer/jobs/render/setupmodelmvp.h"
 
+#include "engine/renderer/render.h"
 #include "shared/idlib/math/mathlib.h"
 
 #include <cmath>
@@ -114,4 +115,3 @@ void SetupModelMVPMatrix(idRenderMatrix* mvpMatrix,
     mvpMatrix->m[11] *= parameters->modelDepthHack;
   }
 }
-

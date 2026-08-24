@@ -12,7 +12,11 @@ class idAIWorldState;
 class idEncounterGroup;
 class idFaction;
 
-enum aiSense_t { AISENSE_HEARING = 0, AISENSE_SIGHT = 1, AISENSE_NONE = 2 };
+enum aiSense_t : int {
+  AISENSE_HEARING = 0,
+  AISENSE_SIGHT = 1,
+  AISENSE_NONE = 2
+};
 enum aiStimulus_t {
   AISTIM_NONE = 0,
   AISTIM_SOUND = 1,

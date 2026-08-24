@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/renderer/approximatelighting.h"
 #include "engine/renderer/parmblock.h"
 #include "shared/idlib/bv/bounds.h"
 #include "shared/idlib/color.h"
@@ -20,14 +21,16 @@ public:
   virtual ~idRenderDebug() = default;
   virtual void DebugPoint(const idColor& color, const idVec3& point,
                           int lifetime, bool depthTest) = 0;
-};
-
-struct approximateLighting_t {
-  idVec4 lightingModel;
-  idVec4 primeLightDir;
-  idVec4 lightOrigin[3];
-  idVec4 lightColor[3];
-  idVec4 channelLighting[6];
+  virtual void DebugArrow(const idColor& color, const idVec3& start,
+                          const idVec3& end, float size, int lifetime,
+                          bool depthTest) {
+    (void)color;
+    (void)start;
+    (void)end;
+    (void)size;
+    (void)lifetime;
+    (void)depthTest;
+  }
 };
 
 struct localTrace_t {

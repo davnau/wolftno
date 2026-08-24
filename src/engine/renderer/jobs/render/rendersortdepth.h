@@ -3,7 +3,7 @@
 #include <cstdint>
 
 struct idRenderModelCommitted;
-struct idRenderView;
+class idRenderView;
 struct renderSettings_t;
 
 struct renderSortDepthParms_t {

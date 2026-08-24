@@ -48,7 +48,120 @@ private:
   int startDeathTime{0};
 };
 
-class idGoreComponent {};
+class idGoreComponent {
+public:
+  bool CheckForGoreByName(const idAtomicString* goreName) const {
+    if (goreName == nullptr || goreName->str == nullptr) return false;
+    return std::find(goreNames.begin(), goreNames.end(), goreName->str) !=
+           goreNames.end();
+  }
+  void SetGoreAvailable(const char* goreName, bool available) {
+    if (goreName == nullptr) return;
+    const auto found = std::find(goreNames.begin(), goreNames.end(), goreName);
+    if (available && found == goreNames.end()) goreNames.emplace_back(goreName);
+    if (!available && found != goreNames.end()) goreNames.erase(found);
+  }
+
+private:
+  std::vector<std::string> goreNames;
+};
+
+class idAIHealth {};
+
+class idComponentActionScript {
+public:
+  void Update() { ++updateCount; }
+  int GetUpdateCount() const { return updateCount; }
+  int NumScriptActions(const idEntity* owner) const {
+    (void)owner;
+    return scriptActionCount;
+  }
+  void ClearActionScript(const idEntity* owner) {
+    (void)owner;
+    scriptActionCount = 0;
+    ++clearCount;
+  }
+  void SetActionScript(const idEntity* owner,
+                       const idList<idScriptAction, 5>* script,
+                       idEntity* scriptExecutor, idEntity* activator,
+                       bool inherited) {
+    lastOwner = owner;
+    lastScript = script;
+    lastScriptExecutor = scriptExecutor;
+    lastActivator = activator;
+    lastInherited = inherited;
+    scriptActionCount = script != nullptr ? script->Num() : 0;
+    ++setCount;
+  }
+  void SetScriptActionCountForTest(int value) { scriptActionCount = value; }
+  int GetClearCountForTest() const { return clearCount; }
+  int GetSetCountForTest() const { return setCount; }
+  const idEntity* GetLastOwnerForTest() const { return lastOwner; }
+  const idList<idScriptAction, 5>* GetLastScriptForTest() const {
+    return lastScript;
+  }
+  idEntity* GetLastScriptExecutorForTest() const {
+    return lastScriptExecutor;
+  }
+  idEntity* GetLastActivatorForTest() const { return lastActivator; }
+  bool GetLastInheritedForTest() const { return lastInherited; }
+
+private:
+  int updateCount{0};
+  int scriptActionCount{0};
+  int clearCount{0};
+  int setCount{0};
+  const idEntity* lastOwner{nullptr};
+  const idList<idScriptAction, 5>* lastScript{nullptr};
+  idEntity* lastScriptExecutor{nullptr};
+  idEntity* lastActivator{nullptr};
+  bool lastInherited{false};
+};
+
+class idFormationCoverMgr {};
+
+class idAnimator_AnimWeb {
+public:
+  void SetEvent(animWebEvent_t eventType) {
+    pendingEvents[static_cast<std::size_t>(eventType)] = true;
+  }
+  void SetEvent(animWebEvent_t eventType, idAnimWebIndex subWebIndex,
+                idAnimWebIndex stateIndex,
+                const idEventDef* eventDefinition,
+                idAnimWebEvent::priority_t priority) {
+    pendingEvents[static_cast<std::size_t>(eventType)] = true;
+    lastEventType = eventType;
+    lastSubWebIndex = subWebIndex;
+    lastStateIndex = stateIndex;
+    lastEventDefinition = eventDefinition;
+    lastPriority = priority;
+    ++setEventCount;
+  }
+  void ClearEvent(animWebEvent_t eventType) {
+    pendingEvents[static_cast<std::size_t>(eventType)] = false;
+  }
+  void ClearEvents() { pendingEvents.fill(false); }
+  bool IsEventPending(animWebEvent_t eventType) const {
+    return pendingEvents[static_cast<std::size_t>(eventType)];
+  }
+  int GetSetEventCount() const { return setEventCount; }
+  animWebEvent_t GetLastEventType() const { return lastEventType; }
+  idAnimWebIndex GetLastSubWebIndex() const { return lastSubWebIndex; }
+  idAnimWebIndex GetLastStateIndex() const { return lastStateIndex; }
+  const idEventDef* GetLastEventDefinition() const {
+    return lastEventDefinition;
+  }
+  idAnimWebEvent::priority_t GetLastPriority() const { return lastPriority; }
+
+private:
+  std::array<bool, 2> pendingEvents{{false, false}};
+  int setEventCount{0};
+  animWebEvent_t lastEventType{ANIMWEB_EVENT_DEST_CLAMPED};
+  idAnimWebIndex lastSubWebIndex{};
+  idAnimWebIndex lastStateIndex{};
+  const idEventDef* lastEventDefinition{nullptr};
+  idAnimWebEvent::priority_t lastPriority{idAnimWebEvent::PRIORITY_LOW};
+};
 
 struct idAI2::idAIVolatile::idAIDeath {
   struct disintegrateTime_t {
@@ -157,6 +270,11 @@ private:
   unsigned int eventClass{0};
 };
 
+class idAIEventSphere : public idAIEvent {
+public:
+  using idAIEvent::idAIEvent;
+};
+
 class idAIFSMCallback {
 public:
   virtual ~idAIFSMCallback();
@@ -167,6 +285,7 @@ public:
 
 class idAnimatedEntity : public idEntity {
 public:
+  virtual void JobSync() { ++jobSyncCount; }
   idTreeAnimator* GetTreeAnimatorFromPresentable() const;
   idRecoveredValue SetModelByName(...);
   void SetPresentable(idPresentable* value) { presentable = value; }
@@ -174,10 +293,12 @@ public:
   const idVec3& GetAimPoint() const { return aimPoint; }
   void SetHeadTrackBlendTime(int value) { headTrackBlendTime = value; }
   int GetHeadTrackBlendTime() const { return headTrackBlendTime; }
+  int GetAnimatedEntityJobSyncCount() const { return jobSyncCount; }
 
 private:
   idVec3 aimPoint{};
   int headTrackBlendTime{500};
+  int jobSyncCount{0};
   idPresentable* presentable{nullptr};
 };
 
@@ -296,7 +417,7 @@ public:
   idFocusInfo();
   ~idFocusInfo();
 
-  idRecoveredValue HasFocus(...);
+  bool HasFocus();
   bool HasActiveFocus() const;
   void Shutdown(idAnimatedEntity* owner);
   void SetConstraints(const idRotationTrackerRange* constraints);
@@ -378,25 +499,161 @@ public:
   virtual ~idFSMCallback();
 };
 
+class idFiniteStateMachine {
+public:
+  explicit idFiniteStateMachine(const char* fsmName = nullptr)
+      : name(fsmName != nullptr ? fsmName : "") {}
+  void Save(idFile_String* file, const char* indent) const {
+    lastSaveIndent = indent != nullptr ? indent : "";
+    ++saveCount;
+    file->Printf("%s%s", lastSaveIndent.data, saveText.data);
+  }
+  bool PostEvent(int eventId, const void* eventData, unsigned int currentTime) {
+    lastEventId = eventId;
+    lastEventData = eventData;
+    lastEventTime = currentTime;
+    ++postEventCount;
+    return true;
+  }
+  const char* GetName() const { return name.data; }
+  void SetSaveTextForTest(const char* value) {
+    saveText = value != nullptr ? value : "";
+  }
+  int GetSaveCount() const { return saveCount; }
+  const char* GetLastSaveIndent() const { return lastSaveIndent.data; }
+  int GetPostEventCount() const { return postEventCount; }
+  int GetLastEventId() const { return lastEventId; }
+  const void* GetLastEventData() const { return lastEventData; }
+  unsigned int GetLastEventTime() const { return lastEventTime; }
+  void SetCurrentStateForTest(const void* state) { currentState = state; }
+  const void* GetCurrentStateForTest() const { return currentState; }
+  void SetActionCallerState(const void* state) { actionCallerState = state; }
+  const void* GetActionCallerStateForTest() const { return actionCallerState; }
+  void ProcessEvent(const idEventDef* eventDefinition, const idEntity* entity) {
+    lastProcessedEvent = eventDefinition;
+    lastProcessedEntity = entity;
+    ++processEventCount;
+  }
+  int GetProcessEventCount() const { return processEventCount; }
+  const idEventDef* GetLastProcessedEvent() const { return lastProcessedEvent; }
+  const idEntity* GetLastProcessedEntity() const { return lastProcessedEntity; }
+  void SetRespondsToEvent(int eventNumber, bool responds) {
+    if (eventNumber >= 0 &&
+        eventNumber < static_cast<int>(respondingEvents.size())) {
+      respondingEvents[static_cast<std::size_t>(eventNumber)] = responds;
+    }
+  }
+  bool RespondsTo(const idEventDef* eventDefinition) const {
+    return eventDefinition != nullptr && eventDefinition->eventnum >= 0 &&
+           eventDefinition->eventnum <
+               static_cast<int>(respondingEvents.size()) &&
+           respondingEvents[static_cast<std::size_t>(
+               eventDefinition->eventnum)];
+  }
+  void SetCallEventResultForTest(const idEventArg& value) {
+    callEventResult = value;
+  }
+  idEventArg* ProcessEventArgPtr(idEventArg* result,
+                                 const idEventDef* eventDefinition,
+                                 idEventArg* arguments) {
+    lastCallEventDefinition = eventDefinition;
+    lastCallEventArguments = arguments;
+    ++callEventCount;
+    *result = callEventResult;
+    return result;
+  }
+  int GetCallEventCountForTest() const { return callEventCount; }
+  const idEventDef* GetLastCallEventDefinitionForTest() const {
+    return lastCallEventDefinition;
+  }
+  const idEventArg* GetLastCallEventArgumentsForTest() const {
+    return lastCallEventArguments;
+  }
+
+private:
+  idStr name;
+  idStr saveText{"fsm"};
+  mutable idStr lastSaveIndent;
+  mutable int saveCount{0};
+  int postEventCount{0};
+  int lastEventId{-1};
+  const void* lastEventData{nullptr};
+  unsigned int lastEventTime{0};
+  const void* currentState{nullptr};
+  const void* actionCallerState{nullptr};
+  const idEventDef* lastProcessedEvent{nullptr};
+  const idEntity* lastProcessedEntity{nullptr};
+  int processEventCount{0};
+  std::array<bool, 64> respondingEvents{};
+  idEventArg callEventResult{};
+  const idEventDef* lastCallEventDefinition{nullptr};
+  idEventArg* lastCallEventArguments{nullptr};
+  int callEventCount{0};
+};
+
 class idFSMManager {
 public:
   struct idFSMStack { idFSMStack(); };
   virtual ~idFSMManager();
+  idFiniteStateMachine* FindFSM(const char* name) {
+    return name != nullptr && std::strcmp(name, alertCycle.GetName()) == 0
+               ? &alertCycle
+               : nullptr;
+  }
+  idFiniteStateMachine* FindAlertCycleFSM() { return &alertCycle; }
+
+private:
+  idFiniteStateMachine alertCycle{"alertCycle"};
 };
 
 class idFXManager {
 public:
   void SetExternalTransform(const idVec3& position, const idMat3& rotation);
+  int StartFX(const idVec3* position, const idMat3* axis, int gameTime,
+              fxCondition_t condition) {
+    lastStartPosition = *position;
+    lastStartAxis = *axis;
+    lastStartTime = gameTime;
+    lastStartCondition = static_cast<int>(condition);
+    ++startCount;
+    return nextStartHandle++;
+  }
+  void StopFX(int gameTime, fxCondition_t condition, bool immediate) {
+    lastStopTime = gameTime;
+    lastStopCondition = static_cast<int>(condition);
+    lastStopImmediate = immediate;
+    ++stopCount;
+  }
   const idVec3& GetExternalPosition() const { return externalPosition; }
   const idMat3& GetExternalRotation() const { return externalRotation; }
   bool HasExternalPositionAndRotation() const {
     return hasExternalPositionAndRotation;
   }
+  int GetStartCount() const { return startCount; }
+  int GetStopCount() const { return stopCount; }
+  const idVec3& GetLastStartPosition() const { return lastStartPosition; }
+  const idMat3& GetLastStartAxis() const { return lastStartAxis; }
+  int GetLastStartTime() const { return lastStartTime; }
+  int GetLastStartCondition() const { return lastStartCondition; }
+  int GetLastStopTime() const { return lastStopTime; }
+  int GetLastStopCondition() const { return lastStopCondition; }
+  bool GetLastStopImmediate() const { return lastStopImmediate; }
+  void SetNextStartHandle(int value) { nextStartHandle = value; }
 
 private:
   idMat3 externalRotation{};
   idVec3 externalPosition{};
   bool hasExternalPositionAndRotation{false};
+  idVec3 lastStartPosition{};
+  idMat3 lastStartAxis{};
+  int lastStartTime{-1};
+  int lastStartCondition{0};
+  int lastStopTime{-1};
+  int lastStopCondition{0};
+  bool lastStopImmediate{false};
+  int startCount{0};
+  int stopCount{0};
+  int nextStartHandle{1};
 };
 
 class idLegsFSM {
@@ -404,9 +661,45 @@ public:
   ~idLegsFSM();
   int GetStatus() const { return status; }
   void SetStatus(int value) { status = value; }
+  void Update(bool allowTransitions, int curTime, const void* eventData) {
+    lastAllowTransitions = allowTransitions;
+    lastUpdateTime = curTime;
+    lastEventData = eventData;
+    ++updateCount;
+  }
+  int GetUpdateCount() const { return updateCount; }
+  int GetLastUpdateTime() const { return lastUpdateTime; }
+  bool GetLastAllowTransitions() const { return lastAllowTransitions; }
+  const void* GetLastEventData() const { return lastEventData; }
+  void SetRespondsToEvent(int eventNumber, bool responds) {
+    if (eventNumber >= 0 &&
+        eventNumber < static_cast<int>(respondingEvents.size())) {
+      respondingEvents[static_cast<std::size_t>(eventNumber)] = responds;
+    }
+  }
+  bool RespondsTo(const idEventDef* event) const {
+    return event->eventnum >= 0 &&
+           event->eventnum < static_cast<int>(respondingEvents.size()) &&
+           respondingEvents[static_cast<std::size_t>(event->eventnum)];
+  }
+  void ProcessMeleeBlocked(idAI2* source) {
+    lastMeleeBlockedSource = source;
+    ++meleeBlockedEventCount;
+  }
+  idAI2* GetLastMeleeBlockedSource() const {
+    return lastMeleeBlockedSource;
+  }
+  int GetMeleeBlockedEventCount() const { return meleeBlockedEventCount; }
 
 private:
   int status{0};
+  int updateCount{0};
+  int lastUpdateTime{0};
+  bool lastAllowTransitions{false};
+  const void* lastEventData{nullptr};
+  std::array<bool, 64> respondingEvents{};
+  idAI2* lastMeleeBlockedSource{nullptr};
+  int meleeBlockedEventCount{0};
 };
 
 class idScriptFunction {
@@ -424,12 +717,18 @@ struct eboltControlNode_t { int value{0}; };
 struct idCrosshairCustomIcon { int value{0}; };
 struct idPonytail { int value{0}; };
 class idAnimWebAI;
-struct idTrajectory_Parabolic { int value{0}; };
 class idAIAction {};
 class idEntitySpriteAnimator {};
 class idProxyMove {};
 class idTarget_AlarmSystem {};
-class idTarget_FakeEnemy {};
+class idTarget_FakeEnemy : public idEntity {
+public:
+  explicit idTarget_FakeEnemy(float weightValue = 0.0F)
+      : weight(weightValue) {}
+  float weight{0.0F};
+};
+
+class idTurret : public idEntity {};
 class idVolume_CustomDeath {};
 
 enum invalidAIEvent_t { INVALID_AI_EVENT = -1 };

@@ -24,7 +24,7 @@ public:
     return *this;
   }
   ~idList() {
-    if (!listStatic)
+    if (listStatic == 0 || listStatic == 2)
       delete[] list;
   }
 
@@ -34,6 +34,8 @@ public:
   const T& operator[](int index) const { return list[index]; }
   int Append(const T& value) {
     EnsureCapacity(num + 1);
+    if (num >= size)
+      return num - 1;
     list[num] = value;
     return num++;
   }
@@ -67,12 +69,15 @@ public:
   bool RemoveIndexFast(int index) {
     if (index < 0 || index >= num)
       return false;
-    list[index] = std::move(list[num - 1]);
+    if (index != num - 1)
+      list[index] = std::move(list[num - 1]);
     --num;
     return true;
   }
   T* Alloc() {
     EnsureCapacity(num + 1);
+    if (num >= size)
+      return nullptr;
     return &list[num++];
   }
   void Clear() { num = 0; }
@@ -81,23 +86,27 @@ public:
       delete[] list;
       list = nullptr;
       size = 0;
-      listStatic = 0;
     }
     num = 0;
   }
-  void SetNum(int count) {
-    EnsureCapacity(count);
-    num = count;
+  bool SetNum(int count) {
+    if (count > size && !Resize(count))
+      return false;
+    num = std::min(count, size);
+    return true;
   }
-  void SetNum(int count, const T& initialValue) {
+  bool SetNum(int count, const T& initialValue) {
     const int oldNum = num;
     EnsureCapacity(count);
     for (int i = oldNum; i < count; ++i)
       list[i] = initialValue;
     num = count;
+    return true;
   }
   void EnsureCapacity(int required) {
     if (required <= size)
+      return;
+    if (listStatic != 0)
       return;
     int newSize = size;
     if (newSize <= 0)
@@ -115,7 +124,7 @@ public:
     T* replacement = new T[newSize];
     for (int i = 0; i < num; ++i)
       replacement[i] = std::move(list[i]);
-    if (!listStatic)
+    if (listStatic == 0 || listStatic == 2)
       delete[] list;
     list = replacement;
     size = newSize;
@@ -130,8 +139,6 @@ private:
       return true;
     }
     if (newSize == size || listStatic != 0) {
-      if (num > newSize)
-        num = newSize;
       return true;
     }
     T* replacement = new T[newSize];

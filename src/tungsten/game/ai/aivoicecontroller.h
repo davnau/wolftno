@@ -5,7 +5,7 @@
 #include <array>
 #include <cstdint>
 
-enum voiceController_t {
+enum voiceController_t : int {
   VC_LOCAL = 0,
   VC_GROUP = 1,
   VC_GLOBAL = 2,
@@ -20,7 +20,7 @@ enum aiVoicePriority_t {
   AIVOICEPRIORITY_PAIN = 4,
 };
 
-enum voiceMsg_t {
+enum voiceMsg_t : int {
   AIVOICE_IDLE_ALONE,
   AIVOICE_IDLE_BUDDY,
   AIVOICE_IDLE_BUDDY_RESPONSE,
@@ -114,6 +114,9 @@ public:
 
   static void SetGlobalController(idAIVoiceController* value) {
     globalController = value;
+  }
+  static idAIVoiceController* GetGlobalController() {
+    return globalController;
   }
   static void ClearLog();
   static int GetLogCount() { return logCount; }

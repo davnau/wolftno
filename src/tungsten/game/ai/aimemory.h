@@ -155,10 +155,10 @@ public:
 
   void SetScriptedAggro(const idEntity* entity, float aggression, int endTime);
   void SetProjectileInfo(const idAIProjectileInfo* info);
-  idRecoveredValue GetEnemy(...);
-  idRecoveredValue GetFriendly(...);
-  idRecoveredValue GetFriendlyBlocker(...);
-  idRecoveredValue GetLastAttacker(...);
+  const idEntity* GetEnemy() const;
+  const idEntity* GetFriendly() const;
+  const idEntity* GetFriendlyBlocker() const;
+  idEntity* GetLastAttacker() const;
   idRecoveredValue ShouldAvoid(...);
   idRecoveredValue SetAvoidEntity(...);
   idRecoveredValue SetSpottedEnemyTrigger(...);
@@ -168,6 +168,10 @@ public:
   idRecoveredValue SetTriggeredInteraction(...);
 
   void SetCurrentTime(int value) { currentTime = value; }
+  void SetEnemy(idEntity* value) { currentEnemy = value; }
+  void SetFriendly(idEntity* value) { currentFriendly = value; }
+  void SetFriendlyBlocker(idEntity* value) { friendlyBlocker = value; }
+  void SetLastAttacker(idEntity* value) { lastAttacker = value; }
   void SetSoundAlarmTime(int value) { timeToSoundAlarm = value; }
   void SetEnemyTrailUpdatePeriod(int value) { enemyTrailUpdatePeriod = value; }
   void AddVoiceVolume(idVolume_LocationVoice* value) {
@@ -238,6 +242,9 @@ private:
   idScenePoint* keptOverrideScenePoint{nullptr};
   idEntity* lastAttacker{nullptr};
   idEntity* lastInflictor{nullptr};
+  idEntity* currentEnemy{nullptr};
+  idEntity* currentFriendly{nullptr};
+  idEntity* friendlyBlocker{nullptr};
   int lastDamageTime{-1};
   const idInfoPath* currentPath{nullptr};
   const idInfoPath* nextPath{nullptr};

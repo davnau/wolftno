@@ -22,6 +22,12 @@ enum aiMovementMode_t {
   MOVEMENT_PERFECT_ORIGIN,
 };
 
+enum aiVelocityType_t {
+  AIVELOCITY_SPEED = 0,
+  AIVELOCITY_ANIMSPEED = 1,
+  AIVELOCITY_ANIMDELTA = 2,
+};
+
 struct moveFailureInfo_t {
   idVec3 origin{};
   idVec3 destination{};
@@ -64,6 +70,10 @@ public:
   bool WillReachEntity(const idEntity* entity) const;
   bool PathToPoint(const idVec3& point);
   void SetMovementModeForReal(aiMovementMode_t value);
+  void SetVelocityType(aiVelocityType_t value) { velocityType = value; }
+  void SetAccelRate(float value) { accelRate = value; }
+  void SetDecelRate(float value) { decelRate = value; }
+  void SetMaxMoveSpeed(float value) { maxMoveSpeed = value; }
   void BeginTurn(float yaw);
   void BeginTurn(const idVec3& direction);
   void UpdatePushVelocity(const idVec3& velocity);
@@ -113,9 +123,15 @@ public:
                   int time);
 
   const idVec3& GetCurrentOrigin() const { return currentOrigin; }
+  const idVec3& GetCurrentVelocity() const { return currentVelocity; }
   const idVec3& GetFinalPointValue() const { return finalPoint; }
   aiMoveStatus_t GetMoveStatusValue() const { return moveStatus; }
   aiMovementMode_t GetMovementMode() const { return movementMode; }
+  aiVelocityType_t GetVelocityType() const { return velocityType; }
+  float GetAccelRate() const { return accelRate; }
+  float GetDecelRate() const { return decelRate; }
+  float GetMaxMoveSpeed() const { return maxMoveSpeed; }
+  const idAI2* GetOwnerForTest() const { return owner; }
   bool IsTurning() const { return turning; }
   bool IsLerping() const { return lerping; }
   bool IsTraversalPlaying() const { return traversalPlaying; }
@@ -135,6 +151,7 @@ private:
   idAIMoveParms moveParms;
   aiMoveStatus_t moveStatus{MOVE_STATUS_DONE};
   aiMovementMode_t movementMode{MOVEMENT_STATIC};
+  aiVelocityType_t velocityType{AIVELOCITY_SPEED};
   idVec3 currentOrigin{};
   idVec3 previousOrigin{};
   idVec3 nextPoint{};
@@ -151,6 +168,9 @@ private:
   int stuckStartTime{-1};
   int zeroVelocityFrames{0};
   float movementRange{100000.0F};
+  float accelRate{0.0F};
+  float decelRate{0.0F};
+  float maxMoveSpeed{0.0F};
   float turnYaw{0.0F};
   bool turning{false};
   bool overrideAnimOrientationWithFocus{false};

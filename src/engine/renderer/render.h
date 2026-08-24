@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/renderer/rendermodelparms.h"
 #include "shared/idlib/bv/bounds.h"
 #include "shared/idlib/geometry/rendermatrix.h"
 
@@ -7,13 +8,9 @@
 #include <cstdint>
 
 class idDeclEnv;
+class idDeclRenderProg;
 
-struct idScreenRect {
-  int x1;
-  int y1;
-  int x2;
-  int y2;
-};
+extern const idRenderMatrix renderMatrix_windowSpaceToClipSpace;
 
 struct envBlend_t {
   const idDeclEnv* env;
@@ -30,27 +27,161 @@ struct envBlend_t {
 // The exposed members and offsets below are recovered from the retail PDB and
 // RenderCull assembly so renderer jobs can share the correct ABI now.
 struct alignas(16) renderSettings_t {
-  std::uint8_t opaquePrefix[0x150];
+  std::uint8_t featureFlags;
+  bool skipWorld;
+  bool skipModels;
+  bool skipLights;
+  bool skipBlendLightShadows;
+  bool skipSuppress;
+  bool skipFeedback;
+  bool skipDynamic;
+  bool skipAddAlways;
+  bool skipOpaqueSurfaces;
+  bool skipSubSurfaceScattering;
+  bool skipAutosprites;
+  bool skipOcclusionBaseModel;
+  bool skipBlendedSurfaces;
+  bool skipDistortionSurfaces;
+  bool skipEmissiveSurfaces;
+  bool skipOcclusionSurfaces;
+  bool skipGuis;
+  bool skipInGameGuis;
+  bool skipAdaptiveGlare;
+  bool skipPostProcess;
+  bool skipEmissiveGlare;
+  bool skipBlendLights;
+  bool skipSlowLights;
+  bool skipSelfShadows;
+  bool skipAmbientOcclusion;
+  bool skipFog;
+  bool skipGodRays;
+  bool skipHazeFlare;
+  bool skipPostSpecular;
+  bool skipNodeCPUCulling;
+  bool skipNodeGPUCulling;
+  bool skipAreaCPUCulling;
+  bool skipAreaGPUCulling;
+  bool skipModelCPUCulling;
+  bool skipModelGPUCulling;
+  bool skipLightCPUCulling;
+  bool skipLightGPUCulling;
+  bool skipSurfaceCPUCulling;
+  bool skipModelRangeCulling;
+  bool skipLightRangeCulling;
+  std::uint8_t alignmentBeforeSelectors[3];
+  int screenSpaceReflections;
+  int singleWorldArea;
+  int singleLight;
+  int singleModel;
+  int singleSurface;
+  int singleGuiSurface;
+  int singleDimShadow;
+  int singleSelfShadow;
+  bool lockView;
+  bool forceTwoSidedDepth;
+  bool useAmbientEnv;
+  bool feedbackBGRA;
+  bool showOcclusionBoxes;
+  bool forceOcclusionBoxQueries;
+  std::uint8_t alignmentBeforeViewCounts[2];
+  int numViews;
+  int generateMipMaps;
+  int guiFrameCount;
+  int queryThreshold;
+  int doPreZMask;
+  bool dimShadowUseQuery;
+  bool dimShadowDepthBoundsTest;
+  std::uint8_t alignmentBeforeDimShadowSettings[2];
+  int dimShadowResolution;
+  int dimShadowResolutionCap;
+  int dimShadowForceHighQuality;
+  int showDimShadows;
+  float dimShadowMaxLixelsPerUnit;
+  float dimShadowLixelScale;
+  float dimShadowDensity;
+  float dimShadowPolyOfsUnits;
+  float dimShadowPolyOfsFactor;
+  float dimShadowMaxVisibleRange;
+  float dimShadowFadeVisibilityRange;
+  bool dimShadowSkipRangeCulling;
+  std::uint8_t alignmentBeforeSelfShadowSettings[3];
+  int selfShadowResolution;
+  int selfShadowResolutionCap;
+  float selfShadowDensity;
+  float selfShadowPolyOfsUnits;
+  float selfShadowPolyOfsFactor;
+  float selfShadowMaxVisibleRange;
+  float selfShadowFadeVisibilityRange;
+  float selfShadowLixelScale;
+  bool selfShadowSkipRangeCulling;
+  std::uint8_t alignmentBeforeSubSurfaceSettings[3];
+  float subSurfaceScatteringMaxVisibilityRange;
+  float subSurfaceScatteringFadeVisibilityRange;
+  bool subSurfaceScatteringSkipRangeCulling;
+  bool sortBlendedSurfacesBackToFront;
+  bool useLightScissors;
+  bool useLightDepthBoundsTest;
+  bool useDeferredSlowMapLighting;
+  bool showLightScissors;
+  std::uint8_t alignmentBeforePostProcessSettings[2];
+  int showBlendedLights;
+  int postProcessDofMode;
+  float sortCoverage;
+  float sortSSS;
+  float sortSkybox;
+  float sortBackgroundFar;
+  float sortBackground;
+  float sortBackgroundEmit;
+  float sortEmit;
+  float sortEmitOnly;
+  float sortLight;
+  float sortDecal;
+  float sortTransSort;
+  float sortTrans;
+  float sortWater;
+  float sortPerturber;
+  float sortLast;
+  float viewNearZ;
+  float viewFarZ;
+  float guiOriginOffset;
+  const idDeclRenderProg* progShowGuiOverdraw;
+  idVec3 clearColor;
+  alignas(16) idVec4 viewOrigin;
   idBounds viewBounds;
   std::uint8_t opaqueBetweenBounds[8];
   idBounds detailBounds;
   std::uint8_t opaqueTail[8];
 
-  bool UseAmbientEnv() const { return opaquePrefix[0x4E] != 0; }
+  bool IsComboMap() const { return (featureFlags & 0x01u) != 0; }
+  bool UseAmbientEnv() const { return useAmbientEnv; }
 };
 
 // NEED WORK: the complete render-view declaration is deferred until render.h
 // itself is reconstructed.  Named fields are the retail offsets consumed by
 // the currently recovered renderer jobs.
-struct alignas(16) idRenderView {
+class alignas(16) idRenderView {
+public:
   std::uint8_t opaqueBeforeRenderTime[0x1A40];
   int renderTime;
-  std::uint8_t opaqueBeforeRenderFlags[0x0B];
+  int viewID;
+  bool forceFullVirtualTextureLoad;
+  bool discontinuousViewPosition;
+  bool skipDimShadows;
+  bool skipPostProcess;
+  bool skipDynamicEnvironment;
+  bool forceFullResolution;
+  bool useHQViewColorMipsGeneration;
   bool inhibitModelFovScale;
-  std::uint8_t opaqueBeforeFovY[4];
+  float fovX;
   float fovY;
   bool cramZNear;
-  std::uint8_t opaqueBeforeMatrices[0x1967];
+  std::uint8_t alignmentBeforeExplicitProjection[3];
+  idRenderMatrix explicitProjectionMatrix;
+  bool useExplicitProjectionMatrix;
+  std::uint8_t alignmentBeforeViewOrigin[3];
+  idVec3 viewOrigin;
+  idMat3 viewAxis;
+  std::uint8_t opaqueBeforeMatrices[0x18F0];
   idRenderMatrix projectionMatrix;
   idRenderMatrix inverseProjectionMatrix;
   idRenderMatrix viewMatrix;
@@ -73,36 +204,22 @@ struct alignas(16) idRenderView {
   void* occlusionState;
 };
 
-// Recovered prefix of idRenderModelParms.  Later fields are deferred with the
-// rest of render.h; SetupModelMVPMatrix consumes this entire prefix.
-struct idRenderModelParms {
-  idVec3 origin;
-  idMat3 axis;
-  idVec3 scale;
-  std::uint8_t alignmentPadding[4];
-  const void* customMaterial;
-  int customSkin;
-  int groupMasterIndex;
-  int lightGroupID;
-  int allowSurfaceOnlyInViewID;
-  int suppressSurfaceInViewID;
-  int suppressShadowInViewID;
-  int suppressShadowInLightIndex;
-  int firstVisibleFrameCount;
-  float fovScale;
-  float modelDepthHack;
-  int castDimShadows;
-  std::uint8_t flags0;
-  std::uint8_t flags1;
-  std::uint8_t flags2;
-  std::uint8_t flags3;
-
-  bool MvpIsIdentity() const { return (flags1 & 0x80u) != 0; }
-  bool MvpIsOrthographic() const { return (flags2 & 0x01u) != 0; }
-};
-
 static_assert(offsetof(renderSettings_t, viewBounds) == 0x150,
               "render-settings view bounds offset drift");
+static_assert(offsetof(renderSettings_t, singleWorldArea) == 0x30,
+              "render-settings world-area selector offset drift");
+static_assert(offsetof(renderSettings_t, skipNodeCPUCulling) == 0x1E,
+              "render-settings node CPU cull offset drift");
+static_assert(offsetof(renderSettings_t, useAmbientEnv) == 0x4E,
+              "render-settings ambient environment offset drift");
+static_assert(offsetof(renderSettings_t, sortCoverage) == 0xD8,
+              "render-settings sort threshold offset drift");
+static_assert(offsetof(renderSettings_t, sortBackgroundEmit) == 0xEC,
+              "render-settings background-emissive threshold offset drift");
+static_assert(offsetof(renderSettings_t, sortDecal) == 0xFC,
+              "render-settings decal threshold offset drift");
+static_assert(offsetof(renderSettings_t, sortLast) == 0x110,
+              "render-settings final threshold offset drift");
 static_assert(offsetof(renderSettings_t, detailBounds) == 0x170,
               "render-settings detail bounds offset drift");
 static_assert(sizeof(renderSettings_t) == 0x190,
@@ -124,9 +241,7 @@ static_assert(sizeof(idRenderView) == 0x3660,
               "render-view recovered ABI prefix drift");
 static_assert(offsetof(idRenderView, renderTime) == 0x1A40,
               "render-view render-time offset drift");
-static_assert(offsetof(idRenderModelParms, fovScale) == 0x68,
-              "render-model fov scale offset drift");
-static_assert(offsetof(idRenderModelParms, flags1) == 0x75,
-              "render-model identity flags offset drift");
-static_assert(sizeof(idRenderModelParms) == 0x78,
-              "render-model parameters recovered prefix drift");
+static_assert(offsetof(idRenderView, viewID) == 0x1A44,
+              "render-view ID offset drift");
+static_assert(offsetof(idRenderView, viewOrigin) == 0x1AA0,
+              "render-view origin offset drift");
