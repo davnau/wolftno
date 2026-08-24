@@ -1,0 +1,216 @@
+#pragma once
+
+#include <cmath>
+#include <cstdint>
+
+struct idAngles;
+struct idQuat;
+struct idMat3;
+struct idRotation;
+
+struct idVec2 {
+  float x;
+  float y;
+
+  float& operator[](int index) { return (&x)[index]; }
+  const float& operator[](int index) const { return (&x)[index]; }
+  idVec2 operator+(const idVec2& rhs) const { return {x + rhs.x, y + rhs.y}; }
+  idVec2 operator-(const idVec2& rhs) const { return {x - rhs.x, y - rhs.y}; }
+  idVec2 operator*(float scale) const { return {x * scale, y * scale}; }
+  float operator*(const idVec2& rhs) const { return x * rhs.x + y * rhs.y; }
+  float LengthSqr() const { return *this * *this; }
+  float Length() const { return std::sqrt(LengthSqr()); }
+  const char* ToString(int precision = 2) const;
+};
+
+struct idVec2i {
+  int x;
+  int y;
+};
+
+class idVec3 {
+public:
+  float x;
+  float y;
+  float z;
+
+  float& operator[](int index) { return (&x)[index]; }
+  const float& operator[](int index) const { return (&x)[index]; }
+  idVec3 operator-() const { return {-x, -y, -z}; }
+  idVec3 operator+(const idVec3& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z}; }
+  idVec3 operator-(const idVec3& rhs) const { return {x - rhs.x, y - rhs.y, z - rhs.z}; }
+  idVec3 operator*(float scale) const { return {x * scale, y * scale, z * scale}; }
+  idVec3 operator/(float scale) const { return *this * (1.0f / scale); }
+  bool operator==(const idVec3& rhs) const {
+    return x == rhs.x && y == rhs.y && z == rhs.z;
+  }
+  float operator*(const idVec3& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z; }
+  idVec3& operator+=(const idVec3& rhs) {
+    x += rhs.x;
+    y += rhs.y;
+    z += rhs.z;
+    return *this;
+  }
+  idVec3& operator-=(const idVec3& rhs) {
+    x -= rhs.x;
+    y -= rhs.y;
+    z -= rhs.z;
+    return *this;
+  }
+  idVec3& operator*=(float scale) {
+    x *= scale;
+    y *= scale;
+    z *= scale;
+    return *this;
+  }
+  idVec3 Cross(const idVec3& rhs) const {
+    return {y * rhs.z - z * rhs.y, z * rhs.x - x * rhs.z, x * rhs.y - y * rhs.x};
+  }
+  float LengthSqr() const { return *this * *this; }
+  float Length() const { return std::sqrt(LengthSqr()); }
+  float DistanceFast(const idVec3& other) const;
+  float Normalize() {
+    const float length = Length();
+    if (length > 0.0f) {
+      *this *= 1.0f / length;
+    }
+    return length;
+  }
+
+  float ToYaw() const;
+  float ToYaw(const idVec3& up) const;
+  float ToPitch() const;
+  idAngles ToAngles() const;
+  idMat3 ToMat3() const;
+  idMat3 ToZAxis() const;
+  void ProjectSelfOntoSphere(float radius);
+  const idVec3& RotateSelf(const idVec3& axis, float angleDegrees);
+  const idVec3& RotateSelfRadians(const idVec3& axis, float angleRadians);
+  const char* ToString(int precision = 2) const;
+};
+
+inline idVec3 operator*(float scale, const idVec3& vector) {
+  return vector * scale;
+}
+
+struct idVec4 {
+  float x;
+  float y;
+  float z;
+  float w;
+
+  float& operator[](int index) { return (&x)[index]; }
+  const float& operator[](int index) const { return (&x)[index]; }
+};
+
+struct idVec6 {
+  float p[6];
+};
+
+struct idAngles {
+  float pitch;
+  float yaw;
+  float roll;
+
+  float& operator[](int index) { return (&pitch)[index]; }
+  const float& operator[](int index) const { return (&pitch)[index]; }
+  idAngles& Normalize360();
+  idAngles& Normalize180();
+  void Clamp(const idAngles& minimum, const idAngles& maximum);
+  void ToVectors(idVec3* forward, idVec3* right = nullptr, idVec3* up = nullptr) const;
+  idVec3 ToForward() const;
+  idQuat ToQuat() const;
+  idRotation ToRotation() const;
+  idMat3 ToMat3() const;
+  idVec3 ToAngularVelocity() const;
+  const char* ToString(int precision = 2) const;
+};
+
+struct idQuat {
+  float x;
+  float y;
+  float z;
+  float w;
+
+  float& operator[](int index) { return (&x)[index]; }
+  const float& operator[](int index) const { return (&x)[index]; }
+  float operator*(const idQuat& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z + w * rhs.w; }
+  idQuat operator-() const { return {-x, -y, -z, -w}; }
+  idQuat operator+(const idQuat& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w}; }
+  idQuat operator-(const idQuat& rhs) const { return {x - rhs.x, y - rhs.y, z - rhs.z, w - rhs.w}; }
+  idQuat operator*(float scale) const { return {x * scale, y * scale, z * scale, w * scale}; }
+  idQuat& Normalize();
+  idRotation ToRotation() const;
+  idMat3 ToMat3() const;
+  idVec3 ToForward() const;
+  idVec3 ToAngularVelocity() const;
+  idQuat& Slerp(const idQuat& from, const idQuat& to, float t);
+  idQuat& Lerp(const idQuat& from, const idQuat& to, float t);
+  idAngles ToAngles() const;
+};
+
+struct idMat3 {
+  idVec3 mat[3];
+
+  idMat3() = default;
+  explicit idMat3(const idVec3& axis, float angleDegrees);
+  idMat3(const idVec3& axis, float sineHalfAngle, float cosineHalfAngle);
+  idVec3& operator[](int index) { return mat[index]; }
+  const idVec3& operator[](int index) const { return mat[index]; }
+  idVec3 operator*(const idVec3& vector) const {
+    return mat[0] * vector.x + mat[1] * vector.y + mat[2] * vector.z;
+  }
+  idMat3 operator*(const idMat3& rhs) const;
+  float Determinant() const;
+  bool InverseSelf();
+  idMat3& InertiaTranslateSelf(float mass, const idVec3& centerOfMass, const idVec3& translation);
+  const idMat3& RotateSelf(const idVec3& axis, float angleDegrees);
+  float ToPitch() const;
+  float ToYaw() const;
+  idAngles ToAngles() const;
+  idQuat ToQuat() const;
+  idRotation ToRotation() const;
+  idVec3 ToAngularVelocity() const;
+  const char* ToString(int precision = 2) const;
+};
+
+struct idMat4 {
+  idVec4 mat[4];
+  idVec4& operator[](int index) { return mat[index]; }
+  const idVec4& operator[](int index) const { return mat[index]; }
+  bool InverseSelf();
+};
+
+struct idRotation {
+  idVec3 origin;
+  idVec3 vec;
+  float angle;
+  mutable idMat3 axis;
+  mutable bool axisValid;
+
+  idRotation();
+  idRotation(const idVec3& rotationOrigin, const idVec3& rotationAxis, float angleDegrees);
+  const idMat3& ToMat3() const;
+  void Normalize180();
+  idAngles ToAngles() const;
+  idVec3 ToAngularVelocity() const;
+  idVec3 operator*(const idVec3& point) const;
+};
+
+extern const idVec3 vec3_origin;
+extern const idVec3 vec3_infinity;
+extern const idVec6 vec6_infinity;
+extern const idMat3 mat3_identity;
+extern const idMat4 mat4_zero;
+extern const idMat4 mat4_identity;
+
+static_assert(sizeof(idVec2) == 8, "idVec2 ABI drift");
+static_assert(sizeof(idVec2i) == 8, "idVec2i ABI drift");
+static_assert(sizeof(idVec3) == 12, "idVec3 ABI drift");
+static_assert(sizeof(idVec4) == 16, "idVec4 ABI drift");
+static_assert(sizeof(idVec6) == 24, "idVec6 ABI drift");
+static_assert(sizeof(idAngles) == 12, "idAngles ABI drift");
+static_assert(sizeof(idQuat) == 16, "idQuat ABI drift");
+static_assert(sizeof(idMat3) == 36, "idMat3 ABI drift");
+static_assert(sizeof(idMat4) == 64, "idMat4 ABI drift");
+static_assert(sizeof(idRotation) == 68, "idRotation ABI drift");

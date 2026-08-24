@@ -1,0 +1,197 @@
+#pragma once
+
+#include "tungsten/game/ai/aimemory.h"
+#include "tungsten/game/ai/aimoveparms.h"
+#include "tungsten/game/ai/aiorientation.h"
+
+enum aiMoveStatus_t {
+  MOVE_STATUS_DONE,
+  MOVE_STATUS_MOVING,
+  MOVE_STATUS_BLOCKED,
+  MOVE_STATUS_UNREACHABLE,
+  MOVE_STATUS_ABORTED,
+};
+
+enum aiMovementMode_t {
+  MOVEMENT_STATIC,
+  MOVEMENT_WALKING,
+  MOVEMENT_ANIM,
+  MOVEMENT_FLYING,
+  MOVEMENT_DEAD,
+  MOVEMENT_PLAYER,
+  MOVEMENT_PERFECT_ORIGIN,
+};
+
+struct moveFailureInfo_t {
+  idVec3 origin{};
+  idVec3 destination{};
+  int time{0};
+  aiMoveStatus_t status{MOVE_STATUS_UNREACHABLE};
+};
+
+struct idObstacleInfo {
+  void Reset();
+  idEntity* obstacle{nullptr};
+  idVec3 avoidPoint{};
+  bool valid{false};
+};
+
+class idAIMoveState {
+public:
+  idAIMoveState();
+  virtual ~idAIMoveState();
+
+  const idVec3& GetFinalPoint() const;
+  aiMoveStatus_t GetMoveStatus() const;
+  idRecoveredValue GetNextPoint(...);
+  bool IsPlayingTraversalAnim() const;
+  void SetTranslationDeltaScale(const idVec3& scale);
+
+  bool ReachedPoint(const idVec3& point, float tolerance) const;
+  void EndTurn();
+  void SetOverrideAnimOrientationWithFocus(bool value);
+  bool IsOverridingAnimOrientationWithFocus() const;
+  idScenePoint* GetDestinationTraversal() const;
+  void SetMoveStatus(aiMoveStatus_t value);
+  void Init(idAI2* value);
+  void Stop(aiMoveStatus_t reason = MOVE_STATUS_ABORTED);
+  int PointReachableAreaNum(const idVec3& point) const;
+  bool PointReachable(const idVec3& point) const;
+  bool PointInMovementRange(const idVec3& point) const;
+  bool WillReachPoint(const idVec3& point) const;
+  float GetReachedEntityDist(const idEntity* entity) const;
+  bool ReachedEntity(const idEntity* entity) const;
+  bool WillReachEntity(const idEntity* entity) const;
+  bool PathToPoint(const idVec3& point);
+  void SetMovementModeForReal(aiMovementMode_t value);
+  void BeginTurn(float yaw);
+  void BeginTurn(const idVec3& direction);
+  void UpdatePushVelocity(const idVec3& velocity);
+  void StartSmoothBlendLerp_Traversal(const idVec3& destination,
+                                      int duration);
+  void AbortSmoothBlendLerp();
+  idVec3 GetMovementDelta() const;
+  void UpdateMovement_Dead(int time);
+  void ResetStuck();
+  void UpdateStuck(int time);
+  void StartLerp(const idVec3& destination, int startTime, int duration);
+  void StartLerpToPoint(const idVec3& destination, int startTime,
+                        int duration);
+  void StartPush(const idVec3& velocity, int duration);
+  void AlignToNextPoint();
+  bool IsLineInNavGraph(const idVec3& start, const idVec3& end) const;
+  bool InternalTestMoveToPoint(const idVec3& point) const;
+  void StartPerfectOrigin(const idVec3& destination);
+  void StartPerfectDestination(const idVec3& destination);
+  void UpdateDeathMovement(int time);
+  void StartSmoothBlendLerp(const idVec3& destination, int duration);
+  void StartSmoothBlendLerp_SmoothAnim(const idVec3& destination,
+                                       int duration);
+  const char* DetermineSmoothStartAnimation() const;
+  const char* DetermineSmoothStopAnimation() const;
+  void UpdateMovement_PerfectOrigin(int time);
+  void UpdateMovement_Player(int time);
+  void UpdateDirection();
+  bool CheckStuck(int time);
+  bool PushEntityIfClose(idEntity* entity, float distance);
+  bool RecentlyFailedMove(const idVec3& destination, int time) const;
+  bool TestMove(const idVec3& destination) const;
+  void UpdateMovement_Static(int time);
+  void UpdateMovement_Walking(int time);
+  void UpdateMovement_Anim(int time);
+  void UpdateMovement_Flying(int time);
+  bool PathAroundObstacles();
+  idEntity* GetGoalEntity() const;
+  bool Verify_SmoothAnims() const;
+  bool ContinueMove(int time);
+  void UpdateMovement(int time);
+  void FinishPlayingTraversalAnim();
+  bool Verify() const;
+  bool StartMove(const idAIMoveParms& parameters, aiMovementMode_t mode,
+                 int time);
+  void MoveFailed(const idVec3& destination, aiMoveStatus_t reason,
+                  int time);
+
+  const idVec3& GetCurrentOrigin() const { return currentOrigin; }
+  const idVec3& GetFinalPointValue() const { return finalPoint; }
+  aiMoveStatus_t GetMoveStatusValue() const { return moveStatus; }
+  aiMovementMode_t GetMovementMode() const { return movementMode; }
+  bool IsTurning() const { return turning; }
+  bool IsLerping() const { return lerping; }
+  bool IsTraversalPlaying() const { return traversalPlaying; }
+  void SetCurrentOrigin(const idVec3& value) { currentOrigin = value; }
+  void SetCurrentVelocity(const idVec3& value) { currentVelocity = value; }
+  void SetDestinationTraversal(idScenePoint* value) {
+    destinationTraversal = value;
+  }
+  void SetMovementRange(float value) { movementRange = value; }
+  idAIOrientation* GetMoveOrientation() { return &moveOrientation; }
+  const idVec3& GetTranslationDeltaScale() const { return translationScale; }
+
+private:
+  void AdvanceLinearMovement(int time, float speedScale);
+
+  idAI2* owner{nullptr};
+  idAIMoveParms moveParms;
+  aiMoveStatus_t moveStatus{MOVE_STATUS_DONE};
+  aiMovementMode_t movementMode{MOVEMENT_STATIC};
+  idVec3 currentOrigin{};
+  idVec3 previousOrigin{};
+  idVec3 nextPoint{};
+  idVec3 finalPoint{};
+  idVec3 currentVelocity{};
+  idVec3 pushVelocity{};
+  idVec3 movementDirection{1.0F, 0.0F, 0.0F};
+  idVec3 lerpStart{};
+  idVec3 lerpDestination{};
+  int lerpStartTime{0};
+  int lerpDuration{0};
+  int lastUpdateTime{0};
+  int pushEndTime{0};
+  int stuckStartTime{-1};
+  int zeroVelocityFrames{0};
+  float movementRange{100000.0F};
+  float turnYaw{0.0F};
+  bool turning{false};
+  bool overrideAnimOrientationWithFocus{false};
+  bool lerping{false};
+  bool smoothBlend{false};
+  bool traversalPlaying{false};
+  idScenePoint* destinationTraversal{nullptr};
+  idObstacleInfo obstacleInfo;
+  idList<moveFailureInfo_t, 5> moveFailures;
+  idAIOrientation moveOrientation;
+  idVec3 translationScale{1.0F, 1.0F, 1.0F};
+};
+
+extern idCVar ai_debugMove;
+extern idCVar ai_testPaths;
+extern idCVar ai_avoidObstacles;
+extern idCVar ai_useObstacleRoute;
+extern idCVar ai_forceMoveSpeed;
+extern idCVar ai_turndecay;
+extern idCVar ai_turndecayAng;
+extern idCVar ai_pointTolerance;
+extern idCVar ai_useTurningCircles;
+extern idCVar ai_showTurningCircles;
+extern idCVar ai_turningCircleDebugTime;
+extern idCVar ai_turningCircleAlignmentTolerance;
+extern idCVar ai_debugLerp;
+extern idCVar ai_debugDeltas;
+extern idCVar ai_debugReactionBasedMovement;
+extern idCVar ai_checkStuck;
+extern idCVar ai_debugStuck;
+extern idCVar ai_noSmoothAfterStuckTime;
+extern idCVar ai_errorCorrectTurns;
+extern idCVar ai_showMovementTrails;
+extern idCVar ai_cornerCircleRadius;
+extern idCVar ai_minCornerCircleRadius;
+extern idCVar ai_zeroVelocityFramesBeforeStuck;
+extern idCVar ai_useStartTransitions;
+extern idCVar ai_useStopTransitions;
+extern idCVar ai_allowTranstionOvershoot;
+extern idCVar ai_alignToPointDist;
+extern idCVar ai_debugPushPlayer;
+extern idCVar ai_forceMicrotransitions;
+extern idCVar ai_pathResolver;
+extern idCVar ai_aaspush;
