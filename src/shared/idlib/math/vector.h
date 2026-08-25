@@ -5,10 +5,11 @@
 
 class idAngles;
 struct idQuat;
-struct idMat3;
+class idMat3;
 struct idRotation;
 
-struct idVec2 {
+class idVec2 {
+public:
   float x;
   float y;
 
@@ -127,6 +128,12 @@ public:
   const char* ToString(int precision = 2) const;
 };
 
+struct idCQuat {
+  float x;
+  float y;
+  float z;
+};
+
 struct idQuat {
   float x;
   float y;
@@ -150,7 +157,8 @@ struct idQuat {
   idAngles ToAngles() const;
 };
 
-struct idMat3 {
+class idMat3 {
+public:
   idVec3 mat[3];
 
   idMat3() = default;
@@ -162,6 +170,7 @@ struct idMat3 {
     return mat[0] * vector.x + mat[1] * vector.y + mat[2] * vector.z;
   }
   idMat3 operator*(const idMat3& rhs) const;
+  bool Compare(const idMat3& other, float epsilon) const;
   float Determinant() const;
   bool InverseSelf();
   idMat3& InertiaTranslateSelf(float mass, const idVec3& centerOfMass, const idVec3& translation);
@@ -211,6 +220,7 @@ static_assert(sizeof(idVec3) == 12, "idVec3 ABI drift");
 static_assert(sizeof(idVec4) == 16, "idVec4 ABI drift");
 static_assert(sizeof(idVec6) == 24, "idVec6 ABI drift");
 static_assert(sizeof(idAngles) == 12, "idAngles ABI drift");
+static_assert(sizeof(idCQuat) == 12, "idCQuat ABI drift");
 static_assert(sizeof(idQuat) == 16, "idQuat ABI drift");
 static_assert(sizeof(idMat3) == 36, "idMat3 ABI drift");
 static_assert(sizeof(idMat4) == 64, "idMat4 ABI drift");

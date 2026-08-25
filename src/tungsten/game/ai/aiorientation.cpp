@@ -25,6 +25,7 @@ idVec3 RotateAroundAxis(const idVec3& vector, idVec3 normal,
 
 // DIA: idAIOrientation::UpdateStatic
 void idAIOrientation::UpdateStatic() {
+  ++updateStaticCount;
   previousTurnDir = currentTurnDir;
   currentTurnDir = TURN_NONE;
 }
@@ -50,8 +51,11 @@ void idAIOrientation::Init(const idMat3& value) {
 
 // DIA: idAIOrientation::SetIdealDir
 void idAIOrientation::SetIdealDir(idAI2* ai, const idVec3& direction) {
-  (void)ai;
-  const idVec3 projected = Projected(direction, {0.0F, 0.0F, 1.0F});
+  const idVec3 gravityNormal =
+      ai != nullptr && ai->GetPhysics() != nullptr
+          ? ai->GetPhysics()->GetGravityNormal()
+          : idVec3{0.0F, 0.0F, -1.0F};
+  const idVec3 projected = Projected(direction, gravityNormal);
   if (projected.LengthSqr() > 0.001F) idealDir = projected;
 }
 
@@ -117,13 +121,26 @@ void idAIOrientation::SetAxis(const idMat3& value) { axis = value; }
 turnDirection_t idAIOrientation::UpdateAxis(const idVec3& normal,
                                              float turnRate,
                                              float timeSeconds) {
-  return RotateTowardIdeal(normal, turnRate, timeSeconds, TURN_NONE);
+  ++updateAxisCount;
+  lastUpdateNormal = normal;
+  lastUpdateRate = turnRate;
+  lastUpdateSeconds = timeSeconds;
+  lastForcedDirection = TURN_NONE;
+  const turnDirection_t result =
+      RotateTowardIdeal(normal, turnRate, timeSeconds, TURN_NONE);
+  if (result != TURN_NONE) turnVelocity = 0.0F;
+  return result;
 }
 
 // DIA: idAIOrientation::UpdateBodyAxis
 turnDirection_t idAIOrientation::UpdateBodyAxis(
     const idVec3& normal, turnDirection_t turnDirection, float turnRate,
     float timeSeconds) {
+  ++updateBodyAxisCount;
+  lastUpdateNormal = normal;
+  lastUpdateRate = turnRate;
+  lastUpdateSeconds = timeSeconds;
+  lastForcedDirection = turnDirection;
   return RotateTowardIdeal(normal, turnRate, timeSeconds, turnDirection);
 }
 

@@ -197,7 +197,7 @@ void RenderDimShadows(const renderDimShadowsParms_t* parameters) {
     if (model->references.num <= 0)
       continue;
     if (model->r.suppressShadowInViewID != 0 &&
-        model->r.suppressShadowInViewID == parameters->renderView->viewID) {
+        model->r.suppressShadowInViewID == parameters->renderView->r.viewID) {
       continue;
     }
     const int modelIndex = static_cast<int>(model->index.index >> 8);
@@ -436,7 +436,7 @@ void RenderDimShadows(const renderDimShadowsParms_t* parameters) {
       const float radius =
           std::sqrt(std::max(radiusVector.LengthSqr(), FLT_MIN));
       const float lodDistance = ComputeShadowLODDistance(
-          model->globalReferenceBounds, view.viewOrigin, primeLightDirection);
+          model->globalReferenceBounds, view.r.vieworg, primeLightDirection);
       const idRenderMatrix& projection = view.projectionMatrix;
       const float projectedSize =
           (radius * projection.m[0] - lodDistance * projection.m[2] +

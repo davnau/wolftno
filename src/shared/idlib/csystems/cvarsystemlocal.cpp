@@ -82,17 +82,17 @@ void idCVar::Set(const char* value, bool force) {
     if (c->callback)
       c->callback(*this);
 }
-void idCVar::SetString(const char* v) {
-  Set(v);
+void idCVar::SetString(const char* v, bool force) {
+  Set(v, force);
 }
-void idCVar::SetBool(bool v) {
-  Set(v ? "1" : "0");
+void idCVar::SetBool(bool v, bool force) {
+  Set(v ? "1" : "0", force);
 }
-void idCVar::SetInteger(int v) {
-  Set(idStr(v).data);
+void idCVar::SetInteger(int v, bool force) {
+  Set(idStr(v).data, force);
 }
-void idCVar::SetFloat(float v) {
-  Set(idStr(v).data);
+void idCVar::SetFloat(float v, bool force) {
+  Set(idStr(v).data, force);
 }
 idCVar* idCVar::StaticVars() {
   return staticVars;

@@ -8,26 +8,41 @@
 #include <cstddef>
 #include <cstdint>
 
+class idMaterial;
+
 struct dm_detail_t {
   std::int16_t xyz[3];
   std::uint8_t attribIdx;
   std::uint8_t uniformSizeScale;
   std::uint8_t color[3];
   std::uint8_t pad[9];
-  idVec3 rotation;
+  idCQuat rotation;
 };
 
 struct dm_attribute_t {
   std::uint16_t declIdx;
   std::uint16_t paletteIdx;
-  std::uint8_t pad[28];
+  int pad[7];
 };
 
-struct idDetailPaletteData {
-  const void* material;
+struct detailPaletteVert_t;
+
+struct idDetailModelSurface {
+  int numVerts;
+  int numIndices;
+  detailPaletteVert_t* verts;
+  std::uint16_t* indices;
+};
+
+class idDetailPaletteData {
+public:
+  void CreateDefault();
+  bool Generate(const char* name);
+
+  const idMaterial* material;
   int numSurfaces;
   int pad;
-  const void* surfaces;
+  idDetailModelSurface* surfaces;
   idBounds bounds;
 };
 
@@ -44,9 +59,9 @@ struct detailPaletteVert_t {
 };
 
 struct detailPalette_t {
-  const detailPaletteEntry_t* entry;
-  const detailPaletteVert_t* verts;
-  const std::uint16_t* indices;
+  detailPaletteEntry_t* entry;
+  detailPaletteVert_t* verts;
+  std::uint16_t* indices;
 };
 
 struct detailGenTotals_t {
@@ -60,22 +75,17 @@ struct deferredDetailGenParms_t {
   const dm_subTreeBounds_t* subTreeBounds;
   const dm_subTreeData_t* subTreeData;
   int subTreeDataSize;
-  int pad0;
   const std::uint16_t* detailIndices;
   int maxDetailIndices;
   int numJobsForIndices;
   int jobIndexForIndices;
-  int pad1;
   const detailSubTreeStats_t* detailCountsList;
   int detailCountsIndex;
-  int pad2;
-  const detailPaletteEntry_t* paletteEntries;
+  detailPaletteEntry_t* paletteEntries;
   int paletteEntriesSize;
-  int pad3;
-  const detailPaletteVert_t* paletteVerts;
+  detailPaletteVert_t* paletteVerts;
   int paletteVertsSize;
-  int pad4;
-  const std::uint16_t* paletteIndices;
+  std::uint16_t* paletteIndices;
   int paletteIndicesSize;
   int numVertsAllocated;
   idDrawVert* verts;
@@ -85,27 +95,31 @@ struct deferredDetailGenParms_t {
 
 void CalculateDetailBounds(const dm_detail_t* detail,
                            const idDetailPaletteData* data,
-                           idBounds* bounds);
+                           idBounds& bounds);
 void GetDetailTotalCount(const detailSubTreeStats_t* detailCountsList,
                          detailGenTotals_t* totalsCount);
 void GetDetailOffsetsForSubTree(
     const detailSubTreeStats_t* detailCountsList, int subTreeIndex,
-    int* vertCount, int* indexCount);
+    int& vertCount, int& indexCount);
 void BuildDetailModel(const detailPalette_t* palette, idDrawVert* verts,
                       std::uint16_t* indices, int vertOffset,
                       const dm_detail_t* detail,
                       const dm_attribute_t* attribute,
-                      detailGenTotals_t* totals);
-std::uint32_t GenDetailForSubTree(
+                      detailGenTotals_t& totals);
+int GenDetailForSubTree(
     const deferredDetailGenParms_t* parms,
-    const std::uint16_t* detailIndices, std::uint32_t numDetail,
+    const std::uint16_t* detailIndices, int numDetail,
     int vertexBufferOffset, int indexBufferOffset, int indexOffset,
-    detailGenTotals_t* totals);
+    detailGenTotals_t& totals);
 
 static_assert(sizeof(dm_detail_t) == 32, "dm_detail_t ABI drift");
 static_assert(offsetof(dm_detail_t, rotation) == 20,
               "dm_detail_t::rotation ABI drift");
 static_assert(sizeof(dm_attribute_t) == 32, "dm_attribute_t ABI drift");
+static_assert(sizeof(idDetailModelSurface) == 24,
+              "idDetailModelSurface ABI drift");
+static_assert(offsetof(idDetailModelSurface, verts) == 8,
+              "idDetailModelSurface::verts ABI drift");
 static_assert(sizeof(idDetailPaletteData) == 48,
               "idDetailPaletteData ABI drift");
 static_assert(offsetof(idDetailPaletteData, bounds) == 24,
@@ -134,4 +148,3 @@ static_assert(offsetof(deferredDetailGenParms_t, verts) == 120,
               "deferredDetailGenParms_t::verts ABI drift");
 static_assert(offsetof(deferredDetailGenParms_t, totalsUsed) == 136,
               "deferredDetailGenParms_t::totalsUsed ABI drift");
-

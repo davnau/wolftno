@@ -404,7 +404,7 @@ void RenderShadowBuffer(const renderShadowBufferParms_t* parameters,
   std::array<idRenderMatrix, 6> shadowViewProjection{};
   const int slotSize = SetupShadowBufferMatrices(
       light->r, light->globalReferenceBounds,
-      parameters->renderView->viewOrigin, parameters->options,
+      parameters->renderView->r.vieworg, parameters->options,
       shadowViewProjection.data(), *lightShadow);
   if (light->r.lightType != LIGHT_POINT) {
     const float scale = static_cast<float>(slotSize) /
@@ -513,7 +513,7 @@ void RenderShadowBuffer(const renderShadowBufferParms_t* parameters,
         continue;
       }
       if ((model->r.suppressShadowInViewID != 0 &&
-           model->r.suppressShadowInViewID == parameters->renderView->viewID) ||
+           model->r.suppressShadowInViewID == parameters->renderView->r.viewID) ||
           model->r.suppressShadowInLightIndex ==
               static_cast<int>(light->index.index >> 8)) {
         continue;

@@ -325,7 +325,7 @@ void WriteParmList(idFile* file, const idList<short>* parms) {
 void renderProgData_t::Write(idFile* file) const {
   file->WriteString(inheritsFrom.data);
   WriteBig64(file, glState);
-  parmBlock.Save(*file);
+  parmBlock.Save(file);
   WriteParmList(file, &vertexParms);
   WriteParmList(file, &fragmentParms);
   WriteParmList(file, &textureParms);
@@ -392,7 +392,7 @@ bool ReadParmList(idFile* file, idList<short>* parms) {
 
 bool renderProgData_t::Read(idFile* file) {
   if (!ReadStoredString(file, inheritsFrom) || !ReadBig64(file, glState) ||
-      !parmBlock.Load(*file) || !ReadParmList(file, &vertexParms) ||
+      !parmBlock.Load(file) || !ReadParmList(file, &vertexParms) ||
       !ReadParmList(file, &fragmentParms) ||
       !ReadParmList(file, &textureParms) ||
       !ReadParmList(file, &samplerParms) ||

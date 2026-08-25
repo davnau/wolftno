@@ -35,6 +35,31 @@ public:
   turnDirection_t GetPreviousTurnDirection() const { return previousTurnDir; }
   float GetLastTurnRate() const { return lastTurnRate; }
   void SetTolerance(float dotTolerance) { tolerance = dotTolerance; }
+  float GetTurnVelocity() const { return turnVelocity; }
+  void SetTurnVelocity(float value) { turnVelocity = value; }
+  void SetCurrentTurnDirection(turnDirection_t value) {
+    currentTurnDir = value;
+  }
+  int GetUpdateStaticCountForTest() const { return updateStaticCount; }
+  int GetUpdateAxisCountForTest() const { return updateAxisCount; }
+  int GetUpdateBodyAxisCountForTest() const { return updateBodyAxisCount; }
+  const idVec3& GetLastUpdateNormalForTest() const {
+    return lastUpdateNormal;
+  }
+  float GetLastUpdateRateForTest() const { return lastUpdateRate; }
+  float GetLastUpdateSecondsForTest() const { return lastUpdateSeconds; }
+  turnDirection_t GetLastForcedDirectionForTest() const {
+    return lastForcedDirection;
+  }
+  void ResetUpdateObservationsForTest() {
+    updateStaticCount = 0;
+    updateAxisCount = 0;
+    updateBodyAxisCount = 0;
+    lastUpdateNormal = {};
+    lastUpdateRate = 0.0F;
+    lastUpdateSeconds = 0.0F;
+    lastForcedDirection = TURN_NONE;
+  }
 
 private:
   turnDirection_t RotateTowardIdeal(const idVec3& normal, float turnRate,
@@ -50,4 +75,11 @@ private:
   float turnVelocity{0.0F};
   float minRate{0.0F};
   float maxRate{360.0F};
+  int updateStaticCount{0};
+  int updateAxisCount{0};
+  int updateBodyAxisCount{0};
+  idVec3 lastUpdateNormal{};
+  float lastUpdateRate{0.0F};
+  float lastUpdateSeconds{0.0F};
+  turnDirection_t lastForcedDirection{TURN_NONE};
 };

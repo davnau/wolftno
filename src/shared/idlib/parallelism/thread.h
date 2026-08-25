@@ -31,6 +31,20 @@ struct idSysSignal {
   bool Wait(std::uint32_t timeout = 0xFFFFFFFFu);
 };
 
+class idScopedCriticalSection {
+public:
+  explicit idScopedCriticalSection(idSysMutex& criticalMutex)
+      : mutex(&criticalMutex) {
+    mutex->Lock(true);
+  }
+  ~idScopedCriticalSection() { mutex->Unlock(); }
+
+  idScopedCriticalSection(const idScopedCriticalSection&) = delete;
+  idScopedCriticalSection& operator=(const idScopedCriticalSection&) = delete;
+
+  idSysMutex* mutex;
+};
+
 std::uint64_t Sys_GetCurrentThreadPlaformPriority();
 void Sys_SetCurrentThreadPlaformPriority(std::uint64_t priority);
 std::uint64_t Sys_CalculatePlatformPriority(xthreadPriority priority);
@@ -89,5 +103,50 @@ public:
   idSysMutex signalMutex;
 };
 
+class idScopeThreadPriority {
+public:
+  explicit idScopeThreadPriority(xthreadPriority priority)
+      : oldPrio(Sys_GetCurrentThreadPlaformPriority()) {
+    Sys_SetCurrentThreadPlaformPriority(
+        Sys_CalculatePlatformPriority(priority));
+  }
+  ~idScopeThreadPriority() {
+    Sys_SetCurrentThreadPlaformPriority(oldPrio);
+  }
+
+  std::uint64_t oldPrio;
+};
+
+class idScopeThreadAffinity {
+public:
+  explicit idScopeThreadAffinity(core_t affinity)
+      : oldAffinity(Sys_GetCurrentThreadPlaformAffinity()) {
+    Sys_SetCurrentThreadPlaformAffinity(
+        static_cast<std::uint64_t>(Sys_CalculatePlatformAffinity(affinity)));
+  }
+  ~idScopeThreadAffinity();
+
+  std::uint64_t oldAffinity;
+};
+
+class idScopeThreadPriorityAndAffinity {
+public:
+  idScopeThreadPriorityAndAffinity(core_t affinity, xthreadPriority priority)
+      : affinty(affinity), prio(priority) {}
+  ~idScopeThreadPriorityAndAffinity();
+
+  idScopeThreadAffinity affinty;
+  idScopeThreadPriority prio;
+};
+
 static_assert(sizeof(idSysMutex) == 8, "mutex ABI drift");
 static_assert(sizeof(idSysSignal) == 8, "signal ABI drift");
+static_assert(sizeof(idSysThread) == 0x58, "thread ABI drift");
+static_assert(sizeof(idScopedCriticalSection) == 8,
+              "critical-section scope ABI drift");
+static_assert(sizeof(idScopeThreadPriority) == 8,
+              "thread-priority scope ABI drift");
+static_assert(sizeof(idScopeThreadAffinity) == 8,
+              "thread-affinity scope ABI drift");
+static_assert(sizeof(idScopeThreadPriorityAndAffinity) == 16,
+              "combined thread scope ABI drift");

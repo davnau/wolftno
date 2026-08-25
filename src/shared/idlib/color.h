@@ -7,10 +7,19 @@
 struct idColor {
   float r, g, b, a;
 
+  // The retail renderer's debug interface is expressed in idVec4.  idColor
+  // is layout-compatible and remains the source-facing convenience type used
+  // by game/model call sites.
+  operator const idVec4&() const {
+    return *reinterpret_cast<const idVec4*>(this);
+  }
+
   static const idColor colorRed;
+  static const idColor colorBlack;
   static const idColor colorGreen;
   static const idColor colorBlue;
   static const idColor colorCyan;
+  static const idColor colorYellow;
   static const idColor colorXAxis;
   static const idColor colorYAxis;
   static const idColor colorZAxis;

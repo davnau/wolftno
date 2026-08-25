@@ -8,29 +8,36 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(WOLF_RENDERER_RENDERLIGHTPARMS_TEST_ACCESS)
+extern idRenderSystemLocal* rendererRenderLightParmsTestLocal;
+#define RENDER_LIGHT_LOCAL (*rendererRenderLightParmsTestLocal)
+#else
+#define RENDER_LIGHT_LOCAL tr
+#endif
+
 const idMaterial* idRenderLightParms::DefaultMaterial() const {
   if (lightClass == LIGHT_BLENDED_ONLY) {
     if (lightType == LIGHT_POINT)
-      return tr.mtrDefaultPointBlendLight;
+      return RENDER_LIGHT_LOCAL.mtrDefaultPointBlendLight;
     if (lightType == LIGHT_PARALLEL)
-      return tr.mtrDefaultParallelBlendLight;
-    return tr.mtrDefaultProjectedBlendLight;
+      return RENDER_LIGHT_LOCAL.mtrDefaultParallelBlendLight;
+    return RENDER_LIGHT_LOCAL.mtrDefaultProjectedBlendLight;
   }
 
   if (lightClass == LIGHT_SLOWLIGHT_DYNAMIC_ONLY ||
       lightClass == LIGHT_SLOWLIGHT_PRIVATE_ONLY) {
     if (lightType == LIGHT_POINT)
-      return tr.mtrDefaultPointSlowLight;
+      return RENDER_LIGHT_LOCAL.mtrDefaultPointSlowLight;
     if (lightType == LIGHT_PARALLEL)
-      return tr.mtrDefaultParallelSlowLight;
-    return tr.mtrDefaultProjectedSlowLight;
+      return RENDER_LIGHT_LOCAL.mtrDefaultParallelSlowLight;
+    return RENDER_LIGHT_LOCAL.mtrDefaultProjectedSlowLight;
   }
 
   if (lightType == LIGHT_POINT)
-    return tr.mtrDefaultPointLight;
+    return RENDER_LIGHT_LOCAL.mtrDefaultPointLight;
   if (lightType == LIGHT_PARALLEL)
-    return tr.mtrDefaultParallelLight;
-  return tr.mtrDefaultProjectedLight;
+    return RENDER_LIGHT_LOCAL.mtrDefaultParallelLight;
+  return RENDER_LIGHT_LOCAL.mtrDefaultProjectedLight;
 }
 
 void idRenderLightParms::ComputeSpotLightProjectionMatrix(
@@ -38,7 +45,9 @@ void idRenderLightParms::ComputeSpotLightProjectionMatrix(
   const float targetLengthSqr = target.x * target.x + target.y * target.y +
                                 target.z * target.z;
   const float inverseTargetLength =
-      1.0f / std::sqrt(std::max(targetLengthSqr, idMath::FLT_SMALLEST_NON_DENORMAL));
+      1.0f /
+      std::sqrt(std::fmax(targetLengthSqr,
+                          idMath::FLT_SMALLEST_NON_DENORMAL));
   const idVec3 targetNormal = target * inverseTargetLength;
 
   const float targetLength = inverseTargetLength * targetLengthSqr;
@@ -63,13 +72,13 @@ void idRenderLightParms::ComputeSpotLightProjectionMatrix(
   localProject.m[15] = 0.0f;
 
   const float startDistance =
-      std::max(targetNormal.x * start.x + targetNormal.y * start.y +
-                   targetNormal.z * start.z,
-               8.0f);
+      std::fmax(targetNormal.x * start.x + targetNormal.y * start.y +
+                    targetNormal.z * start.z,
+                8.0f);
   const float endDistance =
-      std::max(targetNormal.x * end.x + targetNormal.y * end.y +
-                   targetNormal.z * end.z,
-               16.0f);
+      std::fmax(targetNormal.x * end.x + targetNormal.y * end.y +
+                    targetNormal.z * end.z,
+                16.0f);
   const float depthScale = (endDistance + startDistance) / endDistance;
   localProject.m[8] = targetNormal.x * depthScale;
   localProject.m[9] = targetNormal.y * depthScale;
@@ -134,7 +143,9 @@ void idRenderLightParms::ComputeLightGlobalOrigin(idVec3& globalOrigin) const {
                             lightCenter.y * lightCenter.y +
                             lightCenter.z * lightCenter.z;
     const float inverseLength =
-        1.0f / std::sqrt(std::max(lengthSqr, idMath::FLT_SMALLEST_NON_DENORMAL));
+        1.0f /
+        std::sqrt(std::fmax(lengthSqr,
+                            idMath::FLT_SMALLEST_NON_DENORMAL));
     idVec3 direction = lightCenter * inverseLength;
     if (inverseLength * lengthSqr == 0.0f)
       direction.z = 1.0f;
@@ -147,7 +158,15 @@ void idRenderLightParms::ComputeLightGlobalOrigin(idVec3& globalOrigin) const {
     return;
   }
 
-  globalOrigin = origin + axis[0] * lightCenter.x + axis[1] * lightCenter.y +
-                 axis[2] * lightCenter.z;
+  globalOrigin.x =
+      (lightCenter.y * axis[1].x + lightCenter.x * axis[0].x) +
+      lightCenter.z * axis[2].x + origin.x;
+  globalOrigin.y =
+      (lightCenter.x * axis[0].y + lightCenter.y * axis[1].y) +
+      lightCenter.z * axis[2].y + origin.y;
+  globalOrigin.z =
+      (lightCenter.x * axis[0].z + lightCenter.y * axis[1].z) +
+      lightCenter.z * axis[2].z + origin.z;
 }
 
+#undef RENDER_LIGHT_LOCAL

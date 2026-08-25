@@ -4,7 +4,7 @@ namespace {
 
 void CopyReferencedSurface(idRenderModelSurface& destination,
                            const idRenderModelSurface& source,
-                           bool copyBinaryModelId) {
+                           bool copyBinaryModelId, bool copyParms) {
   destination.material = source.material;
   destination.materialNum = source.materialNum;
   destination.extraGLState = source.extraGLState;
@@ -18,7 +18,7 @@ void CopyReferencedSurface(idRenderModelSurface& destination,
   destination.morphMap = source.morphMap;
   destination.morphMultiplier = source.morphMap != nullptr ? 1.0f : 0.0f;
   destination.stMap = source.stMap;
-  destination.parms = source.parms;
+  destination.parms = copyParms ? source.parms : nullptr;
   destination.skinOffsets = source.skinOffsets;
 }
 
@@ -64,7 +64,8 @@ bool idRenderModelImposter::UpdateInView(const idRenderView*,
   }
 
   for (int index = 0; index < surfaces.Num(); ++index)
-    CopyReferencedSurface(surfaces[index], parent->surfaces[index], false);
+    CopyReferencedSurface(surfaces[index], parent->surfaces[index], false,
+                          true);
   referenceBounds = parent->referenceBounds;
   return true;
 }
@@ -96,7 +97,7 @@ bool idRenderModelImposter::MimicRenderModel(idRenderModel* parentModel) {
   parent = parentModel;
   for (int index = 0; index < parentModel->surfaces.Num(); ++index) {
     idRenderModelSurface surface{};
-    CopyReferencedSurface(surface, parentModel->surfaces[index], true);
+    CopyReferencedSurface(surface, parentModel->surfaces[index], true, false);
     AddSurface(surface);
   }
   FinishSurfaces();

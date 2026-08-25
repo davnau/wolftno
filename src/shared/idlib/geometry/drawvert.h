@@ -7,7 +7,8 @@ struct compressedWeights_t {
   std::uint8_t high, low;
 };
 
-struct idDrawVert {
+class idDrawVert {
+public:
   idVec3 xyz;
   idVec2 st;
   std::uint8_t normal[4];

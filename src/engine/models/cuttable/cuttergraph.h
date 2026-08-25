@@ -46,7 +46,7 @@ public:
     Link_t* link;
     idVec2i pos;
     std::int32_t id : 31;
-    std::uint32_t allocated : 1;
+    std::int32_t allocated : 1;
   };
 
   struct Link_t {
@@ -93,7 +93,8 @@ public:
 
   struct IDHeap {
     idList<std::uint8_t> buffer;
-    std::uint32_t index;
+    std::uint32_t index : 31;
+    std::uint32_t isStatic : 1;
     int numBits;
 
     IDHeap();

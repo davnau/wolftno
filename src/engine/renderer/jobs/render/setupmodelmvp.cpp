@@ -91,11 +91,11 @@ void SetupModelMVPMatrix(idRenderMatrix* mvpMatrix,
 
   const idRenderMatrix* projection = &renderView->projectionMatrix;
   idRenderMatrix scaledProjection{};
-  if (parameters->fovScale != 1.0f && !renderView->inhibitModelFovScale) {
+  if (parameters->fovScale != 1.0f && !renderView->r.inhibitModelFovScale) {
     float adjustedNear = zNear;
-    if (renderView->cramZNear)
+    if (renderView->r.cramZNear)
       adjustedNear *= 0.25f;
-    const float tangent = std::tan(parameters->fovScale * renderView->fovY *
+    const float tangent = std::tan(parameters->fovScale * renderView->r.fov_y *
                                    idMath::M_DEG2RAD * 0.5f);
     const float yMaximum = tangent * adjustedNear;
     const float xMaximum =

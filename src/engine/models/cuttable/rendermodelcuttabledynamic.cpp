@@ -114,11 +114,11 @@ bool idRenderModelCuttableDynamic::IsValid() const {
   if (numSurfaces <= 0)
     return false;
   for (int index = 0; index < numSurfaces; ++index) {
-    if (surfaces.list == nullptr || surfaces[index].geometry == nullptr ||
-        surfaces[index].material == nullptr)
-      return false;
+    if (surfaces.list != nullptr && surfaces[index].geometry != nullptr &&
+        surfaces[index].material != nullptr)
+      return true;
   }
-  return true;
+  return false;
 }
 
 void idRenderModelCuttableDynamic::Upload(

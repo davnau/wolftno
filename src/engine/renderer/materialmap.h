@@ -31,7 +31,7 @@ struct idMaterialMapping {
 class idMaterialMap {
 public:
   idMaterialMap();
-  bool GetImageDimensions(int* imageWidth, int* imageHeight) const;
+  bool GetImageDimensions(int& imageWidth, int& imageHeight) const;
 
   idStr name;
   int width{};

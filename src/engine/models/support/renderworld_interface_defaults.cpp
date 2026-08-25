@@ -1,12 +1,5 @@
 #include "engine/models/renderworld.h"
 
-// Compatibility bodies for the reconstructed public interface.  Keeping them
-// outside renderworld.cpp preserves the recovered compiland's symbol ownership.
-void idRenderDebug::DebugArrow(const idColor&, const idVec3&, const idVec3&,
-                               float, int, bool) {}
-
-void idRenderDebugLocal::DebugPoint(const idColor&, const idVec3&, int, bool) {}
-
 const char* idRenderWorld::GetName() const { return ""; }
 bool idRenderWorld::IsComboMap() const { return false; }
 bool idRenderWorld::InitFromMap(const char*, bool, bool) { return false; }

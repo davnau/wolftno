@@ -29,6 +29,15 @@ struct idTextureSamplerManager {
   const idTextureSampler* pointSamplerRepeating;
   const idTextureSampler* mipMapSamplers[16];
 
+  void Init() {
+    if (vtable != nullptr && vtable->Init != nullptr)
+      vtable->Init(this);
+  }
+  void Shutdown() {
+    if (vtable != nullptr && vtable->Shutdown != nullptr)
+      vtable->Shutdown(this);
+  }
+
   const idTextureSampler* FindSamplerByName(const char* name,
                                             bool createIfMissing) {
     return vtable != nullptr && vtable->FindSamplerByName != nullptr

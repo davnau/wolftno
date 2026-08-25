@@ -14,7 +14,7 @@ class idTextureSampler;
 class idParmBlock;
 struct approximateLighting_t;
 class idVec3;
-struct idBounds;
+class idBounds;
 struct idVec4;
 struct idRenderMatrix;
 struct expOp_t;
@@ -81,7 +81,7 @@ public:
   void SetFragmentPositionToFeedback(int renderWidth, int renderHeight,
                                      int feedbackWidth, int feedbackHeight);
   void SetFragmentPositionToWindow(int renderWidth, int renderHeight,
-                                   int windowWidth);
+                                   int windowWidth, int windowHeight);
   void SetFragmentPositionToViewTexture(int renderWidth, int renderHeight,
                                         int windowWidth, int windowHeight);
   void SetSrcTexClamp(int validWidth, int validHeight, int textureWidth,
@@ -141,6 +141,8 @@ public:
   int parmIndexPolygonOffset;
 
 private:
+  friend class idParmBlock;
+
   static void CopyParmUnaligned(parmValue_t& destination,
                                 const parmValue_t& source);
   static void ApplyOp(const expOp_t& operation,

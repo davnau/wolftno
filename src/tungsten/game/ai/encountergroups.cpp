@@ -134,6 +134,7 @@ float idEncounterGroup::HighestPlayerHealth() const {
 
 // DIA: idEncounterGroup::AnyMemberHighestAlertCycle
 int idEncounterGroup::AnyMemberHighestAlertCycle() const {
+  ++highestAlertCycleQueryCount;
   return anyMemberHighestAlertCycle;
 }
 
@@ -353,7 +354,10 @@ bool idAI2::UseTauntChatterVO() {
 // DIA: idEncounterGroup::MemberKilled
 void idEncounterGroup::MemberKilled(idAI2* ai, const idEntity* attacker,
                                     const idEntity* inflictor) {
-  (void)inflictor;
+  ++memberKilledCallCount;
+  lastKilledMember = ai;
+  lastKilledAttacker = attacker;
+  lastKilledInflictor = inflictor;
   const int index = FindIndex(ai);
   if (index < 0 || ai == nullptr) return;
   ai->SetBaseHealth(0.0F);

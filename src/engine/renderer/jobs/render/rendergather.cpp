@@ -202,8 +202,8 @@ void RenderGather(const renderGatherParms_t* parameters) {
           const bool forciblyAccepted =
               parameters->worldAreaGeometryBoundsCulled[areaNum] == 0 ||
               settings->skipAreaGPUCulling;
-          if (parameters->renderView->forceFullVirtualTextureLoad ||
-              parameters->renderView->discontinuousViewPosition ||
+          if (parameters->renderView->r.forceFullVirtualTextureLoad ||
+              parameters->renderView->r.discontinuousViewPosition ||
               forciblyAccepted) {
             renderLog.OpenBlock("in bounds or forcibly accepted\n");
           } else if (state->worldAreaOcclusionQuery[areaNum] >=
@@ -294,12 +294,12 @@ void RenderGather(const renderGatherParms_t* parameters) {
         if (!settings->skipSuppress) {
           if (model->r.allowSurfaceOnlyInViewID != 0 &&
               model->r.allowSurfaceOnlyInViewID !=
-                  parameters->renderView->viewID) {
+                  parameters->renderView->r.viewID) {
             continue;
           }
           if (model->r.suppressSurfaceInViewID != 0 &&
               model->r.suppressSurfaceInViewID ==
-                  parameters->renderView->viewID) {
+                  parameters->renderView->r.viewID) {
             continue;
           }
         }
@@ -341,8 +341,8 @@ void RenderGather(const renderGatherParms_t* parameters) {
           int queryResult = settings->queryThreshold;
           if (ModelUsesOcclusionResult(*model)) {
             queryResult = GL_GetDeferredQueryResult(query);
-          } else if (parameters->renderView->forceFullVirtualTextureLoad ||
-                     parameters->renderView->discontinuousViewPosition ||
+          } else if (parameters->renderView->r.forceFullVirtualTextureLoad ||
+                     parameters->renderView->r.discontinuousViewPosition ||
                      forciblyAccepted) {
             renderLog.OpenBlock("in bounds or forcibly accepted\n");
           } else if (query < parameters->renderView
@@ -431,12 +431,12 @@ void RenderGather(const renderGatherParms_t* parameters) {
         if (!settings->skipSuppress) {
           if (light->r.allowLightOnlyInViewID != 0 &&
               light->r.allowLightOnlyInViewID !=
-                  parameters->renderView->viewID) {
+                  parameters->renderView->r.viewID) {
             continue;
           }
           if (light->r.suppressLightInViewID != 0 &&
               light->r.suppressLightInViewID ==
-                  parameters->renderView->viewID) {
+                  parameters->renderView->r.viewID) {
             continue;
           }
         }
@@ -474,8 +474,8 @@ void RenderGather(const renderGatherParms_t* parameters) {
                     settings->queryThreshold;
         } else {
           int queryResult = settings->queryThreshold;
-          if (parameters->renderView->forceFullVirtualTextureLoad ||
-              parameters->renderView->discontinuousViewPosition ||
+          if (parameters->renderView->r.forceFullVirtualTextureLoad ||
+              parameters->renderView->r.discontinuousViewPosition ||
               forciblyAccepted) {
             renderLog.OpenBlock("in bounds or forcibly accepted\n");
           } else if (state->lightOcclusionQuery[lightIndex] <
@@ -583,7 +583,7 @@ void RenderGather(const renderGatherParms_t* parameters) {
   const float highlightDuration =
       std::max(1.1920929e-7f, parameters->highlightDuration);
   const float renderTimeSeconds =
-      static_cast<float>(parameters->renderView->renderTime) * 0.001f;
+      static_cast<float>(parameters->renderView->r.renderTime) * 0.001f;
   for (int modelIndex = 0; modelIndex < viewModels.Num(); ++modelIndex) {
     idRenderModelCommitted* model = const_cast<idRenderModelCommitted*>(
         parameters->viewModels[modelIndex]);

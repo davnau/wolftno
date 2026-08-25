@@ -2,6 +2,7 @@
 
 #include "engine/renderer/declmaterial.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
+#include "shared/idlib/lib.h"
 
 #include <algorithm>
 #include <cmath>
@@ -19,27 +20,6 @@ namespace {
 constexpr float kBeamWidth = 8.0f;
 constexpr float kBeamRepoint = 0.6f;
 constexpr float kBeamRepeat = 12.0f;
-
-bool WriteFileString(idFile* file, const char* value) {
-  const int length = idStr::Length(value);
-  return file->Write(&length, sizeof(length)) == sizeof(length) &&
-         (length == 0 ||
-          file->Write(value, static_cast<std::size_t>(length)) ==
-              static_cast<std::size_t>(length));
-}
-
-bool ReadFileString(idFile* file, idStr& value) {
-  int length = 0;
-  if (file->Read(&length, sizeof(length)) != sizeof(length) || length < 0)
-    return false;
-  value.EnsureAlloced(length + 1, false);
-  if (length > 0 && file->Read(value.data, static_cast<std::size_t>(length)) !=
-                        static_cast<std::size_t>(length))
-    return false;
-  value.data[length] = '\0';
-  value.len = length;
-  return true;
-}
 
 idRenderModelSurface* GetSurface(idRenderModelCuttableBeams* model, int index) {
   return model->surfaces.list != nullptr && index >= 0 && index < model->surfaces.num
@@ -161,8 +141,6 @@ int idRenderModelCuttableBeams::vertexOffset = 0;
 idDrawVert* idRenderModelCuttableBeams::deferredVertices = nullptr;
 idVertexBuffer idRenderModelCuttableBeams::vertexBuffer[NUM_VERTEX_BUFFERS]{};
 idIndexBuffer idRenderModelCuttableBeams::indexBuffer{};
-idDrawVert idRenderModelCuttableBeams::vertexStorage[NUM_VERTEX_BUFFERS][MAX_BEAM_VERTICES]{};
-std::uint16_t idRenderModelCuttableBeams::indexStorage[MAX_BEAM_INDICES]{};
 
 graphTree_t::graphTree_t() {
   positions.granularity = 1;
@@ -191,6 +169,7 @@ void idRenderModelCuttableBeams::Create(const idMaterial* materialIncision_,
 }
 
 void idRenderModelCuttableBeams::EndFrame() {
+  vertexBuffer[currentBuffer].UnmapBuffer();
   deferredVertices = nullptr;
 }
 
@@ -233,40 +212,38 @@ idRenderModelCuttableBeams::idRenderModelCuttableBeams() {
 }
 
 void idRenderModelCuttableBeams::Init() {
-  for (int buffer = 0; buffer < NUM_VERTEX_BUFFERS; ++buffer) {
-    vertexBuffer[buffer].size = MAX_BEAM_VERTICES * static_cast<int>(sizeof(idDrawVert));
-    vertexBuffer[buffer].offsetInOtherBuffer = 0;
-    vertexBuffer[buffer].apiObject = vertexStorage[buffer];
-    vertexBuffer[buffer].usage = BU_DYNAMIC;
-  }
-  indexBuffer.size = MAX_BEAM_INDICES * static_cast<int>(sizeof(std::uint16_t));
-  indexBuffer.offsetInOtherBuffer = 0;
-  indexBuffer.apiObject = indexStorage;
-  indexBuffer.usage = BU_DYNAMIC;
+  for (idVertexBuffer& buffer : vertexBuffer)
+    buffer.AllocBufferObject(nullptr, 0x80000, 31, BU_DYNAMIC);
+  indexBuffer.AllocBufferObject(nullptr, 49152, BU_DYNAMIC);
+  auto* indices = static_cast<std::uint16_t*>(indexBuffer.MapBuffer(BM_WRITE));
   for (int quad = 0; quad < MAX_BEAM_QUADS; ++quad) {
     const std::uint16_t base = static_cast<std::uint16_t>(quad * 4);
     const int offset = quad * 6;
-    indexStorage[offset + 0] = base;
-    indexStorage[offset + 1] = static_cast<std::uint16_t>(base + 2);
-    indexStorage[offset + 2] = static_cast<std::uint16_t>(base + 3);
-    indexStorage[offset + 3] = base;
-    indexStorage[offset + 4] = static_cast<std::uint16_t>(base + 3);
-    indexStorage[offset + 5] = static_cast<std::uint16_t>(base + 1);
+    indices[offset + 0] = base;
+    indices[offset + 1] = static_cast<std::uint16_t>(base + 2);
+    indices[offset + 2] = static_cast<std::uint16_t>(base + 3);
+    indices[offset + 3] = base;
+    indices[offset + 4] = static_cast<std::uint16_t>(base + 3);
+    indices[offset + 5] = static_cast<std::uint16_t>(base + 1);
   }
+  indexBuffer.UnmapBuffer();
 }
 
 void idRenderModelCuttableBeams::Shutdown() {
+  if (idLib::headless)
+    return;
   if (deferredVertices != nullptr)
-    deferredVertices = nullptr;
+    vertexBuffer[currentBuffer].UnmapBuffer();
   for (idVertexBuffer& buffer : vertexBuffer)
-    buffer = {};
-  indexBuffer = {};
+    buffer.FreeBufferObject();
+  indexBuffer.FreeBufferObject();
 }
 
 void idRenderModelCuttableBeams::StartFrame() {
   currentBuffer = (currentBuffer + 1) % NUM_VERTEX_BUFFERS;
-  deferredVertices = vertexStorage[currentBuffer];
   vertexOffset = 0;
+  deferredVertices = static_cast<idDrawVert*>(
+      vertexBuffer[currentBuffer].MapBuffer(BM_WRITE_NOSYNC));
 }
 
 void idRenderModelCuttableBeams::SetBounds(const idBounds* bounds) {
@@ -283,11 +260,11 @@ void idRenderModelCuttableBeams::Save(idFile* file) {
   std::uint8_t hasMaterial = materialIncision != nullptr ? 1U : 0U;
   file->Write(&hasMaterial, sizeof(hasMaterial));
   if (hasMaterial != 0)
-    WriteFileString(file, materialIncision->GetName());
+    file->WriteString(materialIncision->GetName());
   hasMaterial = materialIncisionCross != nullptr ? 1U : 0U;
   file->Write(&hasMaterial, sizeof(hasMaterial));
   if (hasMaterial != 0)
-    WriteFileString(file, materialIncisionCross->GetName());
+    file->WriteString(materialIncisionCross->GetName());
 }
 
 bool idRenderModelCuttableBeams::Load(idFile* file) {
@@ -298,7 +275,7 @@ bool idRenderModelCuttableBeams::Load(idFile* file) {
     return false;
   if (hasMaterial != 0) {
     idStr materialName;
-    if (!ReadFileString(file, materialName))
+    if (file->ReadString(materialName) == 0)
       return false;
     materialIncision = static_cast<const idMaterial*>(
         idMaterial::resourceList.FindWithInheritance(materialName.data, true, true));
@@ -309,7 +286,7 @@ bool idRenderModelCuttableBeams::Load(idFile* file) {
   if (hasMaterial == 0)
     return true;
   idStr materialName;
-  if (!ReadFileString(file, materialName))
+  if (file->ReadString(materialName) == 0)
     return false;
   materialIncisionCross = static_cast<const idMaterial*>(
       idMaterial::resourceList.FindWithInheritance(materialName.data, true, true));

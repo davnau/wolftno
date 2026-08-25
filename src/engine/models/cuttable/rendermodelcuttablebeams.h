@@ -60,10 +60,6 @@ public:
   static idDrawVert* deferredVertices;
   static idVertexBuffer vertexBuffer[NUM_VERTEX_BUFFERS];
   static idIndexBuffer indexBuffer;
-
-private:
-  static idDrawVert vertexStorage[NUM_VERTEX_BUFFERS][MAX_BEAM_VERTICES];
-  static std::uint16_t indexStorage[MAX_BEAM_INDICES];
 };
 
 static_assert(sizeof(idRenderModelCuttableBeams) == 2224,

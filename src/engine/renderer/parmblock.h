@@ -4,6 +4,8 @@
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/math/vector.h"
 
+#include <cstring>
+
 // The implementation is owned by renderer/parmblock.cpp.  Keep this callable
 // surface in sync with the retail PDB: the second argument to the Get methods
 // is a parent parm block, not a pointer to a default scalar/vector value.
@@ -70,8 +72,8 @@ public:
   const char* GetString(const idDeclRenderParm* parm,
                         const idParmBlock* parentBlock = nullptr) const;
   idStr* WriteString() const;
-  void Save(idFile& file) const;
-  bool Load(idFile& file);
+  void Save(idFile* file) const;
+  bool Load(idFile* file);
   void RemoveRedundantOperations();
   void CopyFrom(const idParmBlock& other);
   void AddOp(const expOp_t& operation, const parmValue_t& constant);
@@ -88,6 +90,14 @@ public:
 
   idList<expOp_t, 56> ops;
   idList<parmValue_t, 56> constants;
+
+private:
+  static void WriteConstant(idStr& string, parmType_t parmType,
+                            const parmValue_t& parmValue);
+  static void WriteTerm(idStr& string, const idDeclRenderParm* term);
+  void GetRenderParmFromOps_r(parmValue_t& parmValue, int numOps,
+                              int parmIndex,
+                              const idParmBlock* parentBlock) const;
 };
 
 template <int Capacity> class idStaticParmBlock : public idParmBlock {
@@ -111,15 +121,14 @@ public:
   }
   ~idStaticParmBlock() = default;
   idStaticParmBlock& operator=(const idStaticParmBlock& other) {
-    if (this == &other)
-      return *this;
-    ops.num = other.ops.num < Capacity ? other.ops.num : Capacity;
-    constants.num =
-        other.constants.num < Capacity ? other.constants.num : Capacity;
-    for (int index = 0; index < ops.num; ++index)
-      staticOps[index] = other.ops[index];
-    for (int index = 0; index < constants.num; ++index)
-      staticConstants[index] = other.constants[index];
+    const int numOps = other.ops.num;
+    const int numConstants = other.constants.num;
+    ops.SetNum(numOps);
+    constants.SetNum(numConstants);
+    std::memmove(staticOps, other.staticOps,
+                 sizeof(staticOps[0]) * numOps);
+    std::memmove(staticConstants, other.staticConstants,
+                 sizeof(staticConstants[0]) * numConstants);
     return *this;
   }
 

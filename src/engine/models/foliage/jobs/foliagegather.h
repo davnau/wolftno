@@ -113,7 +113,7 @@ struct deferredFoliageGatherParms_t {
   int pad[2];
 };
 
-bool R_CullFoliageBoundsToMVP(const std::int16_t (*bounds)[3],
+bool R_CullFoliageBoundsToMVP(const std::int16_t (*const bounds)[3],
                               const float* mvp, idBounds& floatBounds);
 void GetFoliageRenderListForView_r(fm_subTreeDataPtrs_t& subTreeDataPtrs,
                                    fm_subTreeTreeNodePtrs_t& subTreePtrs,
@@ -135,6 +135,21 @@ static_assert(sizeof(fm_leafInfo_t) == 16);
 static_assert(sizeof(foliageIndex_t) == 4);
 static_assert(sizeof(foliageSubTreeStats_t) == 16);
 static_assert(sizeof(foliageRenderView_t) == 144);
+static_assert(offsetof(foliageRenderView_t, viewOrg) == 20);
+static_assert(offsetof(foliageRenderView_t, viewFwd) == 32);
+static_assert(offsetof(foliageRenderView_t, viewLeft) == 44);
+static_assert(offsetof(foliageRenderView_t, viewUp) == 56);
+static_assert(offsetof(foliageRenderView_t, mvpMatrix) == 68);
 static_assert(sizeof(foliageGather_t) == 1168);
+static_assert(offsetof(foliageGather_t, mvpMatrix) == 48);
+static_assert(offsetof(foliageGather_t, viewDir) == 56);
+static_assert(offsetof(foliageGather_t, viewOrg) == 68);
+static_assert(offsetof(foliageGather_t, foliageIndices) == 80);
+static_assert(offsetof(foliageGather_t, influenceSphereIndices) == 104);
+static_assert(offsetof(foliageGather_t, influenceSpheres) == 120);
 static_assert(offsetof(foliageGather_t, influenceSphereStack) == 132);
+static_assert(offsetof(foliageGather_t, foliageStartFadeDist) == 1156);
 static_assert(sizeof(deferredFoliageGatherParms_t) == 96);
+static_assert(offsetof(deferredFoliageGatherParms_t, foliageStats) == 64);
+static_assert(offsetof(deferredFoliageGatherParms_t, foliageIndices) == 72);
+static_assert(offsetof(deferredFoliageGatherParms_t, influenceSphereIndices) == 80);

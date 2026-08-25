@@ -22,3 +22,5 @@ public:
   int bufferIndex = 0;
 };
 
+static_assert(sizeof(idRenderModelCuttable) == 2192,
+              "idRenderModelCuttable ABI drift");

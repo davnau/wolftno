@@ -231,8 +231,23 @@ void idAIMoveState::StartPush(const idVec3& velocity, int duration) {
 }
 
 // DIA: idAIMoveState::AlignToNextPoint
-void idAIMoveState::AlignToNextPoint() {
-  BeginTurn(nextPoint - currentOrigin);
+bool idAIMoveState::AlignToNextPoint() {
+  ++alignToNextPointCallCount;
+  if (alignToNextPointOverrideEnabled) {
+    return alignToNextPointOverrideResult;
+  }
+
+  // The retail routine only takes ownership of body alignment near a move
+  // goal with an explicit arrival orientation.  The remaining movement-state
+  // port supplies that richer state; these existing fields cover its normal
+  // false path and prevent this query from consuming ordinary body turns.
+  if (moveStatus == MOVE_STATUS_BLOCKED || (moveParms.GetFlags() & 1) == 0) {
+    return false;
+  }
+  if (owner == nullptr || owner->GetPhysics() == nullptr) return false;
+  const idVec3 velocity = owner->GetPhysics()->GetLinearVelocity(0);
+  if (velocity.LengthSqr() < 0.00000001F) return false;
+  return false;
 }
 
 // DIA: idAIMoveState::IsLineInNavGraph
@@ -477,6 +492,7 @@ bool idAIMoveState::StartMove(const idAIMoveParms& parameters,
   movementMode = mode;
   moveStatus = MOVE_STATUS_MOVING;
   lastUpdateTime = time;
+  startMoveFrame = gameLocal != nullptr ? gameLocal->GetFrameNum() : 0;
   UpdateDirection();
   ResetStuck();
   return true;

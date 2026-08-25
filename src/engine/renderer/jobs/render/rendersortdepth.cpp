@@ -63,11 +63,11 @@ void RenderSortDepth(const renderSortDepthParms_t* parameters) {
                       parameters->numViewModels);
   int modelIndex = 0;
   for (std::uint64_t category = 0; category < 17; ++category) {
-    parameters->sortedViewModels[category][0] = modelIndex;
+    parameters->renderViewModels[category].firstModel = modelIndex;
     while (modelIndex < parameters->numViewModels &&
            (parameters->viewModelSortKeys[modelIndex] >> 56) <= category) {
       ++modelIndex;
     }
-    parameters->sortedViewModels[category][1] = modelIndex - 1;
+    parameters->renderViewModels[category].lastModel = modelIndex - 1;
   }
 }

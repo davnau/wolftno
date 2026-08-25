@@ -31,7 +31,7 @@ void RenderDynamicEnv(const renderDynamicEnvParms_t* parameters) {
 
   float blend = 1.0f;
   const float currentTime =
-      static_cast<float>(parameters->renderView->renderTime) * 0.001f;
+      static_cast<float>(parameters->renderView->r.renderTime) * 0.001f;
   if (blendState->skipBlending ||
       currentTime >= blendState->blendStartTime + blendState->blendDuration) {
     blendState->cubeFinished = true;
@@ -76,4 +76,3 @@ void RenderDynamicEnv(const renderDynamicEnvParms_t* parameters) {
   }
   renderThreadParmState->SetParmFloat(parameters->rpColor, 1.0f);
 }
-

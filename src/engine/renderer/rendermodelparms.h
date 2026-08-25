@@ -26,7 +26,12 @@ enum modelDepthSort_t : int {
   MODEL_DEPTH_SORT_LAST = 10,
 };
 
-enum dimShadow_t : int { DIM_SHADOW_DEFAULT = 0 };
+enum dimShadow_t : int {
+  DIMSHADOW_OFF = 0,
+  DIMSHADOW_ON = 1,
+  DIMSHADOW_HIGH_QUALITY = 2,
+  DIM_SHADOW_DEFAULT = DIMSHADOW_OFF,
+};
 
 enum highlightColor_t : int {
   HIGHLIGHT_COLOR_NONE = 0,

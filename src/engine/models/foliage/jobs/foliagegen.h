@@ -10,52 +10,48 @@ struct deferredFoliageGenParms_t {
   const foliageRenderView_t* viewData;
   const visibleInfluenceSpheres_t* visibleInfluenceSpheres;
   const std::int16_t* influenceSphereIndices;
-  std::uint32_t maxInfluenceSphereIndices;
-  std::uint32_t pad28;
+  std::int32_t maxInfluenceSphereIndices;
   const fm_subTreeBounds_t* subTreeBounds;
   const fm_subTreeData_t* subTreeData;
-  std::uint32_t subTreeDataSize;
-  std::uint32_t pad52;
+  std::int32_t subTreeDataSize;
   const foliageIndex_t* foliageIndices;
-  std::uint32_t maxFoliageIndices;
+  std::int32_t maxFoliageIndices;
   std::int32_t numJobsForIndices;
   std::int32_t jobIndexForIndices;
-  std::uint32_t pad76;
   const foliageSubTreeStats_t* foliageStatsList;
   std::int32_t foliageStatsIndex;
   float foliageStartFadeDist;
   float foliageSmallFadeDistMax;
   float foliageBigFadeDistMax;
   std::int32_t quadsOffset;
-  std::uint32_t pad108;
   idTransparencyVert* quadsVertices;
   float* quadsDepths;
-  std::uint64_t opaqueQuadsNumAllocated;
-  std::uint64_t opaqueQuadsNumUsed;
-  std::uint64_t transQuadsOffset;
-  std::uint64_t transQuadsNumAllocated;
-  std::uint64_t transQuadsNumUsed;
+  int* opaqueQuadsNumAllocated;
+  int* opaqueQuadsNumUsed;
+  int* transQuadsOffset;
+  int* transQuadsNumAllocated;
+  int* transQuadsNumUsed;
 };
 
 void CalculateFoliageBounds(const std::int16_t* const xyz, float uniformSizeScale,
                             float quadWidth, float quadHeight,
                             float widthVariance, float heightVariance,
                             const idVec3& upVec, idBounds& bounds);
-void CalculateFoliageBounds(const fm_foliage_t& foliage,
-                            const fm_attribute_t& attribute,
+void CalculateFoliageBounds(const fm_foliage_t* foliage,
+                            const fm_attribute_t* attribute,
                             idBounds& bounds);
 void GetFoliageOffsetForSubTree(
     const foliageSubTreeStats_t* foliageStatsList, int subTreeIndex,
-    int* totalFoliage, int* totalOpaque);
+    int& totalFoliage, int& totalOpaque);
 void GetFoliageTotalStats(const foliageSubTreeStats_t* foliageStatsList,
-                          int* totalFoliage, int* totalOpaque);
+                          int& totalFoliage, int& totalOpaque);
 void GetFoliageOffsetAndCountForJob(int numJobs, int jobIndex,
-                                    int totalCount, int* jobOffset,
-                                    int* jobCount);
+                                    int totalCount, int& jobOffset,
+                                    int& jobCount);
 void GetOpaqueOffsetAndCountForJob(
-    int jobOffset, int jobCount, const fm_subTreeDataPtrs_t* subTreePtrs,
-    const foliageIndex_t* foliageIndices, int* opaqueOffset,
-    int* opaqueCount);
+    int jobOffset, int jobCount, const fm_subTreeDataPtrs_t& subTreePtrs,
+    const foliageIndex_t* foliageIndices, int& opaqueOffset,
+    int& opaqueCount);
 int BuildFoliageQuad(idTransparencyVert* verts, float* quadDepth,
                      unsigned int foliageIndex, const fm_foliage_t* foliage,
                      const fm_attribute_t* attribute,

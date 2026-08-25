@@ -172,6 +172,9 @@ public:
   idStr NameWithoutAutoMaterial() const;
   void ReloadImages(bool force) const;
   static void InitCompatibleGenericMaterials();
+  static const idMaterial* PackMaterials(
+      const char* name, const idList<const idMaterial*, 5>& materials,
+      unsigned int skinFileTimeStamp);
   const idMaterial* CompatibleGenericMaterial() const;
   bool MaterialMappingNeedsReload(const idDeclSkins* skins) const;
   bool MaterialForcesNormalSmoothing() const;

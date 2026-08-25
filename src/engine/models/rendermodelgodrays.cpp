@@ -5,7 +5,6 @@
 #include "engine/renderer/declrenderparm.h"
 #include "engine/renderer/image.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -26,20 +25,18 @@ const idVec3& ModelOrigin(const idRenderModel& model) {
 void SetBoundsFromSize(idRenderModelGodRays& model) {
   const idVec3& origin = ModelOrigin(model);
   const float extent = static_cast<float>(model.size);
-  model.referenceBounds.b[0] =
-      {origin.x - extent, origin.y - extent, origin.z - extent};
-  model.referenceBounds.b[1] =
-      {origin.x + extent, origin.y + extent, origin.z + extent};
-}
-
-const idImage* FindExistingImage(const char* name) {
-  for (int index = 0; index < idImage::resourceList.resourceList.Num(); ++index) {
-    const auto* image = static_cast<const idImage*>(
-        idImage::resourceList.resourceList[index]);
-    if (idStr::Cmp(image->GetName(), name) == 0)
-      return image;
-  }
-  return nullptr;
+  const idVec3 lower{origin.x - extent, origin.y - extent,
+                     origin.z - extent};
+  const idVec3 upper{origin.x + extent, origin.y + extent,
+                     origin.z + extent};
+  model.referenceBounds.b[0] = {
+      std::fmin(std::fmin(origin.x, lower.x), upper.x),
+      std::fmin(std::fmin(origin.y, lower.y), upper.y),
+      std::fmin(std::fmin(origin.z, lower.z), upper.z)};
+  model.referenceBounds.b[1] = {
+      std::fmax(std::fmax(origin.x, lower.x), upper.x),
+      std::fmax(std::fmax(origin.y, lower.y), upper.y),
+      std::fmax(std::fmax(origin.z, lower.z), upper.z)};
 }
 
 idVec4 Transform(const idRenderMatrix& matrix, const idVec4& value) {
@@ -53,6 +50,14 @@ idVec4 Transform(const idRenderMatrix& matrix, const idVec4& value) {
       matrix.m[12] * value.x + matrix.m[13] * value.y +
           matrix.m[14] * value.z + matrix.m[15] * value.w,
   };
+}
+
+float ClampGodRayNdc(float value) {
+  if (!(value >= -1.0f))
+    return -1.0f;
+  if (value > 1.0f)
+    return 1.0f;
+  return value;
 }
 
 } // namespace
@@ -72,7 +77,8 @@ idRenderModelGodRays::idRenderModelGodRays() {
   std::memcpy(recoveredParms + 172, &modelDepthSortLast,
               sizeof(modelDepthSortLast));
   SetBoundsFromSize(*this);
-  imgGodrays = FindExistingImage("_black");
+  imgGodrays = static_cast<const idImage*>(
+      idImage::resourceList.FindExisting("_black", false));
 }
 
 idRenderModelGodRays::~idRenderModelGodRays() = default;
@@ -88,7 +94,8 @@ void idRenderModelGodRays::SetParms(const idMaterial* texture,
   sourceSize = sourceSize_;
   size = size_;
   SetBoundsFromSize(*this);
-  imgGodrays = FindExistingImage("_black");
+  imgGodrays = static_cast<const idImage*>(
+      idImage::resourceList.FindExisting("_black", false));
   if (texture->parmBlock.SetsRenderParm(rpTransMap.Get())) {
     const idImage* image = texture->parmBlock.GetImage(rpTransMap.Get(), nullptr);
     if (image != nullptr)
@@ -101,6 +108,10 @@ bool idRenderModelGodRays::UpdateInView(const idRenderView*,
                                         const idRenderView* nextView,
                                         idRenderModelUpdateTools*) {
   SetBoundsFromSize(*this);
+  const float inverseRenderWidth =
+      1.0f / static_cast<float>(nextView->renderWidth);
+  const float inverseRenderHeight =
+      1.0f / static_cast<float>(nextView->renderHeight);
   idRenderMatrix viewProjection{};
   idRenderMatrix::Multiply(nextView->projectionMatrix, nextView->viewMatrix,
                            viewProjection);
@@ -116,11 +127,9 @@ bool idRenderModelGodRays::UpdateInView(const idRenderView*,
   }
 
   const idVec4 clipPosition = Transform(viewProjection, worldPosition);
-  const float sourceScaleX =
-      static_cast<float>(sourceSize) / static_cast<float>(nextView->renderWidth);
-  const float sourceScaleY =
-      static_cast<float>(sourceSize) / static_cast<float>(nextView->renderHeight);
-  bool visible = clipPosition.w >= 1.17549435e-38f;
+  float sourceScaleX = 0.0f;
+  float sourceScaleY = 0.0f;
+  bool visible = !(1.17549435e-38f > clipPosition.w);
   float ndcX = 0.0f;
   float ndcY = 0.0f;
   float left = 0.0f;
@@ -128,12 +137,15 @@ bool idRenderModelGodRays::UpdateInView(const idRenderView*,
   float bottom = 0.0f;
   float top = 0.0f;
   if (visible) {
-    ndcX = clipPosition.x / clipPosition.w;
-    ndcY = clipPosition.y / clipPosition.w;
-    left = std::clamp(ndcX - sourceScaleX, -1.0f, 1.0f);
-    right = std::clamp(ndcX + sourceScaleX, -1.0f, 1.0f);
-    bottom = std::clamp(ndcY - sourceScaleY, -1.0f, 1.0f);
-    top = std::clamp(ndcY + sourceScaleY, -1.0f, 1.0f);
+    sourceScaleX = static_cast<float>(sourceSize) * inverseRenderWidth;
+    sourceScaleY = static_cast<float>(sourceSize) * inverseRenderHeight;
+    const float inverseW = 1.0f / clipPosition.w;
+    ndcX = clipPosition.x * inverseW;
+    ndcY = clipPosition.y * inverseW;
+    left = ClampGodRayNdc(ndcX - sourceScaleX);
+    right = ClampGodRayNdc(ndcX + sourceScaleX);
+    bottom = ClampGodRayNdc(ndcY - sourceScaleY);
+    top = ClampGodRayNdc(ndcY + sourceScaleY);
     visible = right > -1.0f && left < 1.0f && top > -1.0f && bottom < 1.0f;
   }
 
@@ -160,8 +172,8 @@ bool idRenderModelGodRays::UpdateInView(const idRenderView*,
   gameParmBlock.SetParm(
       rpScaleBiasQuad.Get(),
       idVec4{
-          static_cast<float>(size) / static_cast<float>(nextView->renderWidth),
-          static_cast<float>(size) / static_cast<float>(nextView->renderHeight),
+          static_cast<float>(size) * inverseRenderWidth,
+          static_cast<float>(size) * inverseRenderHeight,
           ndcX * 0.5f + 0.5f, ndcY * 0.5f + 0.5f});
   CommitThisFrame();
   return true;

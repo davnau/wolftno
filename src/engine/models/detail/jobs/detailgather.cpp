@@ -11,23 +11,23 @@ std::int16_t ToDetailShort(float value) {
 
 } // namespace
 
-void SetupSubTreePtrsFromTreeNodes(dm_subTreeTreeNodePtrs_t* subTreePtrs,
+void SetupSubTreePtrsFromTreeNodes(dm_subTreeTreeNodePtrs_t& subTreePtrs,
                                    const dm_subTreeTreeNodes_t* subTree) {
   auto* base = reinterpret_cast<std::uint8_t*>(
       const_cast<dm_subTreeTreeNodes_t*>(subTree));
-  subTreePtrs->treeNodes =
+  subTreePtrs.treeNodes =
       reinterpret_cast<dm_treeNode_t*>(base + subTree->treeNodeOffset);
 }
 
-bool R_CullDetailBoundsToMVP(const dm_subTreeBounds_t* bounds,
+bool R_CullDetailBoundsToMVP(const dm_subTreeBounds_t& bounds,
                              int maxDetailHeight, const float* mvp) {
   idVec3 floatBounds[2] = {
-      {static_cast<float>(bounds->b[0][0]),
-       static_cast<float>(bounds->b[0][1]),
-       static_cast<float>(bounds->b[0][2])},
-      {static_cast<float>(bounds->b[1][0]),
-       static_cast<float>(bounds->b[1][1]),
-       static_cast<float>(bounds->b[1][2]) +
+      {static_cast<float>(bounds.b[0][0]),
+       static_cast<float>(bounds.b[0][1]),
+       static_cast<float>(bounds.b[0][2])},
+      {static_cast<float>(bounds.b[1][0]),
+       static_cast<float>(bounds.b[1][1]),
+       static_cast<float>(bounds.b[1][2]) +
            static_cast<float>(maxDetailHeight)}};
   int clipMask = 0;
   for (int x = 0; x < 2; ++x) {
@@ -55,41 +55,41 @@ bool R_CullDetailBoundsToMVP(const dm_subTreeBounds_t* bounds,
   return clipMask != 63;
 }
 
-void GetDetailRenderListForView_r(dm_subTreeTreeNodePtrs_t* subTreePtrs,
-                                  dm_subTreeBounds_t* bounds,
-                                  detailGather_t* gather,
-                                  std::int16_t nodeNum,
+void GetDetailRenderListForView_r(dm_subTreeTreeNodePtrs_t& subTreePtrs,
+                                  dm_subTreeBounds_t& bounds,
+                                  detailGather_t& gather,
+                                  std::uint16_t nodeNum,
                                   std::uint16_t numDetailAtLeaf,
                                   std::uint32_t counts) {
-  while (nodeNum >= 0) {
+  while (static_cast<std::int16_t>(nodeNum) >= 0) {
     const dm_treeNode_t& node =
-        subTreePtrs->treeNodes[static_cast<std::uint16_t>(nodeNum)];
+        subTreePtrs.treeNodes[nodeNum];
     const int axis = node.planeType & 3;
     bool anyFront = false;
     bool anyBack = false;
     for (int corner = 0; corner < 8; ++corner) {
-      anyFront |= gather->frustumVerts[axis][corner] >= node.planeDist;
-      anyBack |= gather->frustumVerts[axis][corner] <= node.planeDist;
+      anyFront |= gather.frustumVerts[axis][corner] >= node.planeDist;
+      anyBack |= gather.frustumVerts[axis][corner] <= node.planeDist;
     }
 
     if (anyFront) {
       if (!anyBack) {
-        bounds->b[0][axis] = node.planeDist;
+        bounds.b[0][axis] = node.planeDist;
         nodeNum = node.children[0];
         numDetailAtLeaf = (node.planeType >> 2) & 0x7f;
         counts = node.counts[0];
         continue;
       }
-      dm_subTreeBounds_t frontBounds = *bounds;
+      dm_subTreeBounds_t frontBounds = bounds;
       frontBounds.b[0][axis] = node.planeDist;
       GetDetailRenderListForView_r(
-          subTreePtrs, &frontBounds, gather, node.children[0],
+          subTreePtrs, frontBounds, gather, node.children[0],
           (node.planeType >> 2) & 0x7f, node.counts[0]);
-      bounds->b[1][axis] = node.planeDist;
+      bounds.b[1][axis] = node.planeDist;
     } else {
       if (!anyBack)
         return;
-      bounds->b[1][axis] = node.planeDist;
+      bounds.b[1][axis] = node.planeDist;
     }
 
     nodeNum = node.children[1];
@@ -97,26 +97,26 @@ void GetDetailRenderListForView_r(dm_subTreeTreeNodePtrs_t* subTreePtrs,
     counts = node.counts[1];
   }
 
-  if (R_CullDetailBoundsToMVP(bounds, gather->maxDetailHeight,
-                              gather->mvpMatrix))
+  if (R_CullDetailBoundsToMVP(bounds, gather.maxDetailHeight,
+                              gather.mvpMatrix))
     return;
 
   std::uint16_t detailIndex =
       static_cast<std::uint16_t>(nodeNum) & 0x7fffu;
   const std::uint32_t remaining =
-      gather->maxDetailIndices - gather->numDetailIndices;
+      gather.maxDetailIndices - gather.numDetailIndices;
   if (numDetailAtLeaf > remaining)
     numDetailAtLeaf = static_cast<std::uint16_t>(remaining);
   const int end = detailIndex + numDetailAtLeaf;
   while (detailIndex < end)
-    gather->detailIndices[gather->numDetailIndices++] = detailIndex++;
-  gather->vertCount += static_cast<std::uint16_t>(counts);
-  gather->indexCount += counts >> 16;
+    gather.detailIndices[gather.numDetailIndices++] = detailIndex++;
+  gather.vertCount += static_cast<std::uint16_t>(counts);
+  gather.indexCount += counts >> 16;
 }
 
 void GatherDetailIndicesForSubTree(const deferredDetailGatherParms_t* parms,
-                                   int* numDetailIndices) {
-  *numDetailIndices = 0;
+                                   int& numDetailIndices) {
+  numDetailIndices = 0;
   *parms->detailCount = {};
   if (parms->subTreeTreeNodes->numTreeNodes == 0)
     return;
@@ -146,15 +146,14 @@ void GatherDetailIndicesForSubTree(const deferredDetailGatherParms_t* parms,
   }
 
   dm_subTreeTreeNodePtrs_t subTreePtrs{};
-  SetupSubTreePtrsFromTreeNodes(&subTreePtrs, parms->subTreeTreeNodes);
+  SetupSubTreePtrsFromTreeNodes(subTreePtrs, parms->subTreeTreeNodes);
   gather.detailIndices = parms->detailIndices;
   gather.maxDetailIndices = parms->maxDetailIndices;
   dm_subTreeBounds_t treeBounds = *parms->subTreeBounds;
-  GetDetailRenderListForView_r(&subTreePtrs, &treeBounds, &gather, 0, 0, 0);
+  GetDetailRenderListForView_r(subTreePtrs, treeBounds, gather, 0, 0, 0);
   parms->detailCount->subTreeDetailCount =
       static_cast<int>(gather.numDetailIndices);
   parms->detailCount->vertCount = static_cast<int>(gather.vertCount);
   parms->detailCount->indexCount = static_cast<int>(gather.indexCount);
-  *numDetailIndices = static_cast<int>(gather.numDetailIndices);
+  numDetailIndices = static_cast<int>(gather.numDetailIndices);
 }
-

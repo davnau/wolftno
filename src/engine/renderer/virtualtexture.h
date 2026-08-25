@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shared/idlib/containers/heaparray.h"
+
 // PDB-derived renderer boundary used by declmaterial.cpp.  Method bodies and
 // the remaining virtual-texture internals belong to the corresponding
 // virtualtexture/virtualtexturesystem compilands and are intentionally deferred.
@@ -112,16 +114,47 @@ public:
   idVMTRData* vmtrData{};
 };
 
+class idPixelPackBuffer;
+class idRenderDestination;
+
 class idVirtualTextureSystem {
 public:
+  // NEEDS_WORK(engine/renderer/virtualtexture): lifecycle implementation is
+  // owned by the virtual-texture folder; these are its retail-facing calls.
+  void Init();
+  void Shutdown();
   idVirtualTexture* VirtualTextureForMaterial(const idMaterial* material);
   idVirtualMaterial* VirtualMaterialForMaterial(const idMaterial* material);
+  void UpdateFilterParms(bool forceUpdateFilterParms);
+  void PushFeedback(const unsigned char* feedback, int width, int height,
+                    int pitch, bool usePBO);
+  void FinishFeedback(bool force, int maxTimeMilliseconds);
 
   idVirtualTexture vts[PAGESOURCE_TOTAL];
   idVirtualTexture* vtPtrs[PAGESOURCE_TOTAL]{};
+  // The intervening members are owned by the virtual-texture recovery pass.
+  // Preserve their retail footprint so the renderer-facing feedback members
+  // retain the PDB offsets used by Render.obj.
+  std::uint8_t recoveredToFeedbackBuffer[30120]{};
+  idHeapArray<unsigned char> feedbackBuffer;
+  int feedbackBufferPitch{};
+  std::uint32_t alignmentBeforeFeedbackObject{};
+  idPixelPackBuffer* feedbackBufferObject{};
+  idRenderDestination* renderDestFeedback[3]{};
+  std::uint8_t recoveredTail[1168]{};
 };
 
 extern idVirtualTextureSystem virtualTextureSystem;
+
+// NEEDS_WORK(engine/renderer/virtualtexture): recover the preloader internals
+// with its owning folder. RenderSystem_init only requires this lifecycle API.
+class idVirtualTexturePreloader {
+public:
+  void SpawnThread();
+  void DestroyThread();
+};
+
+extern idVirtualTexturePreloader virtualTexturePreloader;
 
 static_assert(offsetof(idPhysicalPages, physicalPagesImage0) == 0xB0,
               "idPhysicalPages image offset drift");
@@ -143,5 +176,13 @@ static_assert(sizeof(idVirtualTexture) == 0x458,
               "idVirtualTexture ABI drift");
 static_assert(offsetof(idVirtualMaterial, scaleAndBias) == 0x38,
               "idVirtualMaterial mapping offset drift");
+static_assert(offsetof(idVirtualTextureSystem, feedbackBuffer) == 48040,
+              "virtual-texture feedback buffer offset drift");
+static_assert(offsetof(idVirtualTextureSystem, feedbackBufferObject) == 48064,
+              "virtual-texture feedback PBO offset drift");
+static_assert(offsetof(idVirtualTextureSystem, renderDestFeedback) == 48072,
+              "virtual-texture feedback destination offset drift");
+static_assert(sizeof(idVirtualTextureSystem) == 49264,
+              "virtual-texture system ABI drift");
 static_assert(sizeof(idVirtualMaterial) == 0x50,
               "idVirtualMaterial ABI drift");

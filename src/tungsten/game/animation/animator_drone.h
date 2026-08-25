@@ -7,12 +7,6 @@
 
 class idAI2;
 
-enum aiHoldFireReason_t {
-  AI_HOLDFIRE_REASON_NONE,
-  AI_HOLDFIRE_REASON_NOTRACK,
-  AI_HOLDFIRE_REASON_NOREGAIN
-};
-
 template <typename T>
 class idSpring {
 public:

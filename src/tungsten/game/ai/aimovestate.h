@@ -13,13 +13,35 @@ enum aiMoveStatus_t {
 };
 
 enum aiMovementMode_t {
-  MOVEMENT_STATIC,
-  MOVEMENT_WALKING,
-  MOVEMENT_ANIM,
-  MOVEMENT_FLYING,
-  MOVEMENT_DEAD,
-  MOVEMENT_PLAYER,
-  MOVEMENT_PERFECT_ORIGIN,
+  AIMOVEMODE_STATIC = 0,
+  AIMOVEMODE_GROUND = 1,
+  AIMOVEMODE_AIR = 2,
+  AIMOVEMODE_DROP = 3,
+  AIMOVEMODE_DEAD = 4,
+  AIMOVEMODE_ANIM = 5,
+  AIMOVEMODE_ANIM_TURN = 6,
+  AIMOVEMODE_ANIM_GRAVITY = 7,
+  AIMOVEMODE_ANIM_DRIVEN = 8,
+  AIMOVEMODE_PLAYER = 9,
+  AIMOVEMODE_BOUND = 10,
+  AIMOVEMODE_PERFECTORIGIN = 11,
+  AIMOVEMODE_MAX = 12,
+
+  // Compatibility names used by the already-ported movement helpers.
+  MOVEMENT_STATIC = AIMOVEMODE_STATIC,
+  MOVEMENT_WALKING = AIMOVEMODE_GROUND,
+  MOVEMENT_FLYING = AIMOVEMODE_AIR,
+  MOVEMENT_DEAD = AIMOVEMODE_DEAD,
+  MOVEMENT_ANIM = AIMOVEMODE_ANIM,
+  MOVEMENT_PLAYER = AIMOVEMODE_PLAYER,
+  MOVEMENT_PERFECT_ORIGIN = AIMOVEMODE_PERFECTORIGIN,
+};
+
+enum smoothAnimType_t {
+  SMOOTH_ANIM_INVALID = 0,
+  SMOOTH_ANIM_START = 1,
+  SMOOTH_ANIM_TURN = 2,
+  SMOOTH_ANIM_STOP = 3,
 };
 
 enum aiVelocityType_t {
@@ -88,7 +110,7 @@ public:
   void StartLerpToPoint(const idVec3& destination, int startTime,
                         int duration);
   void StartPush(const idVec3& velocity, int duration);
-  void AlignToNextPoint();
+  bool AlignToNextPoint();
   bool IsLineInNavGraph(const idVec3& start, const idVec3& end) const;
   bool InternalTestMoveToPoint(const idVec3& point) const;
   void StartPerfectOrigin(const idVec3& destination);
@@ -142,7 +164,35 @@ public:
   }
   void SetMovementRange(float value) { movementRange = value; }
   idAIOrientation* GetMoveOrientation() { return &moveOrientation; }
+  const idAIOrientation* GetMoveOrientation() const {
+    return &moveOrientation;
+  }
   const idVec3& GetTranslationDeltaScale() const { return translationScale; }
+  int GetStartMoveFrame() const { return startMoveFrame; }
+  int GetRemainingTransitionFrames() const {
+    return remainingTransitionFrames;
+  }
+  smoothAnimType_t GetCurrentSmoothAnimType() const {
+    return currentSmoothAnimType;
+  }
+  void SetStartMoveFrameForTest(int value) { startMoveFrame = value; }
+  void SetRemainingTransitionFramesForTest(int value) {
+    remainingTransitionFrames = value;
+  }
+  void SetCurrentSmoothAnimTypeForTest(smoothAnimType_t value) {
+    currentSmoothAnimType = value;
+  }
+  void SetTraversalPlayingForTest(bool value) { traversalPlaying = value; }
+  void ConfigureAlignToNextPointResultForTest(bool enabled, bool result) {
+    alignToNextPointOverrideEnabled = enabled;
+    alignToNextPointOverrideResult = result;
+  }
+  int GetAlignToNextPointCallCountForTest() const {
+    return alignToNextPointCallCount;
+  }
+  void ResetAlignToNextPointCallCountForTest() {
+    alignToNextPointCallCount = 0;
+  }
 
 private:
   void AdvanceLinearMovement(int time, float speedScale);
@@ -167,6 +217,8 @@ private:
   int pushEndTime{0};
   int stuckStartTime{-1};
   int zeroVelocityFrames{0};
+  int startMoveFrame{0};
+  int remainingTransitionFrames{0};
   float movementRange{100000.0F};
   float accelRate{0.0F};
   float decelRate{0.0F};
@@ -177,6 +229,10 @@ private:
   bool lerping{false};
   bool smoothBlend{false};
   bool traversalPlaying{false};
+  smoothAnimType_t currentSmoothAnimType{SMOOTH_ANIM_INVALID};
+  bool alignToNextPointOverrideEnabled{false};
+  bool alignToNextPointOverrideResult{false};
+  int alignToNextPointCallCount{0};
   idScenePoint* destinationTraversal{nullptr};
   idObstacleInfo obstacleInfo;
   idList<moveFailureInfo_t, 5> moveFailures;

@@ -48,6 +48,7 @@ void idAIVoiceController::FadeVoiceOver(idAI2* ai) {
 
 // DIA: idAIVoiceController::StopVoiceOver
 void idAIVoiceController::StopVoiceOver(idAI2* ai) {
+  ++stopVoiceOverCount;
   if (ai != nullptr) ai->SetVoiceOverPlaying(false);
   nextVoiceTime = 0;
   lastVoicePriority = AIVOICEPRIORITY_NONE;

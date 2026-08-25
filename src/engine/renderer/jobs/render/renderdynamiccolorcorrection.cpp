@@ -17,7 +17,7 @@ void RenderDynamicColorCorrection(
 
   float blend = 1.0f;
   const float currentTime =
-      static_cast<float>(parameters->renderView->renderTime) * 0.001f;
+      static_cast<float>(parameters->renderView->r.renderTime) * 0.001f;
   if (blendState->skipBlending ||
       currentTime >= blendState->blendStartTime + blendState->blendDuration) {
     blendState->colorCorrectionFinished = true;
@@ -48,4 +48,3 @@ void RenderDynamicColorCorrection(
   // no-op at 0x140001000; no resolve operation is required on this backend.
   renderThreadParmState->SetParmFloat(parameters->rpColor, 1.0f);
 }
-

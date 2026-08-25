@@ -3,7 +3,7 @@
 #include <algorithm>
 
 // DIA: idFaceMgr::SetEnableEyeTracking
-void idFaceMgr::SetEnableEyeTracking(idEntity*, bool enable) { eyeTrackingEnabled = enable; }
+void idFaceMgr::SetEnableEyeTracking(idEntity*, bool enable) { eyeTrackingEnabled = enable; ++setEyeTrackingCount; }
 // DIA: idFaceMgr::SuppressBlinking
 void idFaceMgr::SuppressBlinking(bool suppress) { blinkingSuppressed = suppress; }
 // DIA: idFaceMgr::SuppressLidDeformation
@@ -30,13 +30,13 @@ void idFaceMgr::DormantEnd(idEntity*, int timeDormant) { if (voicePlaying) { voi
 // DIA: idFaceMgr::SetEnableAnimation
 void idFaceMgr::SetEnableAnimation(idEntity* owner, bool enable) { animationEnabled = enable; animator.SetEnableAnimation(owner, enable); }
 // DIA: idFaceMgr::SetEnableMoodAnimation
-void idFaceMgr::SetEnableMoodAnimation(idEntity*, bool enable) { moodAnimationEnabled = enable; }
+void idFaceMgr::SetEnableMoodAnimation(idEntity*, bool enable) { moodAnimationEnabled = enable; ++setMoodAnimationCount; }
 // DIA: idFaceMgr::SetEnableLipSyncAnimation
 void idFaceMgr::SetEnableLipSyncAnimation(idEntity*, bool enable) { lipSyncAnimationEnabled = enable; if (!enable) voicePlaying = false; }
 // DIA: idFaceMgr::SetEnableGestureAnimation
 void idFaceMgr::SetEnableGestureAnimation(idEntity* owner, bool enable) { gestureAnimationEnabled = enable; animator.SetEnableGestures(owner, enable); }
 // DIA: idFaceMgr::SetEnableBlinking
-void idFaceMgr::SetEnableBlinking(idEntity*, bool enable) { blinkingEnabled = enable; }
+void idFaceMgr::SetEnableBlinking(idEntity*, bool enable) { blinkingEnabled = enable; ++setBlinkingCount; }
 // DIA: idFaceMgr::SetEnableLidDeformation
 void idFaceMgr::SetEnableLidDeformation(idEntity*, bool enable) { lidDeformationEnabled = enable; }
 // DIA: idFaceMgr::StartLipsync

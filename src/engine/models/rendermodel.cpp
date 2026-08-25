@@ -670,14 +670,14 @@ void idRenderModel::SerializeSnapshot(idSerializer* serializer,
                                       bool serializeParmBlock) {
   if (serializer == nullptr || serializer->msg == nullptr)
     return;
-  idFile_BitMsg file(serializer->msg, serializer->writing);
+  idFile_BitMsg file(serializer->msg);
   const float oldFade = g.modelFade;
   serializer->SerializeQ<1, 8>(&g.modelFade);
   if (serializeParmBlock) {
     if (serializer->writing)
-      gameParmBlock.Save(file);
+      gameParmBlock.Save(&file);
     else
-      gameParmBlock.Load(file);
+      gameParmBlock.Load(&file);
   } else if (!serializer->writing &&
              std::fabs(oldFade - g.modelFade) > 0.01f &&
              (g.flags4 & 4U) == 0U) {
@@ -798,7 +798,7 @@ void idRenderModel::Save(idFile* file) {
   WriteBigFloat(file, g.maxVisibleRange);
   WriteBigFloat(file, g.fadeVisibilityOver);
   WriteBool(file, (g.flags0 & 0x20U) != 0U);
-  gameParmBlock.Save(*file);
+  gameParmBlock.Save(file);
 }
 
 bool idRenderModel::Load(idFile* file) {
@@ -886,7 +886,7 @@ bool idRenderModel::Load(idFile* file) {
     return false;
   g.flags0 = static_cast<std::uint8_t>((g.flags0 & ~0x20U) |
                                        (augment ? 0x20U : 0U));
-  return gameParmBlock.Load(*file);
+  return gameParmBlock.Load(file);
 }
 
 void idRenderModel::AddSurface(const idRenderModelSurface& surface) {

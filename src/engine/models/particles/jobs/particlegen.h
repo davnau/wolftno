@@ -146,6 +146,10 @@ struct deferredParticleGenParms_t {
 idMat3 ParticleStageAxis(const idParticleStage* stage, int diversity);
 idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
                       idVec3& origin);
+void ParticleLeftAndUp(const idParticleStage* const stage,
+                       const idLookupTable* tables, particleGen_t* gen,
+                       const idVec3& viewUp, const idVec3& viewLeft,
+                       float extraRotation, idVec3& left, idVec3& up);
 void ParticleTexCoords(const idParticleStage* stage,
                        const idLookupTable* tables, particleGen_t* gen,
                        const idVec2& sMinMax, const idVec2& tMinMax,
@@ -159,24 +163,76 @@ void ParticleGenJob(const deferredParticleGenParms_t* allParms);
 
 static_assert(sizeof(particleMeshDistTri_t) == 48,
               "particleMeshDistTri_t ABI drift");
+static_assert(offsetof(particleMeshDistTri_t, vertices) == 0,
+              "particle mesh triangle vertices offset drift");
 static_assert(offsetof(particleMeshDistTri_t, area) == 36,
               "particle mesh triangle area offset drift");
+static_assert(offsetof(particleMeshDistTri_t, pad) == 40,
+              "particle mesh triangle pad offset drift");
 static_assert(sizeof(particleMeshDist_t) == 40,
               "particleMeshDist_t ABI drift");
+static_assert(offsetof(particleMeshDist_t, triangles) == 0,
+              "particle mesh triangles offset drift");
 static_assert(offsetof(particleMeshDist_t, bounds) == 8,
               "particle mesh bounds offset drift");
+static_assert(offsetof(particleMeshDist_t, totalArea) == 32,
+              "particle mesh total area offset drift");
+static_assert(offsetof(particleMeshDist_t, numTriangles) == 36,
+              "particle mesh triangle count offset drift");
+static_assert(offsetof(particleMeshDist_t, isCopy) == 38,
+              "particle mesh ownership offset drift");
 static_assert(sizeof(prtLocation_t) == 64, "prtLocation_t ABI drift");
+static_assert(offsetof(prtLocation_t, loc) == 0,
+              "particle location parms offset drift");
+static_assert(offsetof(prtLocation_t, diversity) == 60,
+              "particle location diversity offset drift");
 static_assert(sizeof(particleRenderView_t) == 64,
               "particleRenderView_t ABI drift");
+static_assert(offsetof(particleRenderView_t, renderTime) == 48,
+              "particle view time offset drift");
+static_assert(offsetof(particleRenderView_t, atlasWidth) == 56,
+              "particle view atlas width offset drift");
 static_assert(sizeof(particleInput_t) == 296, "particleInput_t ABI drift");
+static_assert(offsetof(particleInput_t, staticVertsSize) == 48,
+              "particle input static size offset drift");
+static_assert(offsetof(particleInput_t, modelAxis) == 56,
+              "particle input model axis offset drift");
+static_assert(offsetof(particleInput_t, globalOrigin) == 128,
+              "particle input global origin offset drift");
+static_assert(offsetof(particleInput_t, localViewOrg) == 176,
+              "particle input local view origin offset drift");
+static_assert(offsetof(particleInput_t, entityColor) == 216,
+              "particle input entity color offset drift");
+static_assert(offsetof(particleInput_t, stageAxis) == 232,
+              "particle input stage axis offset drift");
+static_assert(offsetof(particleInput_t, influenceSpheres) == 280,
+              "particle input influence sphere offset drift");
+static_assert(offsetof(particleInput_t, diversity) == 292,
+              "particle input diversity offset drift");
 static_assert(sizeof(particleOutput_t) == 16, "particleOutput_t ABI drift");
 static_assert(sizeof(modelParticleParms_t) == 144,
               "modelParticleParms_t ABI drift");
+static_assert(offsetof(modelParticleParms_t, axis) == 72,
+              "model particle axis offset drift");
+static_assert(offsetof(modelParticleParms_t, alphaScaleOverride) == 136,
+              "model particle alpha override offset drift");
+static_assert(offsetof(modelParticleParms_t, lod) == 140,
+              "model particle lod offset drift");
 static_assert(sizeof(effectParticleParms_t) == 120,
               "effectParticleParms_t ABI drift");
+static_assert(offsetof(effectParticleParms_t, axis) == 44,
+              "effect particle axis offset drift");
+static_assert(offsetof(effectParticleParms_t, currTime) == 108,
+              "effect particle current time offset drift");
+static_assert(offsetof(effectParticleParms_t, color) == 116,
+              "effect particle color offset drift");
 static_assert(sizeof(deferredParticleGenParms_t) == 168,
               "deferredParticleGenParms_t ABI drift");
 static_assert(offsetof(deferredParticleGenParms_t, meshDistribution) == 72,
               "deferred particle mesh offset drift");
 static_assert(offsetof(deferredParticleGenParms_t, verts) == 136,
               "deferred particle verts offset drift");
+static_assert(offsetof(deferredParticleGenParms_t, quadDepth) == 144,
+              "deferred particle depth offset drift");
+static_assert(offsetof(deferredParticleGenParms_t, quadsUsed) == 152,
+              "deferred particle quads-used offset drift");

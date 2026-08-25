@@ -1,8 +1,10 @@
 #pragma once
 
 #include "shared/idlib/filesystem/file.h"
+#include "shared/idlib/containers/list.h"
 #include "shared/idlib/networking/amqp/mq.h"
 #include "shared/idlib/networking/protocols/protocols.h"
+#include "shared/idlib/sys/sys_time.h"
 
 #include <atomic>
 #include <cstdint>
@@ -11,27 +13,68 @@
 #include <string>
 #include <vector>
 
+class idEventRecorderLight;
+void RenderEventRecorderLightStartEventCopyString_Impl(const char* tag);
+void RenderEventRecorderLightStartEvent_Impl(const char* tag);
+void RenderEventRecorderLightStopEvent_Impl();
+struct idEventRecorderLightTestAccess;
+
 class idEventRecorderLight {
 public:
-  struct event_t {
-    std::uint64_t start{}, end{};
-    idStr name, category;
+  struct event {
+    std::int64_t stamp;
+    const char* tag;
   };
+
+  enum { STRING_BUFFER_SIZE = 10240 };
+
+  idEventRecorderLight() : enabled(false) {}
+  idEventRecorderLight(const idEventRecorderLight&) = default;
+  ~idEventRecorderLight() = default;
+  idEventRecorderLight& operator=(const idEventRecorderLight&) = default;
+
   void StartCapture();
   void StopCapture();
   void Clear();
-  std::size_t StartEventCopyStringInternal(const char* name, const char* category = "default");
-  void StopEvent(std::size_t index);
-  bool WriteReport(idFile* file) const;
-  bool IsCapturing() const { return capturing; }
-  const std::vector<event_t>& Events() const { return events; }
+  void WriteReport(const char* filename, bool numbered, fsPath_t basePath);
+  void StartEvent(const char* tag) {
+    if (enabled) {
+      const event ev = {GetTime(), tag};
+      list.Append(ev);
+    }
+  }
+  void StartEventCopyString(const char* tag) {
+    if (enabled)
+      StartEventCopyStringInternal(tag);
+  }
+  void StopEvent() {
+    if (enabled) {
+      const event ev = {GetTime(), nullptr};
+      list.Append(ev);
+    }
+  }
+  bool IsEnabled() { return enabled; }
 
 private:
-  bool capturing{};
-  std::uint64_t captureStart{};
-  mutable std::mutex mutex;
-  std::vector<event_t> events;
+  std::int64_t GetTime() { return Sys_GetClockTicks(); }
+  std::int64_t GetTicksPerSec() { return Sys_ClockTicksPerSecond(); }
+  void StartEventCopyStringInternal(const char* tag);
+
+  friend void RenderEventRecorderLightStartEventCopyString_Impl(const char* tag);
+  friend void RenderEventRecorderLightStartEvent_Impl(const char* tag);
+  friend void RenderEventRecorderLightStopEvent_Impl();
+  friend struct idEventRecorderLightTestAccess;
+
+  std::int64_t startStamp;
+  bool enabled;
+  idList<event, 5> list;
+  idList<char, 5> strBuffer;
 };
+
+static_assert(sizeof(idEventRecorderLight::event) == 16,
+              "event-recorder event ABI drift");
+static_assert(sizeof(idEventRecorderLight) == 64,
+              "event-recorder-light ABI drift");
 
 class idForgeMetricsClient {
 public:

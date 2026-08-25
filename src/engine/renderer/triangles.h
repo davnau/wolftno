@@ -26,6 +26,7 @@ public:
                                         int numIndexes);
   static void UpdateIndexBuffer(idTriangles* triangles);
   static void UpdateVertexBuffer(idTriangles* triangles);
+  void CreateBounds();
   float GetSurfaceArea() const;
   void FreeCPUData() {
     delete[] verts;

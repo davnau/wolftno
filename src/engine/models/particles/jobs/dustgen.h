@@ -8,7 +8,12 @@
 #include <cstddef>
 #include <cstdint>
 
-enum particleCalc_t : std::int32_t {
+class idDeclParticle;
+class idMaterial;
+class idStaticParticleModelData;
+struct prtLocation_t;
+
+enum particleCalcType_t : std::int32_t {
   PARTICLE_CALC_NONE = 0,
   PARTICLE_CALC_CURVE_GENERIC = 1,
   PARTICLE_CALC_GENERIC = 2,
@@ -17,9 +22,11 @@ enum particleCalc_t : std::int32_t {
   PARTICLE_CALC_PARAMETRIC_EVAL = 5,
   PARTICLE_CALC_PARAMETRIC_INTEGRATE = 6,
   PARTICLE_CALC_PARAMETRIC_INTEGRATE_MINMAX = 7,
+  NUM_PARTICLE_CALC_TYPES = 8,
 };
 
-struct idRandom2 {
+class idRandom2 {
+public:
   std::uint32_t seed;
 };
 
@@ -29,15 +36,17 @@ struct idParticleParm {
   float variance;
   std::int16_t tableIdx;
   std::int16_t table2Idx;
-  particleCalc_t calcType;
+  particleCalcType_t calcType;
 
+  float Compute(const idLookupTable* tables, float frac,
+                idRandom2& random) const;
+
+private:
   float EvalGeneric(float min, float max, idRandom2& rnd) const;
   float IntegrateMinMax(float min, float max, idRandom2& rnd,
                         float frac) const;
   float EvalTableWithVariance(const idLookupTable* tables, int idx,
                               float frac, idRandom2& rnd) const;
-  float Compute(const idLookupTable* tables, float frac,
-                idRandom2& random) const;
 };
 
 enum prtOrientationType_t : std::int32_t {
@@ -98,7 +107,17 @@ enum prtCustomPthType_t : std::int32_t {
   PPATH_DRIP = 4,
 };
 
-struct idParticleStage {
+class idParticleStage {
+public:
+  idParticleStage();
+  void operator=(const idParticleStage& src);
+  void SetMaterial(const idMaterial* material);
+  void SetStaticMesh(const idStaticParticleModelData* staticMesh);
+  const idDrawVert* GetStaticVerts() const;
+  int GetNumStaticVerts() const;
+  int NumVertsPerParticle() const;
+  void Default(const idLookupTable* tables);
+
   struct prtDistribution_t {
     prtDistributionType_t type;
     idParticleParm size[3];
@@ -140,7 +159,7 @@ struct idParticleStage {
     std::uint16_t totalParticles;
   };
   struct prtStageProperties_t {
-    void* material;
+    const idMaterial* material;
     std::int16_t totalParticles;
     std::int16_t cycles;
     std::int32_t diversity;
@@ -207,14 +226,23 @@ struct idParticleStage {
   };
   struct prtGenericParms_t { idParticleParm genericParm[4]; };
 
-  void* staticData;
+  const idStaticParticleModelData* staticData;
   std::int32_t cycleMsec;
   float maxParticleLife;
   float maxDeadTime;
   float bunchTime;
   idBounds bounds;
   idVec4 atlasScaleBias;
-  std::uint8_t stageFlags;
+  union {
+    std::uint8_t stageFlags;
+    struct {
+      bool alphaBlended : 1;
+      bool isTransparencySorted : 1;
+      bool usesTransSortAtlas : 1;
+      bool hasEmissivePass : 1;
+      bool hidden : 1;
+    };
+  };
   std::uint8_t pad65[7];
   prtStageProperties_t systemProperties;
   prtDistribution_t distribution;
@@ -236,6 +264,15 @@ struct idParticleStage {
   prtGenericParms_t genericParm;
   prtLODParms_t lodParms;
   std::uint8_t tailPad[4];
+
+private:
+  friend class idDeclParticle;
+  friend void ValidateParticleStageBounds(idParticleStage& stage,
+                                          const idLookupTable* tables,
+                                          const prtLocation_t* locations,
+                                          int numLocations);
+  void CalculateBounds(const idLookupTable* tables,
+                       const prtLocation_t* locations, int numLocations);
 };
 
 struct dustRandomParm_t { float min; float max; };
@@ -321,14 +358,30 @@ static_assert(sizeof(idParticleStage::prtPivot_t) == 8);
 static_assert(sizeof(idParticleStage::prtLODParms_t) == 12);
 static_assert(sizeof(idParticleStage::prtColorAttributes_t) == 144);
 static_assert(sizeof(idParticleStage) == 1296);
+static_assert(offsetof(idParticleStage, staticData) == 0);
+static_assert(offsetof(idParticleStage, cycleMsec) == 8);
+static_assert(offsetof(idParticleStage, bounds) == 24);
+static_assert(offsetof(idParticleStage, atlasScaleBias) == 48);
+static_assert(offsetof(idParticleStage, stageFlags) == 64);
 static_assert(offsetof(idParticleStage, systemProperties) == 72);
+static_assert(offsetof(idParticleStage, distribution) == 192);
 static_assert(offsetof(idParticleStage, orientation) == 260);
+static_assert(offsetof(idParticleStage, direction) == 304);
+static_assert(offsetof(idParticleStage, speed) == 376);
+static_assert(offsetof(idParticleStage, acceleration) == 436);
+static_assert(offsetof(idParticleStage, gravity) == 500);
+static_assert(offsetof(idParticleStage, friction) == 524);
+static_assert(offsetof(idParticleStage, offset) == 584);
+static_assert(offsetof(idParticleStage, spawnLocation) == 644);
 static_assert(offsetof(idParticleStage, colorAttributes) == 704);
 static_assert(offsetof(idParticleStage, rotation) == 848);
 static_assert(offsetof(idParticleStage, initialRotation) == 912);
+static_assert(offsetof(idParticleStage, pivot) == 972);
 static_assert(offsetof(idParticleStage, size) == 980);
 static_assert(offsetof(idParticleStage, texAnimation) == 1060);
+static_assert(offsetof(idParticleStage, customPath) == 1092);
 static_assert(offsetof(idParticleStage, genericParm) == 1200);
+static_assert(offsetof(idParticleStage, lodParms) == 1280);
 static_assert(sizeof(dustParameters_t) == 80);
 static_assert(sizeof(dustParticle_t) == 80);
 static_assert(offsetof(dustParticle_t, origin) == 36);

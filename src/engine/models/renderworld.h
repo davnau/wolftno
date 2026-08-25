@@ -5,8 +5,12 @@
 #include "engine/renderer/bufferobject.h"
 #include "engine/renderer/globalshadows.h"
 #include "engine/renderer/parmblock.h"
+#include "engine/renderer/render.h"
 #include "engine/renderer/rendermodelparms.h"
 #include "shared/idlib/bv/bounds.h"
+#include "shared/idlib/bv/box.h"
+#include "shared/idlib/bv/cylinder.h"
+#include "shared/idlib/bv/sphere.h"
 #include "shared/idlib/color.h"
 #include "shared/idlib/containers/array.h"
 #include "shared/idlib/containers/hashindex.h"
@@ -15,12 +19,15 @@
 #include "shared/idlib/geometry/rendermatrix.h"
 #include "shared/idlib/geometry/winding.h"
 #include "shared/idlib/math/plane.h"
+#include "shared/idlib/math/curve.h"
 #include "shared/idlib/text/str.h"
 
 #include <cstddef>
 #include <cstdint>
 
 class idDeclEnv;
+struct idBox;
+struct idCylinder;
 class idMegaTexture;
 class idLexer;
 class idOceanSharedTileMemory;
@@ -39,14 +46,15 @@ class idRenderModelSurface;
 class idRenderModelTransparency;
 class idRenderModelUpdateTools;
 class idRenderWorldLocal;
-class idRenderView;
 class idSnapShot;
+struct idSphere;
 class idStaticModel;
 class idTraceOpts;
 class idVirtualTexture;
 struct approximateLightingParms_t;
 struct idRenderAssetRemap;
 struct worldArea_t;
+template <typename T> class idCurve_Spline;
 
 enum invalidDynamicEnvHandle_t : int { INVALID_DYNAMIC_ENV_HANDLE = -1 };
 
@@ -129,18 +137,138 @@ struct debugBounds_t {
 class idRenderDebug {
 public:
   virtual ~idRenderDebug();
-  virtual void DebugPoint(const idColor& color, const idVec3& point,
-                          int lifetime, bool depthTest) = 0;
-  virtual void DebugArrow(const idColor& color, const idVec3& start,
+  virtual void DebugClear(int time) = 0;
+  virtual void DebugLine(const idVec4& color, const idVec3& start,
+                         const idVec3& end, int lifetime, bool depthTest) = 0;
+  virtual void DebugArrow(const idVec4& color, const idVec3& start,
                           const idVec3& end, float size, int lifetime,
-                          bool depthTest);
+                          bool depthTest) = 0;
+  virtual void DebugArrow2(const idVec4& color, const idVec3& start,
+                           const idVec3& end, float size, int lifetime,
+                           bool depthTest, const idVec3& cameraPosition) = 0;
+  virtual void DebugArrow3(const idVec4& color, const idVec3& start,
+                           const idVec3& end, float size, int lifetime,
+                           bool depthTest) = 0;
+  virtual void DebugPyramid(const idVec4& color, const idVec3& base,
+                            const idVec3& up, const idVec3& forward,
+                            float height, float width, int lifetime,
+                            bool depthTest) = 0;
+  virtual void DebugWinding(const idVec4& color, const idWinding& winding,
+                            const idVec3& origin, const idMat3& axis,
+                            int lifetime, bool depthTest) = 0;
+  virtual void DebugCircle(const idVec4& color, const idVec3& origin,
+                           const idVec3& direction, float radius,
+                           int numSteps, int lifetime, bool depthTest) = 0;
+  virtual void DebugCylinder(const idVec4& color,
+                             const idCylinder& cylinder,
+                             const idVec3& direction, int numSteps,
+                             int lifetime, bool depthTest) = 0;
+  virtual void DebugArc(const idVec4& color, const idVec3& origin,
+                        const idVec3& direction, float radius,
+                        float startAngle, float endAngle,
+                        float anglesPerSegment, int lifetime, bool depthTest,
+                        bool drawSectorEdges) = 0;
+  virtual void DebugShadedArc(
+      const idVec4& color, const idVec3& origin, const idVec3& direction,
+      const idVec3& up, float radius, float startAngle, float endAngle,
+      float anglesPerSegment, int lifetime, bool depthTest) = 0;
+  virtual void DebugSphere(const idVec4& color, const idSphere& sphere,
+                           int numSteps, int lifetime, bool depthTest) = 0;
+  virtual void DebugBounds(const idVec4& color, const idBounds& bounds,
+                           const idVec3& origin, int lifetime,
+                           bool depthTest) = 0;
+  virtual void DebugOrientedBounds(const idVec4& color,
+                                   const idBounds& bounds,
+                                   const idVec3& origin,
+                                   const idMat3& axis, int lifetime,
+                                   bool depthTest) = 0;
+  virtual void DebugBox(const idVec4& color, const idBox& box,
+                        int lifetime, bool depthTest) = 0;
+  virtual void DebugCone(const idVec4& color, const idVec3& apex,
+                         const idVec3& direction, float radius,
+                         int lifetime, bool depthTest) = 0;
+  virtual void DebugCone(const idVec4& color, const idVec3& apex,
+                         const idVec3& direction, float radius1,
+                         float radius2, int lifetime, bool depthTest) = 0;
+  virtual void DebugAxis(const idVec4& color, const idVec3& origin,
+                         const idMat3& axis, int lifetime, bool depthTest) = 0;
+  virtual void DebugAxis(const idVec3& origin, const idMat3& axis,
+                         int lifetime, bool depthTest) = 0;
+  virtual void DebugAxisScaled(const idVec3& origin, const idMat3& axis,
+                               float scale, int lifetime, bool depthTest) = 0;
+  virtual void DebugPoint(const idVec4& color, const idVec3& point,
+                          int lifetime, bool depthTest) = 0;
+  virtual void DebugFilledPolygon(const idVec4& color,
+                                  const idWinding& winding, int lifetime,
+                                  bool depthTest) = 0;
+  virtual void DebugFilledBounds(const idVec4& color,
+                                 const idBounds& bounds,
+                                 const idVec3& origin, int lifetime,
+                                 bool depthTest) = 0;
+  virtual void DebugText(const char* text, const idVec3& origin, float scale,
+                         const idVec4& color, int align, int lifetime,
+                         bool depthTest, bool bold) = 0;
+  virtual void DebugText(const char* text, const idVec3& origin, float scale,
+                         const idVec4& color, const idMat3& viewAxis,
+                         int align, int lifetime, bool depthTest,
+                         bool bold) = 0;
+  virtual void DebugSpline(const idVec4& color,
+                           idCurve_Spline<idVec3>* spline, float step,
+                           bool drawKnots, int lifetime, bool depthTest) = 0;
 };
 
 class idRenderDebugLocal final : public idRenderDebug {
 public:
   idRenderDebugLocal();
   ~idRenderDebugLocal() override;
-  void DebugPoint(const idColor&, const idVec3&, int, bool) override;
+  void DebugClear(int) override;
+  void DebugLine(const idVec4&, const idVec3&, const idVec3&, int,
+                 bool) override;
+  void DebugArrow(const idVec4&, const idVec3&, const idVec3&, float, int,
+                  bool) override;
+  void DebugArrow2(const idVec4&, const idVec3&, const idVec3&, float, int,
+                   bool, const idVec3&) override;
+  void DebugArrow3(const idVec4&, const idVec3&, const idVec3&, float, int,
+                   bool) override;
+  void DebugPyramid(const idVec4&, const idVec3&, const idVec3&,
+                    const idVec3&, float, float, int, bool) override;
+  void DebugWinding(const idVec4&, const idWinding&, const idVec3&,
+                    const idMat3&, int, bool) override;
+  void DebugCircle(const idVec4&, const idVec3&, const idVec3&, float, int,
+                   int, bool) override;
+  void DebugCylinder(const idVec4&, const idCylinder&, const idVec3&, int,
+                     int, bool) override;
+  void DebugArc(const idVec4&, const idVec3&, const idVec3&, float, float,
+                float, float, int, bool, bool) override;
+  void DebugShadedArc(const idVec4&, const idVec3&, const idVec3&,
+                      const idVec3&, float, float, float, float, int,
+                      bool) override;
+  void DebugSphere(const idVec4&, const idSphere&, int, int, bool) override;
+  void DebugBounds(const idVec4&, const idBounds&, const idVec3&, int,
+                   bool) override;
+  void DebugOrientedBounds(const idVec4&, const idBounds&, const idVec3&,
+                           const idMat3&, int, bool) override;
+  void DebugBox(const idVec4&, const idBox&, int, bool) override;
+  void DebugCone(const idVec4&, const idVec3&, const idVec3&, float, int,
+                 bool) override;
+  void DebugCone(const idVec4&, const idVec3&, const idVec3&, float, float,
+                 int, bool) override;
+  void DebugAxis(const idVec4&, const idVec3&, const idMat3&, int,
+                 bool) override;
+  void DebugAxis(const idVec3&, const idMat3&, int, bool) override;
+  void DebugAxisScaled(const idVec3&, const idMat3&, float, int,
+                       bool) override;
+  void DebugPoint(const idVec4&, const idVec3&, int, bool) override;
+  void DebugFilledPolygon(const idVec4&, const idWinding&, int,
+                          bool) override;
+  void DebugFilledBounds(const idVec4&, const idBounds&, const idVec3&, int,
+                         bool) override;
+  void DebugText(const char*, const idVec3&, float, const idVec4&, int, int,
+                 bool, bool) override;
+  void DebugText(const char*, const idVec3&, float, const idVec4&,
+                 const idMat3&, int, int, bool, bool) override;
+  void DebugSpline(const idVec4&, idCurve_Spline<idVec3>*, float, bool, int,
+                   bool) override;
   idList<debugLine_t, 3> debugLines;
   idList<debugText_t, 3> debugText;
   idList<debugPolygon_t, 3> debugPolygons;
@@ -162,28 +290,21 @@ struct modelTrace_t {
   idRenderModel* entity;
 };
 
-struct renderView_t {
-  int renderTime{};
-  int viewID{};
-  std::uint8_t recoveredFlags[8]{};
-  float fov_x{};
-  float fov_y{};
-  bool cramZNear{};
-  std::uint8_t recoveredProjectionPadding[3]{};
-  idRenderMatrix explicitProjectionMatrix{};
-  bool useExplicitProjectionMatrix{};
-  std::uint8_t recoveredOriginPadding[3]{};
-  idVec3 vieworg{};
-  idMat3 viewaxis{};
-  std::uint8_t recoveredTail[6384]{};
-};
-
 class idRenderWorldCommitted {
 public:
   void ApproximateLightingForBounds(const idBounds*, approximateLighting_t*);
   void ApproximateAmbientForBounds(const idBounds*, approximateLighting_t*);
   void BoundsInAreas(const idBounds*, int*, int*, int);
   void UnlinkDimShadow(idRenderModelCommitted* model);
+  void LinkLightIntoTree(idRenderLightCommitted* light,
+                         const idRenderMatrix& frustumTransform,
+                         const idBounds& frustumBounds);
+  void UnlinkLightFromTree(idRenderLightCommitted* light);
+  void LinkModelIntoTree(idRenderModelCommitted* model,
+                         const idRenderMatrix& frustumTransform,
+                         const idBounds& frustumBounds);
+  void UnlinkModelFromTree(idRenderModelCommitted* model);
+  void LinkApproximateLighting(idRenderModelCommitted* model);
 
   const char* mapName{};
   bool isComboMap{};
@@ -226,36 +347,6 @@ public:
   idRenderAssetRemap* assetRemappings{};
   idRenderDebugLocal* committedDebugData{};
   idParallelJobList* rendererJobList{};
-};
-
-class idRenderView {
-public:
-  renderView_t g{};
-  void* modelEnvironmentOverride{};
-  int viewIndex{};
-  std::uint8_t recoveredViewState[180]{};
-  renderView_t r{};
-  idRenderMatrix projectionMatrix{};
-  idRenderMatrix inverseProjectionMatrix{};
-  idRenderMatrix viewMatrix{};
-  idRenderMatrix inverseViewMatrix{};
-  idRenderMatrix worldSpaceMVPMatrix{};
-  idRenderMatrix worldSpaceInverseMVPMatrix{};
-  idRenderMatrix viewSpaceModelMatrix{};
-  idRenderMatrix viewSpaceInverseModelMatrix{};
-  idRenderMatrix viewSpaceMVPMatrix{};
-  int windowWidth{};
-  int windowHeight{};
-  int renderWidth{};
-  int renderHeight{};
-  int feedbackWidth{};
-  int feedbackHeight{};
-  idScreenRect viewport{};
-  idScreenRect scissorRect{};
-  idScreenRect testScissor{};
-  void* firstOcclusionQueryInPreviousFrame{};
-  void* occlusionState{};
-  std::uint8_t recoveredTail[8]{};
 };
 
 class idRenderWorld {

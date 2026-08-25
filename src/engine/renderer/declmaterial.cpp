@@ -609,7 +609,7 @@ bool idMaterial::MaterialMappingsAreCompatible(
 
 bool idMaterial::GetImageDimensions(int& width, int& height) const {
   if (materialMap != nullptr)
-    return materialMap->GetImageDimensions(&width, &height);
+    return materialMap->GetImageDimensions(width, height);
 
   int transWidth = 0;
   int transHeight = 0;

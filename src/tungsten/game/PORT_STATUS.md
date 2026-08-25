@@ -33,7 +33,7 @@ against both recovered Hex-Rays output and recovered assembly.
 2. `ai/aaspositionmgr.cpp` — parity verified (6/6 functions)
 3. `ai/aasviscache.cpp` — parity verified (9/9 functions)
 4. `ai/ai2_actions.cpp` — parity verified (129/129 records)
-5. `ai/ai2.cpp` — active verification (304/1127 records re-ported;
+5. `ai/ai2.cpp` — active verification (380/1127 records re-ported;
    file is not complete)
 
 All remaining `.cpp` files are unverified for 1:1 parity.

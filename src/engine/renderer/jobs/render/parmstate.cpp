@@ -424,7 +424,7 @@ void idParmState::ResetSrcTexClamp() {
 }
 
 void idParmState::SetFragmentPositionToWindow(int renderWidth,
-                                               int renderHeight, int) {
+                                               int renderHeight, int, int) {
   const int index = parmIndexFragmentPositionToWindow;
   if ((onParmBlockStack[index] & parmStack.virtualParmBlockStackMask) != 0)
     RollbackVirtualStack(true);

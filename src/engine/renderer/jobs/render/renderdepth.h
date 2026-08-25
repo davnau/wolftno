@@ -18,13 +18,6 @@ struct renderSettings_t;
 
 template <typename T> class idODSObject;
 
-struct viewWorldArea_t {
-  int areaNum;
-  std::int16_t numSurfs;
-  bool skipDetailTriangles;
-  std::uint8_t alignmentPadding;
-};
-
 struct renderDepthParms_t {
   const renderSettings_t* settings;
   const idRenderView* renderView;
@@ -101,8 +94,6 @@ void RenderOpaque(const renderDepthParms_t* parameters);
 void RenderOpaqueFirstPerson(const renderDepthParms_t* parameters);
 void RenderOpaqueOcclusionTest(const renderDepthParms_t* parameters);
 
-static_assert(sizeof(viewWorldArea_t) == 0x08,
-              "view-world-area ABI drift");
 static_assert(sizeof(renderPassDepthModels_t) == 0x08,
               "render-depth model range ABI drift");
 static_assert(offsetof(renderDepthParms_t, renderViewModels) == 0x38,

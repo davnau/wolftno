@@ -115,7 +115,7 @@ public:
 
 class idFile_BitMsg : public idFile {
 public:
-  explicit idFile_BitMsg(idBitMsg* message, bool writable = false);
+  explicit idFile_BitMsg(idBitMsg* message);
   const char* GetName() const override { return name.data; }
   const char* GetFullPath() const override { return name.data; }
   std::size_t Read(void* buffer, std::size_t length) override;

@@ -2,8 +2,8 @@
 
 #include "shared/idlib/math/vector.h"
 
-struct idBounds;
-struct idMat3;
+class idBounds;
+class idMat3;
 class idPlane;
 
 struct frustumCorners_t {

@@ -33,14 +33,65 @@ public:
   virtual void FixLongFilename(const char* basePath, const char* extension,
                                const char* input, char* output,
                                int outputLength) const {
-    idStr::snPrintf(output, outputLength, "%s%s.%s", basePath ? basePath : "",
-                    input ? input : "", extension ? extension : "");
+    const char* selectedInput = input != nullptr ? input : "";
+    if (idStr::Icmpn(selectedInput, "../../", 6) == 0)
+      selectedInput += 6;
+
+    idStr fixedName;
+    if (basePath != nullptr && basePath[0] != '\0') {
+      fixedName = basePath;
+      fixedName.AppendPath(selectedInput);
+    } else {
+      fixedName = selectedInput;
+    }
+    fixedName.SetFileExtension(extension != nullptr ? extension : "");
+
+    idStr leafName;
+    fixedName.ExtractFileName(leafName);
+    if (leafName.Length() >= 38) {
+      idStr filePath;
+      fixedName.ExtractFilePath(filePath);
+      leafName.StripFileExtension();
+      fixedName = filePath;
+      int runLength = 0;
+      for (int index = 0; index < leafName.Length(); ++index) {
+        if (runLength >= 30) {
+          fixedName += '/';
+          runLength = 0;
+        }
+        fixedName += leafName[index];
+        ++runLength;
+      }
+      fixedName.SetFileExtension(extension != nullptr ? extension : "");
+    }
+    idStr::Copynz(output, fixedName.data, outputLength);
   }
   std::uint32_t GetTimestamp(const char* path, bool) const {
     return GetTimestamp(path);
   }
   bool FileExists(const char* path, bool) const { return FileExists(path); }
   bool RemoveFile(const char* path, fsPath_t) { return RemoveFile(path); }
+  idFile* OpenFileRead(const char* path, bool, bool) {
+    return OpenFileRead(path);
+  }
+  // NEEDS_WORK(shared/idlib/filesystem): this is the renderer-facing retail
+  // boundary. Recover the platform/path-selection implementation with the
+  // filesystem module; the fallback preserves already-native full paths.
+  virtual void RelativePathToOSPath(const char* relativePath, char* output,
+                                    int outputLength, fsPath_t) const {
+    idStr::Copynz(output, relativePath != nullptr ? relativePath : "",
+                  outputLength);
+  }
+  // NEEDS_WORK(shared/idlib/filesystem): exact numbering/search policy belongs
+  // to filesystem. This boundary preserves the retail signature for renderer
+  // screenshot commands until that compiland is recovered.
+  virtual void GetNumberedFilename(int* lastNumber, const char* baseName,
+                                   const char* extension, idStr* output,
+                                   bool) const {
+    const int number = lastNumber != nullptr ? ++*lastNumber : 1;
+    output->Format("%s%05d.%s", baseName != nullptr ? baseName : "", number,
+                   extension != nullptr ? extension : "");
+  }
 };
 
 class idFileSystemLocal final : public idFileSystem {

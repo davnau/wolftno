@@ -3,6 +3,8 @@
 #include <cstdint>
 #include "shared/idlib/math/vector.h"
 
+class idCVar;
+
 enum sysEventType_t : std::int32_t {
   SE_NONE = 0,
   SE_KEY = 1,
@@ -122,3 +124,7 @@ public:
 };
 
 extern idSys* sys;
+
+// NEEDS_WORK(engine/sys): the definition is owned by the system-language
+// translation unit, not renderer/rendersystem_bink.cpp.
+extern idCVar sys_lang;

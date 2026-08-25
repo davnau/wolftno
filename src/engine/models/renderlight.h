@@ -27,7 +27,7 @@ public:
   bool unlinked = true;
   bool needWriteToSnapshot = true;
   bool skipAutoReplication = false;
-  int serializedChangeCount = 1;
+  int serializedChangeCount = 0;
   idRenderLightParms g;
   idStaticParmBlock<32> gameParmBlock;
   idRenderWorldLocal* world = nullptr;

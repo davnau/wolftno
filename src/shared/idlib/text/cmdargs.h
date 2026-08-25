@@ -10,6 +10,9 @@ struct idCmdArgs {
   idCmdArgs();
   idCmdArgs(const idCmdArgs& other);
   idCmdArgs& operator=(const idCmdArgs& other);
+  const char* Argv(int index) const {
+    return index < 0 || index >= argc ? "" : argv[index];
+  }
   void AppendArg(const char* text);
   const char* Args(int start = 0, int end = -1, bool quoteArgs = false,
                    bool escapeArgs = false) const;

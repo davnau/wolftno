@@ -19,7 +19,9 @@
 #include "engine/decls/animwebs/declanimweb.h"
 #include "engine/framework/keyinput.h"
 #include "engine/framework/coderesource.h"
+#include "engine/models/renderworld.h"
 #include "shared/idlib/lib.h"
+#include "shared/idlib/lookuptable.h"
 #include "shared/idlib/math/mathlib.h"
 
 #include <algorithm>
@@ -276,6 +278,27 @@ float CosineDegrees(const float degrees) {
   return std::cos(radians);
 }
 
+aiSubWeb_t SubWebFromInitializedName(const char* subWebName) {
+  static constexpr std::array<const char*, 24> names{{
+      "relaxed", "combat", "hostile", "search", "pain",
+      "pain_stagger", "pain_moving", "pain_shock", "dying",
+      "actionscript", "fcover", "melee", "surprise", "dive",
+      "dodge", "grenade", "throw", "override", "turret",
+      "rccontrol", "traversal", "zipline", "dropship_fall", "react",
+  }};
+  const std::string_view value = subWebName != nullptr ? subWebName : "";
+  for (std::size_t index = 0; index < names.size(); ++index) {
+    const std::string_view candidate = names[index];
+    if (value == candidate ||
+        (value.size() > candidate.size() &&
+         value[value.size() - candidate.size() - 1] == '_' &&
+         value.substr(value.size() - candidate.size()) == candidate)) {
+      return static_cast<aiSubWeb_t>(index);
+    }
+  }
+  return aiSubWeb_t::max;
+}
+
 }  // namespace
 
 idCodeResource<idDeclRenderParm> rp_aiRobotGlow("aiRobotGlow");
@@ -290,14 +313,23 @@ idCVar joy_pitchSpeed("joy_pitchSpeed", "1", 0,
 idCVar joy_yawSpeed("joy_yawSpeed", "1", 0, "controller yaw speed");
 extern idCVar ai_debugScenePoints;
 extern idCVar takedownID;
+extern idCVar takedownType;
+extern idCVar ai_droppedLootDistance;
 extern idCVar ai_enableScrambles;
 extern idCVar ai_scrambleTime;
 
 const idEventDef EV_DisintigrateHide{};
 const idEventDef EV_Hide{};
 const idEventDef EV_Activate{};
+const idEventDef EV_DropAttachedProjectiles{};
+const idEventDef EV_Remove{};
+const idEventDef EV_RemoveBody{};
+const idEventDef EV_VaporizedAI{};
 const idEventDef EV_AnimWeb_Wait{};
 const idEventDef EV_AnimWeb_BeginSyncedAnim{};
+const idEventDef FSMEvent_Pain{4, idEventDef::EVENT_FSMEVENT};
+const idEventDef FSMEvent_Killed{5, idEventDef::EVENT_FSMEVENT};
+const idEventDef FSMEvent_Reaction{6, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_CrouchToStandEnter{1, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_StandToCrouchEnter{2, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_PlayOverrideAnimEnter{3,
@@ -332,13 +364,22 @@ idAI2::idAI2()
       aasPositionManager(std::make_unique<idAASPositionMgr>()),
       animationInfo(
           std::make_unique<idAIVolatile::idAIAnimationInfo>()),
+      aiConstants(std::make_unique<idAIConstant>()),
+      animationInitState(
+          std::make_unique<idAIAnimationInitRuntimeState>()),
+      ownedEffectsPresentable(std::make_unique<idPresentable>()),
+      effectsFXManager(std::make_unique<idFXManager>()),
       healthComponent(std::make_unique<idAIHealth>()),
       damageInfo(std::make_unique<idAIDamageInfo>()),
+      deathInfo(std::make_unique<idAIDeathInfo>()),
+      deathFocusOverride(std::make_unique<idSpawnFocusWithRequirement>()),
       componentTimeLine(std::make_unique<idComponentActionScript>()),
       dynamicCoverManager(std::make_unique<idFormationCoverMgr>()),
       goreComponent(std::make_unique<idGoreComponent>()),
       faceManager(std::make_unique<idFaceMgr>()),
       bodyOrientation(std::make_unique<idAIOrientation>()),
+      animationControllerDroneAnimator(
+          std::make_unique<idAnimator_Drone>()),
       moveState(std::make_unique<idAIMoveState>()),
       actionFSM(std::make_unique<idLegsFSM>()),
       fsmManager(std::make_unique<idFSMManager>()),
@@ -347,6 +388,7 @@ idAI2::idAI2()
       painAnimator(std::make_unique<idAnimator_Channel>()),
       memory(std::make_unique<idAIMemory>()),
       shootAnimator(std::make_unique<idAnimator_Channel>()) {
+  effectsTreeAnimator = &defaultEffectsTreeAnimator;
   robotDeathFXManager = std::make_unique<idFXManager>();
   robotDeathDroneAnimator = std::make_unique<idAnimator_Drone>();
   animWebAnimators[AIANIMWEB_BODY] = std::make_unique<idAnimator_AnimWeb>();
@@ -355,8 +397,84 @@ idAI2::idAI2()
   focusInfos[1] = std::make_unique<idFocusInfo>();
   focusInfos[0]->Init(nullptr, AIFOCI_AIM);
   focusInfos[1]->Init(nullptr, AIFOCI_LOOK);
+  staggerPainModelAxis[0] = {1.0F, 0.0F, 0.0F};
+  staggerPainModelAxis[1] = {0.0F, 1.0F, 0.0F};
+  staggerPainModelAxis[2] = {0.0F, 0.0F, 1.0F};
+  deathModelAxis[0] = {1.0F, 0.0F, 0.0F};
+  deathModelAxis[1] = {0.0F, 1.0F, 0.0F};
+  deathModelAxis[2] = {0.0F, 0.0F, 1.0F};
+  animationModelAxis = deathModelAxis;
 }
 idAI2::~idAI2() = default;
+
+void idAI2::SetBehaviorDeclaration(const idDeclAIBehavior* value) {
+  behaviorDeclaration = value;
+  movementBehaviorRunsFacingForward =
+      value != nullptr && value->movementBehaviors.runFacingForward;
+}
+
+void idAI2::SetActionScriptRunning(bool running) {
+  actionScriptRunning = running;
+  componentTimeLine->SetRunningForTest(running);
+}
+
+int idAI2::GetActionScriptRunningQueryCountForTest() const {
+  return componentTimeLine->GetRunningQueryCountForTest();
+}
+
+void idAI2::ResetActionScriptRunningQueryCountForTest() {
+  componentTimeLine->ResetRunningQueryCountForTest();
+}
+
+void idAI2::ConfigureStaggerPainInjuryGroupForTest(
+    const char* groupName, int goreLevelIndex) {
+  damageInfo->ConfigureInjuryGroupForTest(groupName, goreLevelIndex);
+}
+
+int idAI2::GetStaggerPainMostDamagedIndexForTest() const {
+  return damageInfo->GetMostDamagedIndex();
+}
+
+void idAI2::ConfigureDeathInfoForTest(const idEntity* attacker,
+                                      const idEntity* inflictor,
+                                      const idDamageImpulse& impulse,
+                                      int startDeathTime,
+                                      unsigned int deathFlags) {
+  deathInfo->ConfigureForTest(attacker, inflictor, impulse, startDeathTime,
+                              deathFlags);
+}
+
+void idAI2::ConfigureDeathSpawnDefinitionsForTest(
+    const idDeclEntityDef* focusDefinition,
+    std::initializer_list<const char*> focusRequirements,
+    const idDeclEntityDef* spawnedDeathDefinition) {
+  deathFocusOverride->ConfigureForTest(focusDefinition, focusRequirements);
+  deathSpawnEntityDef = spawnedDeathDefinition;
+}
+
+const idEntity* idAI2::ResolveDeathAttackerForName(
+    const idEntity* attacker) {
+  return attacker;
+}
+
+void idAI2::ConfigureEffectsHealthForTest(float currentHealth,
+                                          float maximumHealth) {
+  healthComponent->SetMaximumBaseHealthForTest(maximumHealth);
+  healthComponent->SetCurBaseHealth_Impl(currentHealth);
+}
+
+void idAI2::ConfigureUseHealthForTest(float currentHealth,
+                                      float maximumHealth) {
+  healthComponent->SetMaximumBaseHealthForTest(maximumHealth);
+  healthComponent->SetCurBaseHealth_Impl(currentHealth);
+}
+
+void idAI2::SetEffectsRobotGlowForTest(float value) {
+  effectsRobotGlow = value;
+  idPresentable* effectsPresentable =
+      presentable != nullptr ? presentable : ownedEffectsPresentable.get();
+  effectsPresentable->SetParm(rp_aiRobotGlow.Get(), value);
+}
 
 void idAI2::SetGoreAvailable(const char* goreName, bool available) {
   goreComponent->SetGoreAvailable(goreName, available);
@@ -1389,7 +1507,30 @@ bool idAI2::IsCrosshairSubdued(const idEntity* activator,
   return usable == USABLE_AI_TALK || usable == USABLE_AI_TOWN;
 }
 // DIA: idAI2::HandleLoot
-idRecoveredValue idAI2::HandleLoot(...) { return RecordCoreCall("HandleLoot"); }
+void idAI2::HandleLoot(bool fullLoot, idEntity* item,
+                       idEntity* activator) {
+  (void)fullLoot;
+  if (item == nullptr) return;
+
+  idAnimator_AF* articulatedFigure = GetAFMutable();
+  if (idProp_Loot* loot = dynamic_cast<idProp_Loot*>(item)) {
+    const idVec3 referenceOrigin =
+        articulatedFigure->IsActive() ||
+                articulatedFigure->IsClientAuthoritativeActive()
+            ? articulatedFigure->GetOrigin()
+            : GetPhysics()->GetOrigin();
+    const idVec3 delta = loot->GetPhysics()->GetOrigin() - referenceOrigin;
+    const float maximumDistance = ai_droppedLootDistance.GetFloat();
+    if (maximumDistance * maximumDistance >= delta.LengthSqr()) {
+      loot->Activate(activator, USABLE_LOOT);
+    }
+    return;
+  }
+
+  if (idProp_Moveable* moveable = dynamic_cast<idProp_Moveable*>(item)) {
+    moveable->RemoveFromWorld();
+  }
+}
 // DIA: idAI2::SetDelayedVoice
 void idAI2::SetDelayedVoice(voiceMsg_t message, float delay) {
   delayedVoiceType = static_cast<int>(message);
@@ -1869,6 +2010,7 @@ void idAI2::EndActionScript() {
   if (actionScriptCount <= 0) {
     actionScriptRunning = false;
     actionScriptFlags = 0;
+    componentTimeLine->SetRunningForTest(false);
   }
 }
 // DIA: idAI2::OnActionScriptFinished
@@ -1894,6 +2036,11 @@ idLegsFSM* idAI2::GetActionFSM() { return actionFSM.get(); }
 // DIA: idAI2::GetActionStatus
 int idAI2::GetActionStatus() const { return actionFSM->GetStatus(); }
 // DIA: idSpawnFocusWithRequirement::RequirementFilled
+bool idSpawnFocusWithRequirement::RequirementFilled(
+    const idInventoryCollection* inventory) const {
+  return giveEnt != nullptr &&
+         (requirements.Num() == 0 || inventory != nullptr);
+}
 // DIA: idAIFSMCallback::OnTransition
 // DIA: idAIFSMCallback::OnRestart
 // DIA: idAIFSMCallback::OnError
@@ -2877,11 +3024,11 @@ idEntity* idEntity::GetTarget(int index) {
   return index >= 0 && index < targets.Num() ? targets[index] : nullptr;
 }
 // DIA: idAIDamageInfo::GetInflictor
-idEntity* idAIDamageInfo::GetInflictor() {
+idEntity* idAIDamageInfo::GetInflictor() const {
   return const_cast<idEntity*>(inflictor);
 }
 // DIA: idAIDamageInfo::GetAttacker
-idEntity* idAIDamageInfo::GetAttacker() {
+idEntity* idAIDamageInfo::GetAttacker() const {
   return const_cast<idEntity*>(attacker);
 }
 // DIA: idAIMemory::GetEnemy
@@ -3115,7 +3262,24 @@ idRecoveredValue idAI2::GetSuspectedEnemyPos_PushedIntoAAS(...) { return RecordC
 // DIA: idAI2::AwareOfEnemy
 bool idAI2::AwareOfEnemy() const { return currentEnemy != nullptr; }
 // DIA: idAI2::IsBlockedByFriendly
-idRecoveredValue idAI2::IsBlockedByFriendly(...) { return RecordCoreCall("IsBlockedByFriendly"); }
+bool idAI2::IsBlockedByFriendly(const idEntity* enemy) {
+  if (!canBeBlockedByFriends || enemy == nullptr || enemy->IsDead()) {
+    return false;
+  }
+
+  const auto* blocker =
+      dynamic_cast<const idAI2*>(memory->GetFriendlyBlocker());
+  if (blocker == nullptr || blocker->IsDead() || enemy == blocker ||
+      blocker->hasFriendlyBlockerBindAnimation) {
+    return false;
+  }
+
+  const idVec3 enemyPosition = enemy->GetPhysics()->GetOrigin();
+  const idVec3 blockerDelta =
+      blocker->GetPhysics()->GetOrigin() - enemyPosition;
+  const idVec3 selfDelta = GetPhysics()->GetOrigin() - enemyPosition;
+  return selfDelta.LengthSqr() > blockerDelta.LengthSqr();
+}
 // DIA: idAI2::IsAASBlocked
 idRecoveredValue idAI2::IsAASBlocked(...) { return RecordCoreCall("IsAASBlocked"); }
 // DIA: idAI2::GetFakeEnemyWeight
@@ -3822,7 +3986,14 @@ bool idAI2::FindClosestFocus() {
 // DIA: `idAI2::FindClosestFocus'::`1'::dtor$0
 // DIA: idAI2::GetAlertCycle
 alertCycle_t idAI2::GetAlertCycle() const {
-  return controllingPlayer != nullptr
+  bool hasControllingPlayer = controllingPlayer != nullptr;
+  if (hasControllingPlayer && gameLocal != nullptr &&
+      controllingPlayer->GetEntityNumber() >= 0) {
+    hasControllingPlayer =
+        gameLocal->GetEntityByNumber(controllingPlayer->GetEntityNumber()) ==
+        controllingPlayer;
+  }
+  return hasControllingPlayer
              ? ALERTCYCLE_COMBAT
              : static_cast<alertCycle_t>(aiEventState.alertCycle);
 }
@@ -3940,6 +4111,12 @@ void idActor::SetLastDamageInfo(const idEntity* inflictor,
 }
 // DIA: idPlayer::GetProxyMove
 idProxyMove* idPlayer::GetProxyMove() const {
+  if (proxyMoveEntity == nullptr) return nullptr;
+  const int entityNumber = proxyMoveEntity->GetEntityNumber();
+  if (entityNumber >= 0 && gameLocal != nullptr &&
+      gameLocal->GetEntityByNumber(entityNumber) != proxyMoveEntity) {
+    return nullptr;
+  }
   return dynamic_cast<idProxyMove*>(proxyMoveEntity);
 }
 // DIA: idProp_Moveable::SetOwner
@@ -4253,12 +4430,14 @@ void idAI2::UpdateGroupStatusConditions() {
 }
 // DIA: idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo
 idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo() {
+  subWeb = aiSubWeb_t::relaxed;
   turretAnimator.lastBlendTriangle = 0;
   turretAnimator.vertexAliasHandles.fill(0xFFFFU);
   viewTagData.trans = {};
   viewTagData.rot = {};
   viewTagData.parentJoint = 0xFFFFU;
   syncedAnim.targetSpawnId = 0x1FFF;
+  ikEnableTime = -1;
 }
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$0
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$1
@@ -4314,6 +4493,27 @@ idAI2::idAIConstant::idAIConstant() {
   movement.influence.trailDist = 32.0F;
   movement.influence.trailFadeInTime = 0.25F;
   movement.influence.trailFadeOutTime = 2.0F;
+  animation.animWebs[0] = nullptr;
+  animation.useMoods = false;
+  animation.useLipsync = false;
+  animation.useGestures = false;
+  animation.useEyeTracking = false;
+  animation.useFaceSetupEyeTracking = false;
+  animation.useBlinking = false;
+  animation.useLidDeformation = false;
+  animation.useFaceManager = false;
+  animation.useFacialAnims = false;
+  animation.useCombatWebOnly = false;
+  animation.useRelaxedWebOnly = false;
+  animation.useHandsRelaxed = false;
+  animation.canUseTurret = false;
+  animation.useAimOffsetAnims = false;
+  animation.focusTrackingYawOnlyOverride = 0.0F;
+  animation.useMoodsEnabled = false;
+  animation.useLipsyncEnabled = false;
+  animation.useGesturesEnabled = false;
+  animation.useFacialAnimsEnabled = false;
+  animation.useFaceSetupEyeTrackingEnabled = false;
 }
 // DIA: `idAI2::idAIConstant::idAIConstant'::`1'::dtor$0
 // DIA: `idAI2::idAIConstant::idAIConstant'::`1'::dtor$3
@@ -4509,7 +4709,240 @@ bool idAI2::TurretShouldFire(idWeapon* weapon) {
   return false;
 }
 // DIA: idAI2::InitAnimation
-idRecoveredValue idAI2::InitAnimation(...) { return RecordCoreCall("InitAnimation"); }
+bool idAI2::InitAnimation() {
+  idTreeAnimator* treeAnimator = nullptr;
+  if (presentable != nullptr) {
+    idPresentable* animatedPresentable =
+        presentable->GetAnimatedEntityInterface();
+    if (animatedPresentable != nullptr) {
+      treeAnimator = static_cast<idTreeAnimator*>(
+          animatedPresentable->GetAnimatedTreeAnimator());
+    }
+    presentable->UpdateModelTransform();
+  }
+  if (treeAnimator == nullptr) return false;
+
+  auto& initState = *animationInitState;
+  auto& animation = aiConstants->animation;
+  initState.initTime =
+      gameLocal != nullptr ? gameLocal->GetGameTimeMs() : 0;
+
+  initState.twitchPainAliasesStrongLoaded = false;
+  if (initState.twitchPainDecl != nullptr) {
+    treeAnimator->StrongLoadTwitchPainAliasesForAI();
+    initState.twitchPainAliasesStrongLoaded = true;
+  }
+  initState.assignedTwitchPainDecl = initState.twitchPainDecl;
+  initState.painInfoAssigned = true;
+
+  initState.eyeInfoHandle = treeAnimator->FindEyeInfoHandleForAI(
+      animation.eyeInfoName.data);
+
+  const idDeclAnimWeb* bodyAnimWeb = animation.animWebs[AIANIMWEB_BODY];
+  if (bodyAnimWeb == nullptr) {
+    idLib::Error("AI '%s' has no body anim-web defined.", GetName());
+  }
+
+  idStr initialSubWebName;
+  idStr initialStateName;
+  GetSubWebAndStateFromAnimWebPath(
+      animation.animWebDefaults[AIANIMWEB_BODY].GetWebPath().data,
+      initialSubWebName, initialStateName);
+  initState.bodySubWebName = initialSubWebName;
+  initState.bodyStateName = initialStateName;
+  const aiSubWeb_t initializedSubWeb =
+      SubWebFromInitializedName(initialSubWebName.data);
+  if (initializedSubWeb != aiSubWeb_t::max) {
+    animationInfo->subWeb = initializedSubWeb;
+    animWebState.subWeb = initializedSubWeb;
+  }
+  initState.bodyActiveLayers.clear();
+  const auto& activeLayers =
+      animation.animWebDefaults[AIANIMWEB_BODY].GetActiveLayers();
+  for (int index = 0; index < activeLayers.Num(); ++index) {
+    initState.bodyActiveLayers.emplace_back(activeLayers[index].str);
+  }
+  initState.bodyEnabled =
+      animation.animWebDefaults[AIANIMWEB_BODY].IsEnabled();
+  initState.bodyInitialized = true;
+  initState.bodyAnimator = {};
+  initState.bodyAnimator.name = "body";
+  initState.bodyAnimator.declaration = bodyAnimWeb;
+  initState.bodyAnimator.treeAnimator = treeAnimator;
+  initState.bodyAnimator.blendOp = idMD6Blend::BLENDOP_REPLACE;
+  initState.bodyAnimator.originBlend = idMD6Blend::ORIGINBLEND_DEFAULT;
+  initState.bodyAnimator.weightGroup = MD6_WEIGHTGROUP_ALL;
+  initState.bodyAnimator.filterGroup = MD6_WEIGHTGROUP_ALL;
+  initState.bodyAnimator.alpha = 1.0F;
+  initState.bodyAnimator.initialized = true;
+  animWebState.declaration = bodyAnimWeb;
+  animWebAnimators[AIANIMWEB_BODY]->InitializeForAI(
+      this, "body", bodyAnimWeb, initialSubWebName.data,
+      initialStateName.data, initState.bodyActiveLayers,
+      initState.bodyEnabled, initState.initTime);
+
+  static constexpr std::array<const char*, 9> turretAliases{{
+      "unarmed/combat/turret_nw", "unarmed/combat/turret_n",
+      "unarmed/combat/turret_ne", "unarmed/combat/turret_w",
+      "unarmed/combat/turret_c", "unarmed/combat/turret_e",
+      "unarmed/combat/turret_sw", "unarmed/combat/turret_s",
+      "unarmed/combat/turret_se",
+  }};
+  initState.turretInitialized =
+      animation.canUseTurret && turretActionSetting;
+  if (initState.turretInitialized) {
+    for (int index = 0; index < static_cast<int>(turretAliases.size());
+         ++index) {
+      animationInfo->SetTurretAliasHandleForInit(
+          index, treeAnimator->StrongLoadAliasForAI(
+                     turretAliases[static_cast<std::size_t>(index)]));
+    }
+  }
+
+  painAnimator->InitializeForAI("pain", MD6_WEIGHTGROUP_FACE,
+                                MD6_WEIGHTGROUP_ALL, 1.0F, 2U);
+  shootAnimator->InitializeForAI("shoot", MD6_WEIGHTGROUP_FACE,
+                                 MD6_WEIGHTGROUP_ALL, 1.0F, 2U);
+
+  auto initializeRecord =
+      [treeAnimator](idAIAnimatorInitRecord& record, const char* name,
+                     const void* declaration, int weightGroup,
+                     int filterGroup, int userGroup, int originBlend,
+                     bool proxyToBody) {
+        record = {};
+        record.name = name;
+        record.declaration = declaration;
+        record.treeAnimator = treeAnimator;
+        record.blendOp = idMD6Blend::BLENDOP_REPLACE;
+        record.originBlend = originBlend;
+        record.weightGroup = weightGroup;
+        record.filterGroup = filterGroup;
+        record.userGroup = userGroup;
+        record.alpha = 1.0F;
+        record.initialized = true;
+        record.proxyToBodyAnimWeb = proxyToBody;
+      };
+
+  initState.rollBonesAnimator = {};
+  if (initState.rollBonesDecl != nullptr) {
+    initializeRecord(initState.rollBonesAnimator, "rollBones",
+                     initState.rollBonesDecl, MD6_WEIGHTGROUP_TORSO,
+                     MD6_WEIGHTGROUP_ALL, 0,
+                     idMD6Blend::ORIGINBLEND_DEST, false);
+  }
+
+  const unsigned int modelCaps = treeAnimator->GetModelCaps();
+  animation.useMoodsEnabled =
+      animation.useMoods && (modelCaps & 4U) != 0;
+  animation.useLipsyncEnabled =
+      animation.useLipsync && (modelCaps & 1U) != 0;
+  animation.useGesturesEnabled =
+      animation.useGestures && (modelCaps & 8U) != 0;
+  animation.useFacialAnimsEnabled =
+      animation.useFacialAnims && (modelCaps & 2U) != 0;
+  animation.useFaceSetupEyeTrackingEnabled =
+      animation.useFaceSetupEyeTracking && (modelCaps & 2U) != 0;
+
+  initState.faceManagerInitialized = false;
+  if (animation.useFaceManager) {
+    const bool blinkingEnabled =
+        animation.useFaceSetupEyeTrackingEnabled && animation.useBlinking;
+    initState.faceManagerInitialized = faceManager->Init(this, treeAnimator);
+    faceManager->SetEnableMoodAnimation(this,
+                                        animation.useMoodsEnabled);
+    faceManager->SetEnableLipSyncAnimation(
+        this, animation.useLipsyncEnabled);
+    faceManager->SetEnableGestureAnimation(
+        this, animation.useGesturesEnabled);
+    faceManager->SetEnableEyeTracking(this, animation.useEyeTracking);
+    faceManager->SetEnableFaceSetupEyeTrackingForAI(
+        this, animation.useFaceSetupEyeTrackingEnabled);
+    faceManager->SetEnableBlinking(this, blinkingEnabled);
+    faceManager->SetEnableLidDeformation(
+        this, animation.useLidDeformation);
+    animation.useMoods = initState.faceManagerInitialized;
+  }
+
+  if (animation.viewTagName.str != nullptr &&
+      *animation.viewTagName.str != '\0') {
+    const idTreeAnimator::tagData_t* viewTag =
+        treeAnimator->FindTagForAI(animation.viewTagName.str);
+    if (viewTag != nullptr) {
+      animationInfo->viewTagData.trans = viewTag->trans;
+      animationInfo->viewTagData.rot = viewTag->rot;
+      animationInfo->viewTagData.parentJoint = viewTag->parentJoint;
+      animationInfo->viewTagData.padding = viewTag->padding;
+    }
+  }
+
+  initState.faceAnimator = {};
+  if (animation.useFacialAnimsEnabled) {
+    initializeRecord(initState.faceAnimator, "facetracks", nullptr,
+                     MD6_WEIGHTGROUP_FACE, MD6_WEIGHTGROUP_FACE,
+                     MD6_WEIGHTGROUP_FACE,
+                     idMD6Blend::ORIGINBLEND_DEFAULT, false);
+  }
+
+  initState.dragJointsAnimator = {};
+  if (initState.dragJointsDecl != nullptr) {
+    initializeRecord(initState.dragJointsAnimator, "dragJoints",
+                     initState.dragJointsDecl, MD6_WEIGHTGROUP_TORSO,
+                     MD6_WEIGHTGROUP_ALL, 0,
+                     idMD6Blend::ORIGINBLEND_DEST, true);
+  }
+
+  initState.freezeJointsAnimator = {};
+  if (initState.freezeJointsDecl != nullptr) {
+    initializeRecord(initState.freezeJointsAnimator, "freezeJoints",
+                     initState.freezeJointsDecl, MD6_WEIGHTGROUP_TORSO,
+                     MD6_WEIGHTGROUP_ALL, 0,
+                     idMD6Blend::ORIGINBLEND_DEST, false);
+  }
+
+  initState.droneAnimator = {};
+  if (usesDrone) {
+    initializeRecord(initState.droneAnimator, "drone", nullptr,
+                     MD6_WEIGHTGROUP_LEGS, MD6_WEIGHTGROUP_USER0,
+                     MD6_WEIGHTGROUP_USER0,
+                     idMD6Blend::ORIGINBLEND_DEFAULT, false);
+  }
+
+  focusInfos[0]->Init(nullptr, AIFOCI_AIM);
+  focusInfos[1]->Init(nullptr, AIFOCI_LOOK);
+  initState.initializedPonytailOwners.assign(
+      static_cast<std::size_t>(initState.ponytailCount), this);
+  initState.initializedPonytailCount =
+      static_cast<int>(initState.initializedPonytailOwners.size());
+
+  initializeRecord(initState.walkIKAnimator, "walkIK",
+                   initState.walkIKDecl, MD6_WEIGHTGROUP_TORSO,
+                   MD6_WEIGHTGROUP_ALL, 0,
+                   idMD6Blend::ORIGINBLEND_DEFAULT, false);
+  initState.walkIKInitialized = true;
+  initState.walkIKModelDecl = treeAnimator->GetModelWalkIKDeclForAI();
+  initState.walkIKEntityNumber = GetEntityNumber();
+  if (GetPhysics() != nullptr) {
+    initState.walkIKOrigin = GetPhysics()->GetOrigin();
+    initState.walkIKAxis = GetPhysics()->GetAxis();
+    initState.walkIKUpNormal = GetPhysics()->GetGravityNormal() * -1.0F;
+  } else {
+    initState.walkIKOrigin = {};
+    initState.walkIKAxis = {};
+    initState.walkIKUpNormal = {0.0F, 0.0F, 1.0F};
+  }
+  walkIKEnabled = true;
+  treeAnimator->EnableWalkIKForAI();
+
+  if (GetActorClass() == ACTORCLASS_MUTANT || mutantActorClass) {
+    faceManager->SetEnableMoodAnimation(this, false);
+    faceManager->SetEnableLipSyncAnimation(this, false);
+    faceManager->SetEnableGestureAnimation(this, false);
+    faceManager->SetEnableEyeTracking(this, false);
+    faceManager->SetEnableBlinking(this, false);
+    faceManager->SetEnableLidDeformation(this, false);
+  }
+  return true;
+}
 // DIA: `idAI2::InitAnimation'::`1'::dtor$0
 // DIA: `idAI2::InitAnimation'::`1'::dtor$1
 // DIA: `idAI2::InitAnimation'::`1'::dtor$11
@@ -4528,10 +4961,111 @@ idRecoveredValue idAI2::InitAnimation(...) { return RecordCoreCall("InitAnimatio
 // DIA: `idAI2::InitAnimation'::`1'::dtor$9
 // DIA: `idAI2::InitAnimation'::`1'::dtor$10
 // DIA: idAI2::UpdateTravelFlags
-idRecoveredValue idAI2::UpdateTravelFlags(...) { return RecordCoreCall("UpdateTravelFlags"); }
+void idAI2::UpdateTravelFlags() {
+  const idDeclAIBehavior* behavior = behaviorDeclaration;
+  const unsigned int byte0 = behavior->traversalFlagsByte0;
+  const unsigned int byte1 = behavior->traversalFlagsByte1;
+
+  std::uint32_t travelFlags = 0x4000028U;
+  if ((byte1 & 0x02U) != 0) travelFlags |= 0x10U;
+  if ((byte0 & 0x02U) != 0) travelFlags |= 0x40U;
+  if ((byte0 & 0x08U) != 0) travelFlags |= 0x80U;
+  if ((byte0 & 0x10U) != 0) travelFlags |= 0x100U;
+  if ((byte1 & 0x01U) != 0) travelFlags |= 0x200U;
+  if ((byte0 & 0x20U) != 0) travelFlags |= 0x400U;
+  if ((byte0 & 0x80U) != 0) travelFlags |= 0x1000U;
+  if ((byte0 & 0x40U) != 0) travelFlags |= 0x2000U;
+
+  if ((byte1 & 0x04U) != 0 && (groupStatusCondition & 0x08) == 0) {
+    if (useTraversalClassA) travelFlags |= 0x10000U;
+    if (useTraversalClassB) travelFlags |= 0x20000U;
+    if (useTraversalClassC) travelFlags |= 0x40000U;
+    if (useTraversalClassD) travelFlags |= 0x800000U;
+    if (useTraversalClassE) travelFlags |= 0x1000000U;
+  }
+
+  const bool playerControlledOrInCombat =
+      controllingPlayer != nullptr ||
+      aiEventState.alertCycle == ALERTCYCLE_COMBAT;
+  if ((byte1 & 0x08U) != 0 && playerControlledOrInCombat) {
+    const aiSenseState_t* enemySense = GetEnemySenseState(AISENSE_MAX);
+    if (enemySense != nullptr) {
+      idVec3 extrapolatedEnemy;
+      enemySense->ExtrapolatePosition(0.25F, &extrapolatedEnemy);
+      const idVec3 origin =
+          GetPhysics() != nullptr ? GetPhysics()->GetOrigin() : idVec3{};
+      const idVec3 directionToEnemy =
+          NormalizedOrZero(extrapolatedEnemy - origin);
+
+      if (GetPhysics() != nullptr) {
+        idVec3 moveDirection = GetPhysics()->GetLinearVelocity(0);
+        if (moveDirection.LengthSqr() > 1.0F) moveDirection.Normalize();
+      }
+
+      const idScenePoint* traversal =
+          moveState->GetDestinationTraversal();
+      if (traversal != nullptr &&
+          (traversal->GetTraversalFlagsForTest() & 0x02U) != 0) {
+        travelFlags |= 0x80000U;
+      } else {
+        const bool injured = (groupStatusCondition & 0x08) != 0;
+        const idVec3 renderForward = (*GetPresentableAxis())[0];
+        const bool facingEnemy =
+            directionToEnemy * renderForward > 0.866F;
+        const int currentTime =
+            gameLocal != nullptr ? gameLocal->GetGameTimeMs() : 0;
+        const bool recentlyAimedAt =
+            currentTime - memory->GetLastAimedAtTimeForTest() <
+                behavior->traversalAimEvasionDuration &&
+            behavior->traversalEvasionAimDist *
+                    behavior->traversalEvasionAimDist >
+                (extrapolatedEnemy - origin).LengthSqr();
+        const bool recentlyFiredAt =
+            currentTime - memory->GetLastFiredAtTimeForTest() <
+                behavior->traversalGunfireEvasionDuration &&
+            behavior->traversalEvasionGunfireDist *
+                    behavior->traversalEvasionGunfireDist >
+                (extrapolatedEnemy - origin).LengthSqr();
+        if ((recentlyAimedAt || recentlyFiredAt) && !injured &&
+            facingEnemy) {
+          travelFlags |= 0x80000U;
+        }
+      }
+    }
+
+    const int currentTime =
+        gameLocal != nullptr ? gameLocal->GetGameTimeMs() : 0;
+    const int lastAvoidTime = memory->GetLastAvoidTimeForTest();
+    if ((lastAvoidTime >= 0 &&
+         currentTime - lastAvoidTime < ai_scrambleTime.GetInteger()) ||
+        (groupStatusCondition & 0x10) != 0) {
+      travelFlags |= 0x400000U;
+    }
+  }
+
+  if (playerControlledOrInCombat) travelFlags |= 0x2000000U;
+
+  if (ai_debugTraversals.GetInteger() != 0 &&
+      ai_debugLevel.GetInteger() > 0) {
+    std::string flagString;
+    if ((travelFlags & 0x10000U) != 0) flagString += "a ";
+    if ((travelFlags & 0x20000U) != 0) flagString += "b ";
+    if ((travelFlags & 0x40000U) != 0) flagString += "c ";
+    if ((travelFlags & 0x800000U) != 0) flagString += "d ";
+    if ((travelFlags & 0x1000000U) != 0) flagString += "e ";
+    if ((travelFlags & 0x80000U) != 0) flagString += "evasion ";
+    if ((travelFlags & 0x400000U) != 0) flagString += "emergency ";
+    if ((travelFlags & 0x2000000U) != 0) flagString += "combat ";
+    lastTravelDebugText = std::move(flagString);
+    lastTravelDebugPosition =
+        GetPhysics() != nullptr ? GetPhysics()->GetOrigin() : idVec3{};
+    ++travelDebugCount;
+  }
+  aasTravelFlags = travelFlags;
+}
 // DIA: `idAI2::UpdateTravelFlags'::`1'::dtor$0
 // DIA: idAI2::ShouldDeadThink
-bool idAI2::ShouldDeadThink() {
+bool idAI2::ShouldDeadThink() const {
   if (usesDrone || robotState.usesRobot) {
     return robotDeathSetup && robotTimeToCritical > 0.0F &&
            gameLocal->GetGameTimeMs() > droneLastDamageTick;
@@ -4540,18 +5074,1010 @@ bool idAI2::ShouldDeadThink() {
   return gameLocal->GetGameTimeMs() - deathStartTime > 500;
 }
 // DIA: idAI2::UpdateEffects
-idRecoveredValue idAI2::UpdateEffects(...) { return RecordCoreCall("UpdateEffects"); }
+void idAI2::UpdateEffects() {
+  const int currentTime = gameLocal->GetGameTimeMs();
+
+  const auto getPresentable = [this]() -> idPresentable* {
+    if (presentable == nullptr) {
+      presentable = ownedEffectsPresentable.get();
+    }
+    return presentable;
+  };
+
+  if (deadEffectActive) {
+    const int frameMilliseconds = gameLocal->GetGameMsPerFrame();
+    deadEffectDuration -= frameMilliseconds;
+    if (deadEffectDuration < 0) {
+      getPresentable();
+      effectsFXManager->StopFX(currentTime,
+                               static_cast<fxCondition_t>(0x55), false);
+      deadEffectActive = false;
+    }
+  }
+
+  if (!flareHasBeenKilled && flareHandle != -1) {
+    float intensity = 1.0F;
+    if (flareUpdateType == AIEFFECTUPDATETYPE_CHARGE) {
+      intensity = robotState.currentStageHealth * 0.89999998F /
+                      robotState.stageHealth +
+                  0.1F;
+    } else if (flareUpdateType == AIEFFECTUPDATETYPE_HEALTH) {
+      intensity = healthComponent->GetBaseHealthRatio_Impl() * 0.69999999F +
+                  0.30000001F;
+    }
+
+    bool useZeroIntensity = false;
+    if (usesDrone || robotState.usesRobot) {
+      if (endStunnedTime != 0) {
+        const float currentGlow = getPresentable()->aiRobotGlow;
+        if (currentGlow > 0.0F) {
+          const float toggleChance =
+              static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F *
+              10.0F;
+          useZeroIntensity = toggleChance > RandomFloat();
+        } else if (currentGlow == 0.0F) {
+          const float toggleChance =
+              static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F *
+              10.0F;
+          useZeroIntensity = !(RandomFloat() <= toggleChance);
+        }
+      } else if (endBlindedTime != 0) {
+        if (endBlindedTime == -1 || currentTime + 1000 < endBlindedTime) {
+          useZeroIntensity = true;
+        } else {
+          const float currentGlow = getPresentable()->aiRobotGlow;
+          const float remainingSeconds =
+              static_cast<float>(endBlindedTime - currentTime) * 0.001F;
+          if (remainingSeconds < 0.1F) {
+            useZeroIntensity = true;
+          } else if (currentGlow > 0.0F) {
+            const float toggleChance =
+                static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F *
+                25.0F * remainingSeconds;
+            useZeroIntensity = toggleChance > RandomFloat();
+          } else if (currentGlow == 0.0F) {
+            const float toggleChance =
+                (1.0F - remainingSeconds) *
+                (static_cast<float>(gameLocal->GetGameMsPerFrame()) *
+                 0.001F * 50.0F);
+            useZeroIntensity = !(RandomFloat() <= toggleChance);
+          }
+        }
+      }
+    }
+    if (useZeroIntensity) intensity = 0.0F;
+
+    idVec3 flareOrigin;
+    idMat3 flareAxis;
+    if (effectsTreeAnimator->GetWorldSpaceTagTransformForAI(
+            flareTagData, flareOrigin, flareAxis)) {
+      gameLocal->UpdateGlobalLensFlarePosition(
+          flareHandle, flareOrigin, flareAxis, true, true);
+    }
+
+    if (flareFadeOutEffect) {
+      float fadeIntensity;
+      if (flareFadeTable != nullptr) {
+        const int fadeTime = gameLocal->GetGameTimeMs();
+        fadeIntensity = flareFadeTable->TableLookup(
+            static_cast<float>(fadeTime - deathStartTime) * 0.001F *
+                flareFadeOutScale,
+            true);
+      } else {
+        flareFadeTimer -=
+            static_cast<float>(gameLocal->GetGameMsPerFrame());
+        fadeIntensity = flareFadeTimer * 0.001F;
+      }
+      if (fadeIntensity <= 0.0F) {
+        flareFadeOutEffect = false;
+        flareHasBeenKilled = true;
+      }
+      intensity =
+          std::fmin(fadeIntensity, getPresentable()->aiRobotGlow);
+    }
+
+    effectsRobotGlow = intensity;
+    getPresentable()->SetParm(rp_aiRobotGlow.Get(), intensity);
+    effectsFlareColor = {intensity, intensity, intensity, intensity};
+    gameLocal->SetGlobalLensFlareColor(flareHandle, effectsFlareColor);
+  }
+
+  if (fadeOutTimestamp != -1) {
+    float fadeRatio = 0.0F;
+    if (fadeOutDuration > 0) {
+      fadeRatio = static_cast<float>(gameLocal->GetGameTimeMs() -
+                                     fadeOutTimestamp) /
+                  static_cast<float>(fadeOutDuration);
+      fadeRatio = std::clamp(fadeRatio, 0.0F, 1.0F);
+    }
+    const float modelFade = 1.0F - fadeRatio;
+    getPresentable()->SetModelFade(modelFade);
+    if (modelFade <= 0.0F) {
+      fadeOutDuration = 0;
+      fadeOutTimestamp = -1;
+      if (!noBodyRemoval) {
+        PostEventMS(&EV_DropAttachedProjectiles, 0);
+        PostEventMS(&EV_Remove, 0);
+      }
+    }
+  }
+
+  UpdateGroupStatusConditions();
+  UpdateRenderParamBlends();
+  ++effectsUpdateFXCount;
+  if (presentable != nullptr) presentable->UpdateFX();
+}
 // DIA: idAI2::UpdateBodyOrientationWhileMoving
-idRecoveredValue idAI2::UpdateBodyOrientationWhileMoving(...) { return RecordCoreCall("UpdateBodyOrientationWhileMoving"); }
+void idAI2::UpdateBodyOrientationWhileMoving() {
+  const bool overrideAnimationOrientation =
+      moveState->IsOverridingAnimOrientationWithFocus();
+  if (!overrideAnimationOrientation) {
+    const aiMovementMode_t movementMode = moveState->GetMovementMode();
+    if (movementMode == AIMOVEMODE_ANIM ||
+        movementMode == AIMOVEMODE_ANIM_GRAVITY ||
+        movementMode == AIMOVEMODE_ANIM_TURN ||
+        movementMode == AIMOVEMODE_ANIM_DRIVEN ||
+        moveState->IsPlayingTraversalAnim()) {
+      return;
+    }
+  }
+
+  if (gameLocal->GetFrameNum() == moveState->GetStartMoveFrame() ||
+      moveState->GetRemainingTransitionFrames() > 0) {
+    return;
+  }
+
+  if (!bodyRotationEnabled || suppressBodyRotation || IsSitting()) {
+    bodyOrientation->UpdateStatic();
+    return;
+  }
+
+  if (moveState->AlignToNextPoint()) return;
+
+  idPhysics* physics = GetPhysics();
+  const idVec3& gravityNormal = physics->GetGravityNormal();
+  idVec3 velocity = physics->GetLinearVelocity(0);
+  const float velocityLengthSquared = velocity.LengthSqr();
+  const float normalizedVelocityLengthSquared =
+      velocityLengthSquared > idMath::FLT_SMALLEST_NON_DENORMAL
+          ? velocityLengthSquared
+          : idMath::FLT_SMALLEST_NON_DENORMAL;
+  const float inverseVelocityLength =
+      1.0F / std::sqrt(normalizedVelocityLengthSquared);
+  velocity *= inverseVelocityLength;
+  const float speed = inverseVelocityLength * velocityLengthSquared;
+
+  const auto& movement = aiConstants->movement;
+  const float speedRange =
+      movement.moveSpeed.maximum - movement.moveSpeed.minimum;
+  const float speedAboveMinimum =
+      std::max(0.0F, speed - movement.moveSpeed.minimum);
+  const float speedRatio = speedRange != 0.0F
+                               ? std::min(1.0F,
+                                          speedAboveMinimum / speedRange)
+                               : 0.0F;
+
+  float turnRate;
+  if (ai_forceTurnRate.GetInteger() != 0) {
+    turnRate =
+        (ai_maxTurnRate.GetFloat() - ai_minTurnRate.GetFloat()) *
+            speedRatio +
+        ai_minTurnRate.GetFloat();
+  } else {
+    turnRate =
+        (movement.bodyTurnRate.maximum - movement.bodyTurnRate.minimum) *
+            speedRatio +
+        movement.bodyTurnRate.minimum;
+  }
+  if (static_cast<int>(GetAlertCycle()) <= 1) {
+    turnRate *= movement.relaxedTurnRateScale;
+  }
+
+  const idVec3& movementIdealDirection =
+      moveState->GetMoveOrientation()->GetIdealDir();
+  if (movementBehaviorRunsFacingForward) {
+    bodyOrientation->SetIdealDir(this, movementIdealDirection);
+    const float frameSeconds =
+        static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F;
+    bodyOrientation->UpdateAxis(gravityNormal, turnRate, frameSeconds);
+    return;
+  }
+
+  idFocusInfo* selectedFocus = focusInfos[0].get();
+  if (!selectedFocus->HasFocus()) selectedFocus = focusInfos[1].get();
+  const bool shouldFaceFocus =
+      moveState->GetCurrentSmoothAnimType() != SMOOTH_ANIM_TURN &&
+      movement.allowStrafing &&
+      ((HasFocus() && selectedFocus->GetKeepFocusInViewForTest()) ||
+       ai_faceFocus.GetInteger() != 0);
+
+  if (shouldFaceFocus) {
+    idVec3 eyePosition;
+    GetEyePos(&eyePosition);
+    idVec3 focusVector =
+        selectedFocus->GetIdealFocusPoint() - eyePosition;
+    focusVector -= gravityNormal * (focusVector * gravityNormal);
+    const float focusLengthSquared = focusVector.LengthSqr();
+    const float normalizedFocusLengthSquared =
+        focusLengthSquared > idMath::FLT_SMALLEST_NON_DENORMAL
+            ? focusLengthSquared
+            : idMath::FLT_SMALLEST_NON_DENORMAL;
+    focusVector *=
+        1.0F / std::sqrt(normalizedFocusLengthSquared);
+
+    if (selectedFocus->GetFociType() != AIFOCI_AIM) {
+      const float maximumYawDot =
+          selectedFocus->GetAimTracker()
+              .GetMaximumYawDotForBodyOrientation();
+      if ((focusVector * velocity) <= maximumYawDot) {
+        idVec3 crossDirection = focusVector.Cross(gravityNormal);
+        const float crossLengthSquared = crossDirection.LengthSqr();
+        const float normalizedCrossLengthSquared =
+            crossLengthSquared > idMath::FLT_SMALLEST_NON_DENORMAL
+                ? crossLengthSquared
+                : idMath::FLT_SMALLEST_NON_DENORMAL;
+        crossDirection *=
+            1.0F / std::sqrt(normalizedCrossLengthSquared);
+        float yawSign = 0.0F;
+        if ((crossDirection * velocity) > 0.0F) yawSign = -1.0F;
+        const float yawRadians =
+            yawSign * selectedFocus->GetAimTracker()
+                          .GetMaximumYawRadiansForBodyOrientation();
+        focusVector = idMat3(gravityNormal, yawRadians) * focusVector;
+      } else {
+        focusVector = velocity;
+      }
+    }
+
+    bodyOrientation->SetIdealDir(this, focusVector);
+    const float frameSeconds =
+        static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F;
+    bodyOrientation->UpdateAxis(gravityNormal, turnRate, frameSeconds);
+    return;
+  }
+
+  bodyOrientation->SetIdealDir(this, movementIdealDirection);
+  const turnDirection_t calculatedTurnDirection =
+      bodyOrientation->CalculateTurnDirection(gravityNormal);
+  float turnVelocity = bodyOrientation->GetTurnVelocity();
+  const turnDirection_t currentTurnDirection =
+      bodyOrientation->GetCurrentTurnDirection();
+  if (calculatedTurnDirection == currentTurnDirection ||
+      currentTurnDirection == TURN_NONE) {
+    if (calculatedTurnDirection == TURN_LEFT) {
+      if (turnVelocity < 1.0F) {
+        if (turnVelocity < 0.0F) {
+          turnVelocity += 0.2F;
+        } else if (turnVelocity < 0.5F) {
+          turnVelocity += 0.1F;
+        } else {
+          turnVelocity += 0.025F;
+        }
+      }
+    } else if (turnVelocity > -1.0F) {
+      if (turnVelocity > 0.0F) {
+        turnVelocity -= 0.2F;
+      } else if (turnVelocity > -0.5F) {
+        turnVelocity -= 0.1F;
+      } else {
+        turnVelocity -= 0.025F;
+      }
+    }
+  }
+  bodyOrientation->SetTurnVelocity(turnVelocity);
+
+  const float frameSeconds =
+      static_cast<float>(gameLocal->GetGameMsPerFrame()) * 0.001F;
+  turnDirection_t forcedTurnDirection;
+  float velocityScaledTurnRate;
+  if (turnVelocity < 0.0F) {
+    forcedTurnDirection = TURN_RIGHT;
+    velocityScaledTurnRate = turnRate * turnVelocity * -1.5F;
+  } else {
+    forcedTurnDirection = TURN_LEFT;
+    velocityScaledTurnRate = turnRate * turnVelocity * 1.5F;
+  }
+  bodyOrientation->UpdateBodyAxis(gravityNormal, forcedTurnDirection,
+                                  velocityScaledTurnRate, frameSeconds);
+  bodyOrientation->SetCurrentTurnDirection(calculatedTurnDirection);
+}
 // DIA: idAI2::StartStaggeringPain
-idRecoveredValue idAI2::StartStaggeringPain(...) { return RecordCoreCall("StartStaggeringPain"); }
+bool idAI2::StartStaggeringPain(const idAIDamageInfo& info) {
+  if ((!componentTimeLine->RunningActionScript(this) ||
+       (actionScriptFlags & 0x100) == 0) &&
+          componentTimeLine->RunningActionScript(this) ||
+      !hasLongPainAnimations || staggeringPainActive ||
+      info.NumImpulses() == 0 || IsDead() || endStunnedTime != 0) {
+    return false;
+  }
+
+  if (longPainMinInterval > 0.0F &&
+      gameLocal->GetGameTimeMs() <
+          painEndTime - static_cast<int>(longPainMinInterval * -1000.0F)) {
+    return false;
+  }
+  if (moveState->IsPlayingTraversalAnim()) return false;
+
+  const char* injuryDamageGroupName = damageInfo->GetInjuryDamageGroup();
+  const idDamageGroup* injuryDamageGroup = nullptr;
+  for (const idDamageGroup& group : staggerDamageGroups) {
+    if (idStr::Icmp(group.groupName.data, injuryDamageGroupName) == 0) {
+      injuryDamageGroup = &group;
+      break;
+    }
+  }
+  if (injuryDamageGroup != nullptr) {
+    const int goreLevelIndex = damageInfo->GetInjuryGoreLevelIndex();
+    if (goreLevelIndex >= 0 &&
+        goreLevelIndex <
+            static_cast<int>(injuryDamageGroup->goreLevelInfo.size()) &&
+        !injuryDamageGroup->goreLevelInfo[
+             static_cast<std::size_t>(goreLevelIndex)]
+             .enablePainAndDeath) {
+      return false;
+    }
+  }
+
+  if ((GetPosture() == POSTURE_STANDING &&
+       gameLocal->GetGameTimeMs() - postureChangeTime < 1000) ||
+      ((groupStatusCondition & 8) != 0 &&
+       GetPosture() == POSTURE_CROUCHED)) {
+    return false;
+  }
+
+  bool armorPoppedOff = false;
+  bool forceInjured = false;
+  bool blinded = false;
+  const idDeclDamage* selectedDamageDecl = nullptr;
+  for (int index = 0; index < info.NumImpulses(); ++index) {
+    const idDamageImpulse* impulse = info.GetImpulseForTest(index);
+    if (impulse->damageDecl != nullptr) {
+      armorPoppedOff = armorPoppedOff || impulse->armorPoppedOff;
+      forceInjured = forceInjured || impulse->forceInjured;
+      blinded = blinded || impulse->blinded;
+      selectedDamageDecl = impulse->damageDecl;
+      if (armorPoppedOff && forceInjured && blinded) break;
+    }
+  }
+  if (selectedDamageDecl == nullptr) return false;
+
+  const idDeclAIBehavior* behavior = behaviorDeclaration;
+  if (behavior == nullptr || !behavior->damageBehaviors.canTakeDamage) {
+    return false;
+  }
+
+  bool injured = false;
+  if (canBecomeInjured) {
+    const int painGroupHandle = staggerPainGroupHandle;
+    idPhysics* physics = GetPhysics();
+    const auto& damageBehaviors = behavior->damageBehaviors;
+    if (painGroupHandle != 0 &&
+        idStr::Find(staggerPainGroupName.data, "leg", false, 0, -1) != -1 &&
+        physics != nullptr && physics->IsAIInjuryEligible() &&
+        damageBehaviors.injuredChance > 0 &&
+        (forceInjured || ai_forceInjury.valueInteger != 0 ||
+         GetAlertCycle() == ALERTCYCLE_RELAXED ||
+         (damageBehaviors.injuredHealthLimit >
+              healthComponent->GetBaseHealthRatio_Impl() &&
+          ([&damageBehaviors]() {
+            const unsigned int seed =
+                1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+            gameLocal->SetRandomSeed(seed);
+            return static_cast<int>(((seed >> 10U) & 0x7FFFU) % 100U) <
+                   damageBehaviors.injuredChance;
+          })()))) {
+      injured = true;
+    }
+  }
+
+  if (ai_allowStaggerPain.valueInteger == 0) return false;
+
+  if (!injured && !blinded && longPainDamageThreshold > 0.0F) {
+    float incomingDamageScale = 1.0F;
+    idEntity* attacker = info.GetAttacker();
+    if (dynamic_cast<const idPlayer*>(attacker) != nullptr) {
+      incomingDamageScale = gameLocal->GetAIIncomingDamageScale();
+    }
+    const float threshold = incomingDamageScale * longPainDamageThreshold;
+    bool exceedsThreshold = false;
+    for (int index = 0; index < info.NumImpulses(); ++index) {
+      if (info.GetImpulseForTest(index)->damage > threshold) {
+        exceedsThreshold = true;
+        break;
+      }
+    }
+    if (!exceedsThreshold) return false;
+  }
+
+  damageIntensity_t damageIntensity = selectedDamageDecl->damageParms.intensity;
+  if (damageIntensity == DAMAGEINTENSITY_NONE) {
+    const float maximumHealth =
+        healthComponent->GetMaximumBaseHealthForTest();
+    if (maximumHealth <= 0.0F) {
+      damageIntensity = DAMAGEINTENSITY_HEAVY;
+    } else {
+      const float damageRatio = info.GetFrameDamage() / maximumHealth;
+      if (damageRatio < 0.25999999F) {
+        damageIntensity = DAMAGEINTENSITY_LIGHT;
+      } else if (damageRatio >= 0.66000003F) {
+        damageIntensity = DAMAGEINTENSITY_HEAVY;
+      } else {
+        damageIntensity = DAMAGEINTENSITY_MEDIUM;
+      }
+    }
+  }
+
+  const float healthRatio = healthComponent->GetBaseHealthRatio_Impl();
+  if (!injured && !blinded && !armorPoppedOff && !info.ShouldPain() &&
+      (behavior->damageBehaviors.longPainDamageFilter &
+       selectedDamageDecl->damageParms.damageTypes) != 0 &&
+      healthRatio > behavior->damageBehaviors.longPainHealthLimit) {
+    return false;
+  }
+
+  const idVec3 impactPoint = info.GetAverageImpactPoint();
+  const idVec3 impactDirection = info.GetAverageImpactDir();
+  (void)impactPoint;
+  const float forward = impactDirection * staggerPainModelAxis[0];
+  const float side = impactDirection * staggerPainModelAxis[1];
+  damageDirection_t damageDirection;
+  if (forward >= 0.70710677F) {
+    damageDirection = DAMAGEDIR_BACK;
+  } else if (forward <= -0.70710677F) {
+    damageDirection = DAMAGEDIR_FRONT;
+  } else if (side <= -0.70710677F) {
+    damageDirection = DAMAGEDIR_LEFT;
+  } else {
+    damageDirection = DAMAGEDIR_RIGHT;
+  }
+
+  const int painGroupHandle = staggerPainGroupHandle;
+  if (painGroupHandle == 0) {
+    idLib::Warning("No pain group found for joint '%s'",
+                   staggerJointName.data);
+  }
+
+  const idDamageGroup* damageGroupFromJointGroup = nullptr;
+  if (staggerDamageGroupHandle != 0) {
+    for (const idDamageGroup& group : staggerDamageGroups) {
+      if (idStr::Icmp(group.groupName.data, staggerDamageGroupName.data) ==
+          0) {
+        damageGroupFromJointGroup = &group;
+        break;
+      }
+    }
+  }
+  if (damageGroupFromJointGroup != nullptr) {
+    for (int index = 0;
+         index < static_cast<int>(staggerDamageGroups.size()); ++index) {
+      if (staggerDamageGroups[static_cast<std::size_t>(index)].groupName ==
+          damageGroupFromJointGroup->groupName) {
+        damageInfo->SetMostDamagedIndex(index);
+      }
+    }
+  }
+
+  idFiniteStateMachine* alertCycleFSM = fsmManager->FindAlertCycleFSM();
+  if (alertCycleFSM != nullptr) {
+    painType_t painType = PAIN_STAGGER;
+    if (injured) {
+      painType = PAIN_INJURED;
+    } else if (blinded) {
+      painType = PAIN_BLINDED;
+    }
+
+    const idDamageImpulse* lastImpulse = info.GetLastImpulse();
+    staggerPainObservation.type = painType;
+    staggerPainObservation.jointIndex = info.GetJointIndex().value;
+    staggerPainObservation.attacker = info.GetAttacker();
+    staggerPainObservation.inflictor = info.GetInflictor();
+    staggerPainObservation.painGroupHandle = painGroupHandle;
+    staggerPainObservation.direction = damageDirection;
+    staggerPainObservation.intensity = damageIntensity;
+    staggerPainObservation.damageDecl =
+        lastImpulse != nullptr ? lastImpulse->damageDecl : nullptr;
+    ++staggerPainObservation.setPainCount;
+    alertCycleFSM->ProcessEvent(&FSMEvent_Pain, this);
+  }
+
+  if (ai_debugPain.valueInteger != 0 && ai_debugLevel.valueInteger != 0) {
+    static constexpr const char* damageIntensityNames[] = {
+        "none", "light", "medium", "heavy", "default"};
+    static constexpr const char* damageDirectionNames[] = {
+        "none",      "front",      "back",      "left",
+        "right",     "frontleft",  "frontright", "backleft",
+        "backright", "blinded",    "none"};
+    idLib::Printf(
+        "Staggering pain: (%d) '%s' num: %d body damage: %.0f (recent "
+        "%.0f%%) intensity: '%s' dir: '%s'\n",
+        gameLocal->GetGameTimeMs(), GetName(), info.NumImpulses(),
+        info.GetFrameDamage(), healthRatio * 100.0F,
+        damageIntensityNames[static_cast<int>(damageIntensity)],
+        damageDirectionNames[static_cast<int>(damageDirection)]);
+  }
+  return true;
+}
 // DIA: idAI2::StartDeathSystem
-idRecoveredValue idAI2::StartDeathSystem(...) { return RecordCoreCall("StartDeathSystem"); }
+void idAI2::StartDeathSystem(bool notCorpse) {
+  ++deathSystemObservation.callCount;
+  deathSystemObservation.notCorpse = notCorpse;
+
+  unsigned int deathFlags = deathInfo->GetDeathFlags();
+  if ((deathFlags & 1U) == 0U) {
+    localVoiceController->StopVoiceOver(this);
+  }
+  deathFlags |= 1U;
+  deathInfo->SetDeathFlags(deathFlags);
+
+  movePushStatus = AIMOVEPUSHSTATUS_PUSH_NONE;
+  movePushEndTime = 0;
+  idPhysics* physicsObject = GetPhysics();
+  const int deathClipMask = physicsObject->GetClipMask(-1) | 0x8000;
+  defaultPhysicsClipMask |= 0x8000;
+  physicsObject->SetClipMask(deathClipMask, 0);
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  deathSystemObservation.timestamp = currentTime;
+  if (memory->GetCurScenePointForTest() != nullptr) {
+    memory->SetCurScenePoint(this, currentTime, nullptr);
+  }
+  if (memory->GetCurLookScenePointForTest() != nullptr) {
+    memory->SetCurLookScenePoint(this, currentTime, nullptr);
+  }
+  if (deathInfo->GetStartDeathTime() < 0) {
+    deathInfo->SetStartDeathTime(gameLocal->GetGameTimeMs());
+  }
+
+  if (robotState.usesRobot || usesDrone) {
+    flareFadeOutEffect = true;
+  }
+  if (deathUsesTesla &&
+      (teslaDischargeTime >= 0 || teslaExplodeTime >= 0)) {
+    ++deathSystemObservation.stopTeslaCount;
+    deathSystemObservation.lastStopTeslaImmediate = false;
+    deathSystemObservation.lastStopTeslaTime = currentTime;
+    StopTesla(false, currentTime);
+  }
+
+  if (notCorpse) {
+    ++deathSystemObservation.applyDeathAnimationCount;
+    ApplyDeathAnimationLogic(deathInfo.get());
+    DropAttachment(6);
+    DropAttachment(1);
+    DropAttachment(2);
+    checkpointKilled = gameLocal->GetCurrentCheckpoint();
+    deathSystemObservation.checkpointKilled = checkpointKilled;
+    if (deathVolatileGrenadeFlag && usesGrenades) {
+      RemoveAttachment(grenadeItemDeclaration);
+      animEventState.fakeGrenadeVisible = false;
+      ++deathSystemObservation.fakeGrenadeRemovalCount;
+    }
+  }
+
+  if (robotState.usesRobot) {
+    physicsObject->SetLinearVelocity({}, 0);
+    moveState->SetMoveStatus(MOVE_STATUS_DONE);
+    aiConstants->movement.moveSpeed.minimum = 0.0F;
+  }
+  if (ai_syncAF.valueInteger != 0 && notCorpse) {
+    BeginSync();
+  }
+
+  if (goredFullBody && deathTrigger != nullptr) {
+    deathTrigger->PostEventMS(&EV_Activate, 0, this);
+    deathTrigger = nullptr;
+  }
+
+  idFiniteStateMachine* killedFSM = fsmManager->FindAlertCycleFSM();
+  killedFSM->ProcessEvent(&FSMEvent_Killed);
+
+  gameLocal->RemoveAIWorldStateUser(this);
+  gameLocal->RemoveAIEventReceiver(this);
+  gameLocal->RemoveAIEntityEvents(this);
+  animEventState.meleeTraceActive = false;
+  ++deathSystemObservation.meleeTraceEndCount;
+  Unbind();
+
+  walkIKDeadKeepLastMods = walkIKActive;
+  deathSystemObservation.walkIKDeadKeepLastMods = walkIKDeadKeepLastMods;
+  walkIKActive = false;
+  walkIKEnabled = false;
+  ++deathSystemObservation.walkIKDisableAllCount;
+  deathSystemObservation.walkIKEndTime = gameLocal->GetGameTimeMs();
+  deathSystemObservation.walkIKEndBlendTime = 200;
+  deathSystemObservation.walkIKEndReset = false;
+  ++deathSystemObservation.walkIKEndCount;
+
+  idWeapon* weapon = GetEquippedWeapon();
+  if (weapon != nullptr) {
+    weapon->ReleaseTrigger(this, false);
+    weapon->StopAllFX(GetFXMgrForAttachment(weapon));
+  }
+
+  StopSound(1, 0xFFU);
+  StopSound(2, 0xFFU);
+  StopSound(5, 0xFFU);
+  StopSound(6, 0xFFU);
+  StopSound(7, 0xFFU);
+
+  const idDeclDamage* damageDecl = deathInfo->GetImpulse().damageDecl;
+  if (damageDecl != nullptr) {
+    idStr damageName(damageDecl->name.str);
+    (void)damageName;
+    (void)ResolveDeathAttackerForName(deathInfo->GetAttacker());
+  }
+
+  const bool corpseLootable =
+      !goredFullBody && IsLootable() &&
+      (HasLootableItems() || HasLootableProjectiles());
+  if (presentable == nullptr) presentable = ownedEffectsPresentable.get();
+  presentable->SetAIDeathState(corpseLootable);
+
+  auto* focusOwner = reinterpret_cast<idAnimatedEntity*>(this);
+  focusInfos[0]->Clear(focusOwner);
+  focusInfos[1]->Clear(focusOwner);
+  animEventState.headTracking = false;
+  focusInfos[0]->SetEnableTracking(focusOwner, false);
+  focusInfos[1]->SetEnableTracking(focusOwner, false);
+
+  faceManager->SetEnableBlinking(this, false);
+  faceManager->SetEnableEyeTracking(this, false);
+  faceManager->SetEnableBlinking(this, false);
+  faceManager->SetEnableMoodAnimation(this, true);
+  faceManager->SetMood(MOOD_DEAD);
+
+  if (encounterGroupHandle != -1) {
+    idEncounterGroupManager* groupManager =
+        gameLocal->GetEncounterGroupManager();
+    if (groupManager != nullptr) {
+      idEncounterGroup* group = groupManager->GroupForHandle(
+          encounterGroupHandle_t{encounterGroupHandle});
+      if (group != nullptr) {
+        group->MemberKilled(this, deathInfo->GetAttacker(),
+                            deathInfo->GetInflictor());
+      }
+    }
+  }
+
+  if (!deathUseDeadPhysics) SetSolid(false);
+
+  const idVec3& impactDirection = deathInfo->GetImpulse().impactDir;
+  const float forward = impactDirection * deathModelAxis[0];
+  const float side = impactDirection * deathModelAxis[1];
+  damageDirection_t damageDirection;
+  if (forward >= 0.70710677F) {
+    damageDirection = DAMAGEDIR_BACK;
+  } else if (forward <= -0.70710677F) {
+    damageDirection = DAMAGEDIR_FRONT;
+  } else if (side <= -0.70710677F) {
+    damageDirection = DAMAGEDIR_LEFT;
+  } else {
+    damageDirection = DAMAGEDIR_RIGHT;
+  }
+
+  deathSystemObservation.painType = PAIN_DEATH;
+  deathSystemObservation.painJointIndex =
+      deathInfo->GetImpulse().jointIndex.value;
+  deathSystemObservation.painAttacker = deathInfo->GetAttacker();
+  deathSystemObservation.painInflictor = deathInfo->GetInflictor();
+  deathSystemObservation.painGroupHandle = deathPainGroupHandle;
+  deathSystemObservation.painDirection = damageDirection;
+  deathSystemObservation.painIntensity = DAMAGEINTENSITY_NONE;
+  deathSystemObservation.painDamageDecl = damageDecl;
+  ++deathSystemObservation.setPainCount;
+
+  if (deathRemoveTime != 0) {
+    PostEventMS(&EV_RemoveBody, static_cast<int>(
+                                    static_cast<float>(deathRemoveTime) *
+                                    1000.0F));
+  }
+
+  gameLocal->RemoveAIEventReceiver(this);
+  gameLocal->RemoveAIEntityEvents(this);
+  if (deathBehaviorBodyEventDecl != nullptr) {
+    const idVec3& origin = physicsObject->GetOrigin();
+    gameLocal->AddAIBehaviorBodyEvent(
+        deathBehaviorBodyEventDecl, gameLocal->GetGameTimeMs(), this,
+        deathInfo->GetAttacker(), origin, 0);
+  }
+
+  idPlayer* attackingPlayer =
+      dynamic_cast<idPlayer*>(const_cast<idEntity*>(deathInfo->GetAttacker()));
+  if (attackingPlayer != nullptr) {
+    if (goredFullBody && damageDecl != nullptr) {
+      const bool additionalGore = attackingPlayer->CheckAdditionalGoreTypes(
+          damageDecl->damageParms.damageTypes);
+      if ((damageDecl->damageParms.damageTypes & 0x80U) != 0U &&
+          ((damageDecl->damageParms.goreTypes & 0x400U) != 0U ||
+           (additionalGore &&
+            (damageDecl->damageParms.unlockableGoreTypes & 0x400U) != 0U))) {
+        attackingPlayer->PostEventMS(&EV_VaporizedAI, 0);
+      }
+    }
+
+    if (isCommander && attackingPlayer->IsCommanderHUDEnabled()) {
+      const idVec3 playerOrigin =
+          attackingPlayer->GetPhysics()->GetOrigin();
+      const idVec3 aiOrigin = physicsObject->GetOrigin();
+      const float distanceSquared = (playerOrigin - aiOrigin).LengthSqr();
+      const float inverseDistance =
+          1.0F / std::sqrt(std::max(
+                     distanceSquared,
+                     std::numeric_limits<float>::min()));
+      constexpr int DANGERHUD_COMMANDER = 1;
+      gameLocal->AddUpdateSlot(
+          GetEntityNumber(), currentTime, DANGERHUD_COMMANDER,
+          distanceSquared * inverseDistance, firstAlarm, IsDead(), false,
+          (deathFlags & 0xC020U) != 0U);
+    }
+  }
+
+  if (triggerOnDying != nullptr) {
+    triggerOnDying->PostEventMS(&EV_Activate, 0, this);
+  }
+
+  const idInventoryCollection* playerInventory =
+      attackingPlayer != nullptr ? attackingPlayer->GetInventory() : nullptr;
+  if (deathFocusOverride->RequirementFilled(playerInventory)) {
+    idEntity* spawnedFocus = gameLocal->SpawnEntityFromDef(
+        deathFocusOverride->GetGiveEntityDefinitionForTest());
+    if (spawnedFocus != nullptr) {
+      focusOverrideEntity = spawnedFocus;
+      deathSystemObservation.focusOverrideEntity = spawnedFocus;
+      spawnedFocus->SetDeathSpawnedFlag();
+      spawnedFocus->BindToJoint(this, 1, false);
+    }
+  }
+
+  if (deathSpawnEntityDef != nullptr) {
+    idEntity* spawnedDeath =
+        gameLocal->SpawnEntityFromDef(deathSpawnEntityDef);
+    if (spawnedDeath != nullptr) {
+      idVec3 spawnedOrigin = physicsObject->GetOrigin();
+      spawnedOrigin.z += 20.0F;
+      const idMat3 spawnedAxis = physicsObject->GetAxis();
+      auto nextRandomUnit = []() {
+        const unsigned int seed =
+            1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+        gameLocal->SetRandomSeed(seed);
+        return static_cast<float>((seed >> 10U) & 0x7FFFU) *
+               0.000030518509F;
+      };
+
+      const float angularZ = nextRandomUnit() * 2.0F - 1.0F;
+      const float angularY = nextRandomUnit() * 2.0F - 1.0F;
+      const float angularX = nextRandomUnit() * 2.0F - 1.0F;
+      const float linearY = nextRandomUnit() * 20.0F - 10.0F;
+      const float linearX = nextRandomUnit() * 20.0F - 10.0F;
+      const idVec3 angularVelocity{angularX, angularY, angularZ};
+      const idVec3 linearVelocity{linearX, linearY, 200.0F};
+
+      spawnedDeath->SetOrigin(spawnedOrigin);
+      spawnedDeath->SetAxis(spawnedAxis);
+      idPhysics* spawnedPhysics = spawnedDeath->GetPhysics();
+      spawnedPhysics->SetLinearVelocity(linearVelocity, 0);
+      spawnedPhysics->SetAngularVelocity(angularVelocity, 0);
+      deathSystemObservation.deathSpawnedEntity = spawnedDeath;
+      deathSystemObservation.deathSpawnLinearVelocity = linearVelocity;
+      deathSystemObservation.deathSpawnAngularVelocity = angularVelocity;
+      if (spawnedDeath->IsMoveableProp()) {
+        spawnedDeath->SetWhoDroppedMe(this);
+        spawnedDeath->DropToFloor(false);
+      }
+    }
+  }
+
+  if (teslaBombFXEntity != nullptr) {
+    teslaBombFXEntity->PostEventMS(&EV_Remove, 10000);
+  }
+}
 // DIA: `idAI2::StartDeathSystem'::`1'::dtor$2
 // DIA: idAI2::KilledNotification
-idRecoveredValue idAI2::KilledNotification(...) { return RecordCoreCall("KilledNotification"); }
+void idAI2::KilledNotification(idEntity* victim, idEntity* inflictor,
+                               const idDeclDamage* damageDecl, float damage,
+                               bool killedByDualWield, bool coverKill) {
+  (void)inflictor;
+  (void)damageDecl;
+  (void)damage;
+  (void)killedByDualWield;
+  (void)coverKill;
+
+  if (victim != nullptr) {
+    idFaction* faction = GetFaction();
+    if (faction->GetAttitudeTowards(victim) <
+            idRelationship::ATTITUDE_NEUTRAL &&
+        enemyKilledVOEventDecl != nullptr) {
+      const int currentTime = gameLocal->GetGameTimeMs();
+      const idVec3& origin = GetPhysics()->GetOrigin();
+      gameLocal->AddAIEvent(enemyKilledVOEventDecl, currentTime, nullptr, this,
+                            origin, 1000);
+    }
+  }
+
+  memory->SetActionEntity(victim);
+  if (dynamic_cast<idPlayer*>(victim) != nullptr) {
+    killedNotificationFlags |= 2U;
+  }
+}
 // DIA: idAI2::Takedown
-idRecoveredValue idAI2::Takedown(...) { return RecordCoreCall("Takedown"); }
+void idAI2::Takedown(idEntity* activator, bool dualWield,
+                     bool reversedGrip, takedownMode_t takeDownMode) {
+  takedownObservation.Reset();
+  ++takedownObservation.callCount;
+  takedownObservation.activator = activator;
+  takedownObservation.requestedMode = takeDownMode;
+  takedownObservation.inputDualWield = dualWield;
+  takedownObservation.reversedGrip = reversedGrip;
+
+  idPlayer* player = dynamic_cast<idPlayer*>(activator);
+  if (player == nullptr) return;
+
+  const idVec3 playerOrigin = player->GetPhysics()->GetOrigin();
+  const idVec3 physicalAIOrigin = GetPhysics()->GetOrigin();
+  float takedownHeight = physicalAIOrigin.z;
+  if (usesDrone) takedownHeight = dronePresentOrigin.z - 60.0F;
+  takedownHeight = (std::max)(playerOrigin.z, takedownHeight);
+
+  const idMat3 playerModelAxis = *player->GetPresentableAxis();
+  const idQuat playerModelRotation = playerModelAxis.ToQuat();
+  const idVec3 aiOrigin = usesDrone ? dronePresentOrigin : physicalAIOrigin;
+  const idVec3 aiDestination{aiOrigin.x, aiOrigin.y, takedownHeight};
+  idMat3 aiAxis = playerModelAxis;
+
+  idStr takedownName;
+  if (takedownType.GetInteger() != -1) {
+    takeDownMode = static_cast<takedownMode_t>(takedownType.GetInteger());
+  }
+  takedownObservation.resolvedMode = takeDownMode;
+
+  const idList<idStr, 5>* selectedTakedowns = nullptr;
+  bool selectedDualWield = dualWield;
+  bool nameSelected = false;
+  switch (takeDownMode) {
+    case TAKEDOWNMODE_STEALTH:
+      deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() | 0x8000U);
+      if (usesDrone) return;
+      if (dualWield) {
+        selectedTakedowns = reversedGrip ? &takedownTypes.stealthDWREV
+                                         : &takedownTypes.stealthDWFWD;
+      } else {
+        selectedTakedowns = reversedGrip ? &takedownTypes.stealthSWREV
+                                         : &takedownTypes.stealthSWFWD;
+      }
+      break;
+
+    case TAKEDOWNMODE_COMBAT:
+      deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() | 0x4000U);
+      aiAxis.RotateSelf(aiAxis[2], idMath::PI);
+      if (dualWield) {
+        selectedTakedowns = reversedGrip ? &takedownTypes.counterDWREV
+                                         : &takedownTypes.counterDWFWD;
+      } else {
+        selectedTakedowns = reversedGrip ? &takedownTypes.counterSWREV
+                                         : &takedownTypes.counterSWFWD;
+      }
+      break;
+
+    case TAKEDOWNMODE_STUNNED:
+      aiAxis.RotateSelf(aiAxis[2], idMath::PI);
+      selectedTakedowns = reversedGrip ? &takedownTypes.stunnedSWREV
+                                       : &takedownTypes.stunnedSWFWD;
+      break;
+
+    case TAKEDOWNMODE_CUSTOM:
+      aiAxis.RotateSelf(aiAxis[2], idMath::PI);
+      selectedTakedowns = &takedownTypes.customGeneric;
+      break;
+
+    case TAKEDOWNMODE_GROUND: {
+      selectedDualWield = false;
+      idVec3 toPlayer = playerOrigin - aiDestination;
+      toPlayer.Normalize();
+      const idMat3 aiModelAxis = *GetPresentableAxis();
+      idVec3 forward{aiModelAxis[0].x, aiModelAxis[0].y, 0.0F};
+      forward.Normalize();
+      const float forwardDot = forward * toPlayer;
+      if (forwardDot <= 0.5F && forwardDot >= -0.5F &&
+          takedownTypes.groundLeft.Num() != 0 &&
+          takedownTypes.groundRight.Num() != 0) {
+        idVec3 right{aiModelAxis[1].x, aiModelAxis[1].y, 0.0F};
+        right.Normalize();
+        if (right * toPlayer <= 0.0F) {
+          aiAxis.RotateSelf(aiAxis[2], -idMath::PI * 0.5F);
+          nameSelected = GetTakedownName(&takedownTypes.groundRight,
+                                         &takedownName);
+        } else {
+          aiAxis.RotateSelf(aiAxis[2], idMath::PI * 0.5F);
+          nameSelected = GetTakedownName(&takedownTypes.groundLeft,
+                                         &takedownName);
+        }
+      } else if (forwardDot <= 0.0F) {
+        nameSelected = GetTakedownName(&takedownTypes.groundRear,
+                                       &takedownName);
+      } else {
+        aiAxis.RotateSelf(aiAxis[2], idMath::PI);
+        nameSelected = GetTakedownName(&takedownTypes.groundFront,
+                                       &takedownName);
+      }
+      break;
+    }
+
+    default:
+      aiAxis.RotateSelf(aiAxis[2], idMath::PI);
+      selectedTakedowns = &takedownTypes.AITakedowns;
+      break;
+  }
+
+  if (selectedTakedowns != nullptr) {
+    nameSelected = GetTakedownName(selectedTakedowns, &takedownName);
+  }
+  takedownObservation.selectedDualWield = selectedDualWield;
+  takedownObservation.selectedName = nameSelected;
+  takedownObservation.takedownName = takedownName;
+  takedownObservation.aiDestination = aiDestination;
+  takedownObservation.aiAxis = aiAxis;
+  if (!nameSelected) return;
+
+  cutNextMeleeDamage = true;
+  animEventState.meleeTraceActive = false;
+  ++takedownObservation.meleeTraceEndCount;
+
+  idFSMManager::idFSMStack stack;
+  if (takeDownMode == TAKEDOWNMODE_COUNTER) {
+    stack.Add(fsmManager->GetFSM(0), "CombatScenePoint");
+    stack.Add(fsmManager->GetCombatScenePointFSMForTest(),
+              "SharedWaitForAnimation");
+    fsmManager->SetFSMStack(stack);
+  } else if (!usesDrone) {
+    deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() | 0x30U);
+    deathInfo->SetDeathImmediateRagdoll(false);
+    stack.Add(fsmManager->GetFSM(0), "Dying");
+    fsmManager->SetFSMStack(stack);
+    SetSolid(false);
+  }
+
+  scriptProxy.blocking = false;
+  scriptProxy.ProcessEvent(
+      "ACTION_PerfectMovementEnter",
+      {idAIScriptEventArg::Entity(this),
+       idAIScriptEventArg::Vector(aiOrigin),
+       idAIScriptEventArg::Quaternion(aiAxis.ToQuat()),
+       idAIScriptEventArg::String("takedowns"),
+       idAIScriptEventArg::String(takedownName.data),
+       idAIScriptEventArg::Integer(1), idAIScriptEventArg::Integer(0),
+       idAIScriptEventArg::Integer(1)});
+
+  if (takeDownMode != TAKEDOWNMODE_COUNTER) {
+    walkIKActive = false;
+    walkIKEnabled = false;
+    ++takedownObservation.walkIKDisableAllCount;
+    takedownObservation.walkIKEndTime = gameLocal->GetGameTimeMs();
+    takedownObservation.walkIKEndBlendTime = 200;
+    takedownObservation.walkIKEndReset = false;
+    ++takedownObservation.walkIKEndCount;
+
+    const idDeclAnimWeb* declaration =
+        animWebAnimators[AIANIMWEB_BODY]->GetDeclaration();
+    const animWebSubWebIndex_t subWeb =
+        declaration->GetSubWebIndexForName("takedowns");
+    const animWebStateIndex_t state =
+        declaration->GetStateIndexForName(takedownName.data);
+    deathInfo->SetDebugDeathAnimState(declaration->GetStateName(state));
+    const animWebNodeIndex_t node =
+        declaration->FindNodeIndex(subWeb, state);
+    if (node.value >= 0 && node.value < declaration->nodes.Num() &&
+        declaration->nodes[node.value] != nullptr) {
+      deathInfo->SetDeathAnimationNode(declaration->nodes[node.value]);
+    }
+    deathInfo->AddAnimationFlags(2U);
+  }
+
+  const idVec3 playerTarget{playerOrigin.x, playerOrigin.y, takedownHeight};
+  player->StartPerfectOrigin(playerModelRotation, playerTarget, 100);
+  player->SetPendingHandsAction(9, false);
+  player->PlayerBehavior_Takedown_StartTakedown(
+      takedownName.data, aiDestination, aiAxis, selectedDualWield);
+}
 // DIA: `idAI2::Takedown'::`1'::dtor$0
 // DIA: `idAI2::Takedown'::`1'::dtor$1
 // DIA: `idAI2::Takedown'::`1'::dtor$2
@@ -4563,7 +6089,60 @@ idRecoveredValue idAI2::Takedown(...) { return RecordCoreCall("Takedown"); }
 // DIA: `idAI2::Takedown'::`1'::dtor$8
 // DIA: `idAI2::Takedown'::`1'::dtor$9
 // DIA: idAI2::Use
-idRecoveredValue idAI2::Use(...) { return RecordCoreCall("Use"); }
+bool idAI2::Use(idEntity* activator, const usableState_t usable) {
+  idPlayer* player = dynamic_cast<idPlayer*>(activator);
+  if (player == nullptr) return false;
+
+  idAnimator_AF* articulatedFigure = GetAFMutable();
+  if (usable == USABLE_DISASSEMBLE) {
+    const bool fullHealth =
+        healthComponent->GetTotalCurHealth_Impl() ==
+        healthComponent->GetTotalMaxHealth_Impl();
+    player->Disassemble(GetDisassembleLoot(), this);
+    SetLooted(true);
+
+    int removeDelay = 0;
+    if (!fullHealth) {
+      if (articulatedFigure->IsLoaded()) {
+        StartRagdoll(&ragdollInfo);
+        articulatedFigure->SetGravity(gameLocal->GetGravity());
+        idVec3 direction =
+            player->GetPhysics()->GetOrigin() - articulatedFigure->GetOrigin();
+        direction.Normalize();
+        articulatedFigure->UnattachBones(direction);
+      }
+      removeDelay = 3000;
+    }
+    PostEventMS(&EV_Remove, removeDelay);
+    return true;
+  }
+
+  if (usable == USABLE_LOOT) {
+    player->LootBoundItems(this);
+    const bool fullLoot = player->LootItems(this, nullptr);
+    if (idEntity* item = droppedItem1) {
+      player->LootBoundItems(item);
+      HandleLoot(fullLoot, item, activator);
+    }
+    if (idEntity* item = droppedItem2) {
+      player->LootBoundItems(item);
+      HandleLoot(fullLoot, item, activator);
+    }
+    return true;
+  }
+
+  if (usable == USABLE_AI_TALK) {
+    idFaction* playerFaction = player->GetFaction();
+    if ((playerFaction == nullptr ||
+         playerFaction->GetAttitudeTowards(GetFaction()) >=
+             idRelationship::ATTITUDE_NEUTRAL) &&
+        memory->IsInteractionUsable()) {
+      memory->SetTriggeredInteraction(player);
+      return true;
+    }
+  }
+  return false;
+}
 // DIA: idAI2::InteractionCameraDeactivateCallback
 void idAI2::InteractionCameraDeactivateCallback(idPlayer* player) {
   SetLookFocusEntity(player, true, AIMPOINT_HEAD, -1);
@@ -4579,28 +6158,192 @@ void idAI2::SetActionNodeGroupName(const char* groupName) {
   currentActionNode = nullptr;
 }
 // DIA: idAI2::UpdateAvoidCharacter
-idRecoveredValue idAI2::UpdateAvoidCharacter(...) { return RecordCoreCall("UpdateAvoidCharacter"); }
+void idAI2::UpdateAvoidCharacter() {
+  const int currentTime = gameLocal->GetGameTimeMs();
+  if (!memory->ShouldAvoid(currentTime)) {
+    memory->ClearAvoid();
+    return;
+  }
+
+  const idEntity* avoidEntity = memory->GetAvoidEntityForTest();
+  const float avoidRadius = memory->GetAvoidRadiusForTest();
+  if (avoidEntity == nullptr) return;
+
+  const idProjectile_Grenade* grenade =
+      dynamic_cast<const idProjectile_Grenade*>(avoidEntity);
+  const bool grenadeDetonated =
+      grenade != nullptr && currentTime >= grenade->GetDetonationTime();
+  if (grenadeDetonated) {
+    memory->ClearAvoid();
+    return;
+  }
+  const idVec3 delta =
+      GetPhysics()->GetOrigin() - avoidEntity->GetPhysics()->GetOrigin();
+  if (delta.LengthSqr() >= avoidRadius * avoidRadius) {
+    memory->ClearAvoid();
+  }
+}
 // DIA: idAI2::ShouldHoldFire
-idRecoveredValue idAI2::ShouldHoldFire(...) { return RecordCoreCall("ShouldHoldFire"); }
+aiHoldFireReason_t idAI2::ShouldHoldFire(const idEntity* enemy) {
+  const int currentTime = gameLocal->GetGameTimeMs();
+  aiHoldFireReason_t result = AI_HOLDFIRE_REASON_NONE;
+
+  if (IsBlockedByFriendly(enemy) && result < AI_HOLDFIRE_REASON_FRIENDLY) {
+    result = AI_HOLDFIRE_REASON_FRIENDLY;
+  }
+
+  if (GetSpotGainedFireTime() > 0.0F) {
+    const idAIEntityState* entityState = worldState->StateForEntity(enemy);
+    if (entityState != nullptr && entityState->active &&
+        entityState->spotDuration >= 0) {
+      const idAIEntityState* durationState =
+          worldState->StateForEntity(enemy);
+      const int spotDuration =
+          durationState != nullptr && durationState->active &&
+                  durationState->spotDuration >= 0
+              ? durationState->spotDuration
+              : -1;
+      if (spotDuration <
+          static_cast<int>(GetSpotGainedFireTime() * 1000.0F)) {
+        if (result < AI_HOLDFIRE_REASON_NOREGAIN) {
+          result = AI_HOLDFIRE_REASON_NOREGAIN;
+        }
+      }
+    }
+  }
+
+  (void)gameLocal->GetGameTimeMs();
+  const idAIEntityState* entityState = worldState->StateForEntity(enemy);
+  if (entityState == nullptr || !entityState->active ||
+      entityState->spotDuration < 0) {
+    const float spotLostFireTime = GetSpotLostFireTime();
+    const idAIEntityState* recentState = worldState->StateForEntity(enemy);
+    if (!IsRecentlySpotted(recentState, spotLostFireTime) &&
+        !IsBlindFiring() && result < AI_HOLDFIRE_REASON_SPOTLOST) {
+      result = AI_HOLDFIRE_REASON_SPOTLOST;
+    }
+  }
+
+  if (enemy != nullptr) {
+    const idVec3 enemyPosition = enemy->GetPhysics()->GetOrigin();
+    if (maxFireRange > 0.0F) {
+      const idVec3 targetPosition =
+          enemy == currentEnemy && currentEnemySuspectedPosition.valid
+              ? currentEnemySuspectedPosition.pos
+              : enemyPosition;
+      const idVec3 targetDelta =
+          targetPosition - GetPhysics()->GetOrigin();
+      if (targetDelta.LengthSqr() > maxFireRange * maxFireRange) {
+        if (result < AI_HOLDFIRE_REASON_RANGE) {
+          result = AI_HOLDFIRE_REASON_RANGE;
+        }
+      } else {
+        idWeapon* weapon = GetEquippedWeapon();
+        const idDeclAIBehavior* behavior = behaviorDeclaration;
+        if (weapon != nullptr && behavior != nullptr && weapon->IsMelee()) {
+          const idVec3 selfPosition = GetPhysics()->GetOrigin();
+          const idVec3 meleeEnemyPosition = enemy->GetPhysics()->GetOrigin();
+          const float deltaX = meleeEnemyPosition.x - selfPosition.x;
+          const float deltaY = meleeEnemyPosition.y - selfPosition.y;
+          const float horizontalDistance = std::sqrt((std::max)(
+              deltaX * deltaX + deltaY * deltaY,
+              std::numeric_limits<float>::min()));
+          const float verticalDistance =
+              std::fabs(meleeEnemyPosition.z - selfPosition.z);
+
+          bool rangeFailure = false;
+          if (behavior->grappleHeight <= 0.0F) {
+            const idBounds& bounds = GetPhysics()->GetAbsBounds();
+            rangeFailure =
+                (bounds[1].z - bounds[0].z) * 0.75F <= verticalDistance;
+          } else {
+            rangeFailure = behavior->grappleHeight <= verticalDistance;
+          }
+
+          if (!rangeFailure) {
+            rangeFailure = !gameLocal->TestGrappler(
+                GetEntityNumber(), gameLocal->GetGameTimeMs(),
+                horizontalDistance);
+          }
+
+          if (rangeFailure) {
+            if (result < AI_HOLDFIRE_REASON_RANGE) {
+              result = AI_HOLDFIRE_REASON_RANGE;
+            }
+            if (horizontalDistance > behavior->grappleMaxDistance &&
+                CanTaunt() &&
+                currentTime >= gameLocal->GetNextAITauntTime() &&
+                GetSpottedDuration(enemy, gameLocal->GetGameTimeMs()) >=
+                    3000) {
+              localVoiceController->PlayVoice(
+                  this, AIVOICE_COMBAT_MELEE_TAUNT);
+              const float intervalRange =
+                  tauntMaximumInterval - tauntMinimumInterval;
+              const std::uint32_t seed =
+                  1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+              gameLocal->SetRandomSeed(seed);
+              const float randomFraction =
+                  static_cast<float>((seed >> 10U) & 0x7FFFU) *
+                  0.000030518509F;
+              const int interval = static_cast<int>(
+                  randomFraction * intervalRange * 1000.0F +
+                  tauntMinimumInterval * 1000.0F);
+              gameLocal->SetNextAITauntTime(currentTime + interval);
+              memory->SetFriendlyBlocker(const_cast<idEntity*>(enemy));
+            }
+          } else if (CanTaunt() &&
+                     currentTime >= gameLocal->GetNextAITauntTime() &&
+                     GetSpottedDuration(enemy,
+                                        gameLocal->GetGameTimeMs()) >= 3000) {
+            localVoiceController->PlayVoice(
+                this, AIVOICE_COMBAT_MELEE_TAUNT);
+            const float intervalRange =
+                tauntMaximumInterval - tauntMinimumInterval;
+            const std::uint32_t seed =
+                1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+            gameLocal->SetRandomSeed(seed);
+            const float randomFraction =
+                static_cast<float>((seed >> 10U) & 0x7FFFU) *
+                0.000030518509F;
+            const int interval = static_cast<int>(
+                randomFraction * intervalRange * 1000.0F +
+                tauntMinimumInterval * 1000.0F);
+            gameLocal->SetNextAITauntTime(static_cast<int>(
+                static_cast<float>(currentTime) +
+                static_cast<float>(interval) * 2.0F));
+          }
+        }
+      }
+    }
+  }
+
+  if (usesDrone) {
+    robotDeathDroneAnimator->ShouldHoldFire(this, enemy, &result);
+  }
+  return result;
+}
 // DIA: idAI2::SetFakeEnemy
 void idAI2::SetFakeEnemy(idEntity* entity) {
-  if (fakeEnemy != entity) {
+  if (GetFakeEnemy() != entity) {
     fakeEnemy = entity;
     fakeEnemyNumber = entity != nullptr ? entity->GetEntityNumber() : -1;
     currentEnemy = nullptr;
+    memory->SetEnemy(nullptr);
   }
 }
 // DIA: idAI2::ClearFakeEnemy
 void idAI2::ClearFakeEnemy() {
-  if (fakeEnemy != nullptr) {
+  if (GetFakeEnemy() != nullptr) {
     fakeEnemy = nullptr;
     fakeEnemyNumber = -1;
     currentEnemy = nullptr;
+    memory->SetEnemy(nullptr);
   }
 }
 // DIA: idAI2::ClearWorldState
 void idAI2::ClearWorldState() {
   currentEnemy = nullptr;
+  memory->SetEnemy(nullptr);
   worldState->Clear();
   fakeEnemy = nullptr;
   fakeEnemyNumber = -1;
@@ -4619,7 +6362,14 @@ void idAI2::SetupFakePosition(const idEntity* instigator,
     worldState->AddEntityState(gameState, &logic, instigatorId,
                                AISTIM_GUNFIRE, 1.0F, sourceId);
   } else {
-    if (controllingPlayer == nullptr &&
+    bool hasControllingPlayer = controllingPlayer != nullptr;
+    if (hasControllingPlayer && gameLocal != nullptr &&
+        controllingPlayer->GetEntityNumber() >= 0) {
+      hasControllingPlayer =
+          gameLocal->GetEntityByNumber(
+              controllingPlayer->GetEntityNumber()) == controllingPlayer;
+    }
+    if (!hasControllingPlayer &&
         aiEventState.alertCycle == ALERTCYCLE_RELAXED) {
       localVoiceController->PlayVoice(this, AIVOICE_SEARCH_NOTICE);
     }
@@ -4643,31 +6393,993 @@ void idAI2::SetupFakePosition(const idEntity* instigator,
   }
 }
 // DIA: idAI2::OnAIEvent_Voice
-idRecoveredValue idAI2::OnAIEvent_Voice(...) { return RecordCoreCall("OnAIEvent_Voice"); }
+void idAI2::OnAIEvent_Voice(const idAIEventVoice* event) {
+  if (event == nullptr || gameLocal == nullptr) return;
+
+  const idEntity* originator = event->GetOriginator();
+  if (originator != nullptr && originator->GetEntityNumber() >= 0 &&
+      gameLocal->GetEntityByNumber(originator->GetEntityNumber()) !=
+          originator) {
+    originator = nullptr;
+  }
+  const auto* sourceAI = dynamic_cast<const idAI2*>(originator);
+  if (sourceAI == nullptr) return;
+
+  idEncounterGroupManager* groupManager =
+      gameLocal->GetEncounterGroupManager();
+  idEncounterGroup* receiverGroup =
+      groupManager != nullptr && encounterGroupHandle != -1
+          ? groupManager->GroupForHandle(
+                encounterGroupHandle_t{encounterGroupHandle})
+          : nullptr;
+  idEncounterGroup* sourceGroup =
+      groupManager != nullptr && sourceAI->encounterGroupHandle != -1
+          ? groupManager->GroupForHandle(
+                encounterGroupHandle_t{sourceAI->encounterGroupHandle})
+          : nullptr;
+  const bool sameGroup = receiverGroup != nullptr &&
+                         sourceGroup != nullptr &&
+                         receiverGroup == sourceGroup;
+
+  const idEntity* instigator = event->GetInstigator();
+  if (instigator != nullptr && instigator->GetEntityNumber() >= 0 &&
+      gameLocal->GetEntityByNumber(instigator->GetEntityNumber()) !=
+          instigator) {
+    instigator = nullptr;
+  }
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId sourceId{sourceAI->GetEntityNumber()};
+  const idSpawnId instigatorId{
+      instigator != nullptr ? instigator->GetEntityNumber() : 0x1fff};
+  worldState->AddEntityState(gameState, &logic, sourceId,
+                             AISTIM_HEARING, 1.0F, sourceId);
+
+  if (!sameGroup) {
+    worldState->AddEntityState(gameState, &logic, instigatorId,
+                               AISTIM_HEARING, 1.0F, sourceId);
+    return;
+  }
+
+  switch (event->GetVoiceMessageType()) {
+    case 0:
+      worldState->AddEntityState(gameState, &logic, instigatorId,
+                                 AISTIM_GROUP_CONFIRMED, 1.0F, sourceId);
+      return;
+
+    case 1:
+    case 2:
+    case 5: {
+      worldState->AddEntityState(gameState, &logic, instigatorId,
+                                 AISTIM_GROUP_SUSPECTED, 1.0F, sourceId);
+      const bool closestMember =
+          receiverGroup->GetClosestActiveGroupMemberToPoint(
+              event->GetOrigin()) == this;
+      const idPhysics* physics = GetPhysics();
+      const float searchDistance = ai_searchToStimDist.GetFloat();
+      const bool withinSearchDistance =
+          physics != nullptr &&
+          searchDistance * searchDistance >
+              (event->GetOrigin() - physics->GetOrigin()).LengthSqr();
+      if (closestMember || withinSearchDistance) {
+        if (event->GetVoiceMessageType() != 1) {
+          (void)event->GetVoiceMessageType();
+        }
+      }
+      return;
+    }
+
+    case 3:
+    case 4:
+      return;
+
+    case 6: {
+      if (receiverGroup != nullptr) {
+        const int livingMembers = receiverGroup->NumLivingMembers();
+        const int deadMembers = receiverGroup->NumDeadMembers();
+        const idDeclAiEvent* queuedDeclaration = nullptr;
+        if (livingMembers <= 1 && deadMembers >= livingMembers) {
+          queuedDeclaration =
+              behaviorEventDeclarations.losingBattleVOEventDecl;
+        } else if (deadMembers <= 1) {
+          queuedDeclaration =
+              behaviorEventDeclarations.memberKilledVOEventDecl;
+        }
+        if (queuedDeclaration != nullptr) {
+          gameLocal->AddAIEvent(queuedDeclaration,
+                                gameLocal->GetGameTimeMs(), nullptr, this,
+                                GetPhysics()->GetOrigin(), 600);
+        }
+      }
+
+      if (GetAlertCycle() < ALERTCYCLE_COMBAT) {
+        // The recovered call is ICF-folded with idFocusInfo::GetFocusEntity,
+        // but its DIA source record is idAIEvent::GetOriginator.
+        const idPhysics* sourcePhysics = sourceAI->GetPhysics();
+        if (sourcePhysics != nullptr) {
+          worldState->AddEntityStateFakePosition(
+              gameState, &logic, instigatorId, AISTIM_GROUP_SUSPECTED,
+              1.0F, sourceId, sourcePhysics->GetOrigin());
+        }
+      }
+      return;
+    }
+
+    default:
+      idLib::Warning(
+          "idAI2::OnAIEvent_Voice - unhandled event '%s'",
+          "idAIEventVoice");
+      return;
+  }
+}
 // DIA: idAI2::OnAIEvent_Footstep
-idRecoveredValue idAI2::OnAIEvent_Footstep(...) { return RecordCoreCall("OnAIEvent_Footstep"); }
+void idAI2::OnAIEvent_Footstep(const idAIEventSound* event) {
+  if (event == nullptr || gameLocal == nullptr || perceptionDeaf) return;
+
+  const idVec3 delta = event->GetOrigin() - GetPhysics()->GetOrigin();
+  const idVec3 weightedDelta{delta.x, delta.y, delta.z * 3.0F};
+  const float radius = event->GetRadius();
+  if (weightedDelta.LengthSqr() > radius * radius) return;
+
+  (void)gameLocal->GetGameMsPerFrame();
+  const float stimulusAmount =
+      event->IsSoundType()
+          ? event->GetIntensity(this) * perceptionHearingStimulus
+          : 0.0F;
+
+  if (GetAlertCycle() >= ALERTCYCLE_COMBAT ||
+      perceptionCombatTimeoutInterval <= -1.0F) {
+    const idEntity* instigator = event->GetInstigator();
+    if (instigator != nullptr && instigator->GetEntityNumber() >= 0 &&
+        gameLocal->GetEntityByNumber(instigator->GetEntityNumber()) !=
+            instigator) {
+      instigator = nullptr;
+    }
+    aiLatchedEvent_t latchedEvent;
+    latchedEvent.eventId = event->GetHandle();
+    latchedEvent.relevantId = {
+        instigator != nullptr ? instigator->GetEntityNumber() : 0x1fff};
+    idAIGameState* gameState = gameLocal->GetAIGameState();
+    idAILogic logic(idSpawnId{GetEntityNumber()});
+    logic.SetGameState(gameState);
+    worldState->AddEntityStateFromEvent(
+        gameState, &logic, &latchedEvent, AISTIM_HEARING,
+        stimulusAmount, idSpawnId{GetEntityNumber()});
+    return;
+  }
+
+  if (stimulusAmount > 0.0F) {
+    const idEntity* instigator = event->GetInstigator();
+    if (instigator != nullptr && instigator->GetEntityNumber() >= 0 &&
+        gameLocal->GetEntityByNumber(instigator->GetEntityNumber()) !=
+            instigator) {
+      instigator = nullptr;
+    }
+    if (instigator != nullptr && instigator->GetPhysics() != nullptr) {
+      SetupFakePosition(instigator, instigator->GetPhysics()->GetOrigin(),
+                        false);
+    }
+  }
+}
 // DIA: idAI2::OnAIEvent_Gunfire
-idRecoveredValue idAI2::OnAIEvent_Gunfire(...) { return RecordCoreCall("OnAIEvent_Gunfire"); }
+void idAI2::OnAIEvent_Gunfire(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* originator = resolveSpawnAwareEntity(event->GetOriginator());
+  const idEntity* instigator = resolveSpawnAwareEntity(event->GetInstigator());
+
+  if (coreState.sleeping && usesSleeping && !IsDying() && !IsDead()) {
+    coreState.sleeping = false;
+  }
+
+  if ((robotState.usesRobot || usesDrone) &&
+      (endBlindedTime != 0 || endStunnedTime != 0)) {
+    return;
+  }
+
+  if (dynamic_cast<const idProjectile*>(originator) != nullptr) {
+    originator = instigator;
+    instigator = nullptr;
+  }
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId receiverId{GetEntityNumber()};
+  const idSpawnId originatorId{
+      originator != nullptr ? originator->GetEntityNumber() : 0x1fff};
+  const idSpawnId instigatorId{
+      instigator != nullptr ? instigator->GetEntityNumber() : 0x1fff};
+
+  worldState->AddEntityState(gameState, &logic, originatorId,
+                             AISTIM_GUNFIRE, 1.0F, receiverId);
+  idAIEntityState* originatorState = worldState->StateForEntity(originator);
+  if (originatorState != nullptr) {
+    aiPhysicalState_t physical;
+    gameState->GetPhysicalState(gameLocal, originator, &physical);
+    const idVec3 eyeOffset = physical.eyePos - physical.origin;
+    physical.origin = originator->GetPhysics()->GetOrigin();
+    if (const auto* player = dynamic_cast<const idPlayer*>(originator)) {
+      if (const idProxyMove* proxyMove = player->GetProxyMove()) {
+        physical.origin = proxyMove->GetProxyPlayerOrigin();
+      }
+    }
+    physical.eyePos = physical.origin + eyeOffset;
+    originatorState->SetSenseState(gameState, &logic, AISENSE_HEARING,
+                                   &physical, AISTIM_HEARING, receiverId);
+
+    idFiniteStateMachine* alertFSM = GetAlertCycleFSM();
+    const int scenePointTime = gameLocal->GetGameTimeMs();
+    const idEntity* alarmEntity = resolveSpawnAwareEntity(onAlarmTrigger);
+    if (dynamic_cast<const idTarget_AlarmSystem*>(alarmEntity) != nullptr &&
+        isCommander && memory->GetSoundAlarmTimeForTest() < 0 &&
+        !firstAlarm) {
+      idScenePoint* scenePoint = memory->GetCurScenePointForTest();
+      if (scenePoint == nullptr || (scenePoint->scriptFlags & 1U) == 0U ||
+          (scenePoint->scriptFlags & 0x300U) != 0U) {
+        memory->SetCurScenePoint(this, scenePointTime, nullptr);
+        memory->SetSoundAlarmTime(gameLocal->GetGameTimeMs() + 1000);
+        pendingReactions &= ~8U;
+        forbiddenReactions |= 8U;
+        pendingReactions &= ~4U;
+        forbiddenReactions |= 4U;
+
+        idEventArg reactionTimeArgument{};
+        reactionTimeArgument.type = static_cast<unsigned char>('i');
+        reactionTimeArgument.value.i = gameLocal->GetGameTimeMs();
+        idEventArg reactionTypeArgument{};
+        reactionTypeArgument.type = static_cast<unsigned char>('i');
+        reactionTypeArgument.value.i = 2;
+        idEventArg receiverArgument{};
+        receiverArgument.type = static_cast<unsigned char>('e');
+        receiverArgument.value.pointer = this;
+        (void)alertFSM->ProcessEvent(&FSMEvent_Reaction, receiverArgument,
+                                     reactionTypeArgument,
+                                     reactionTimeArgument);
+      }
+    }
+  }
+
+  memory->ClearAllTrailPositions(gameLocal->GetGameTimeMs());
+
+  if (const auto* sourceAI = dynamic_cast<const idAI2*>(originator)) {
+    bool shareShootingSense = shootingSenseUpdateCheat;
+    if (!shareShootingSense) {
+      idEncounterGroupManager* groupManager =
+          gameLocal->GetEncounterGroupManager();
+      idEncounterGroup* receiverGroup =
+          groupManager != nullptr && encounterGroupHandle != -1
+              ? groupManager->GroupForHandle(
+                    encounterGroupHandle_t{encounterGroupHandle})
+              : nullptr;
+      idEncounterGroup* sourceGroup =
+          groupManager != nullptr && sourceAI->encounterGroupHandle != -1
+              ? groupManager->GroupForHandle(
+                    encounterGroupHandle_t{sourceAI->encounterGroupHandle})
+              : nullptr;
+      shareShootingSense = receiverGroup != nullptr &&
+                           sourceGroup != nullptr &&
+                           receiverGroup == sourceGroup;
+    }
+
+    if (shareShootingSense) {
+      idAIEntityState* sourceState =
+          sourceAI->worldState->StateForEntity(instigator);
+      if (sourceState != nullptr && sourceState->active) {
+        const aiSenseState_t* sourceSense =
+            sourceState->senses[AISENSE_SIGHT];
+        if (sourceSense->lastUnconfirmedStimTime >= 0) {
+          idAIEntityState* destinationState =
+              worldState->StateForEntity(instigator);
+          if (destinationState == nullptr || !destinationState->active ||
+              destinationState
+                      ->senses[static_cast<std::size_t>(
+                          destinationState->lastSense)]
+                      ->GetConfirmedStimTimeSafe() <
+                  sourceSense->GetConfirmedStimTimeSafe()) {
+            worldState->AddEntityState(gameState, &logic, instigatorId,
+                                       AISTIM_GUNFIRE, 0.3F, originatorId,
+                                       sourceSense);
+          }
+        }
+      }
+    }
+  }
+
+  if (originator != nullptr && originator->GetFaction() != nullptr &&
+      originator->GetFaction()->GetAttitudeTowards(this) <
+          idRelationship::ATTITUDE_NEUTRAL &&
+      IsFacingMe(originator, firedAtCosAngleOff)) {
+    GetAlertCycleFSM()->PostEvent(
+        static_cast<int>(event->GetEventClass()), event,
+        static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+    memory->SetLastFiredAtTime(gameLocal->GetGameTimeMs());
+  }
+}
 // DIA: `idAI2::OnAIEvent_Gunfire'::`1'::dtor$0
+// Compiler-generated cleanup for reactionTimeArgument.
 // DIA: `idAI2::OnAIEvent_Gunfire'::`1'::dtor$1
+// Compiler-generated cleanup for reactionTypeArgument.
 // DIA: idAI2::OnAIEvent_Explosion
-idRecoveredValue idAI2::OnAIEvent_Explosion(...) { return RecordCoreCall("OnAIEvent_Explosion"); }
+void idAI2::OnAIEvent_Explosion(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  if (coreState.sleeping && usesSleeping && !IsDying() && !IsDead()) {
+    coreState.sleeping = false;
+  }
+
+  if (dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) != nullptr) {
+    return;
+  }
+  if (aiEventState.alertCycle >= ALERTCYCLE_COMBAT) return;
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  if (instigator != nullptr &&
+      GetFaction()->GetAttitudeTowards(instigator) >=
+          idRelationship::ATTITUDE_NEUTRAL) {
+    return;
+  }
+
+  idEncounterGroupManager* groupManager =
+      gameLocal->GetEncounterGroupManager();
+  if (groupManager != nullptr && encounterGroupHandle != -1 &&
+      groupManager->GroupForHandle(
+          encounterGroupHandle_t{encounterGroupHandle}) != nullptr) {
+    idEncounterGroup* group =
+        encounterGroupHandle != -1
+            ? groupManager->GroupForHandle(
+                  encounterGroupHandle_t{encounterGroupHandle})
+            : nullptr;
+    (void)group->AnyMemberHighestAlertCycle();
+  }
+
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+
+  if (instigator != nullptr && GetAlertCycle() < ALERTCYCLE_COMBAT) {
+    idAIGameState* gameState = gameLocal->GetAIGameState();
+    idAILogic logic(idSpawnId{GetEntityNumber()});
+    logic.SetGameState(gameState);
+    const idSpawnId instigatorId{instigator->GetEntityNumber()};
+    worldState->AddEntityStateFakePosition(
+        gameState, &logic, instigatorId, AISTIM_HEARING, 1.0F,
+        instigatorId, event->GetOrigin());
+
+    if (behaviorEventDeclarationsConfigured) {
+      gameLocal->AddAIEvent(
+          behaviorEventDeclarations.heardSomethingVoiceEventDecl,
+          gameLocal->GetGameTimeMs(), this, instigator,
+          GetPhysics()->GetOrigin(), 500);
+    }
+  }
+}
 // DIA: idAI2::OnAIEvent_ProjectileImpact
-idRecoveredValue idAI2::OnAIEvent_ProjectileImpact(...) { return RecordCoreCall("OnAIEvent_ProjectileImpact"); }
+void idAI2::OnAIEvent_ProjectileImpact(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  const bool hasControllingPlayer =
+      dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) != nullptr;
+  const bool canPostReaction =
+      !hasControllingPlayer && aiEventState.alertCycle < ALERTCYCLE_COMBAT;
+
+  if (canPostReaction) {
+    idEncounterGroupManager* groupManager =
+        gameLocal->GetEncounterGroupManager();
+    if (groupManager != nullptr && encounterGroupHandle != -1 &&
+        groupManager->GroupForHandle(
+            encounterGroupHandle_t{encounterGroupHandle}) != nullptr) {
+      idEncounterGroup* group =
+          encounterGroupHandle != -1
+              ? groupManager->GroupForHandle(
+                    encounterGroupHandle_t{encounterGroupHandle})
+              : nullptr;
+      if (group->AnyMemberHighestAlertCycle() == ALERTCYCLE_RELAXED) {
+        (void)GetPhysics()->GetOrigin();
+      }
+    }
+
+    GetAlertCycleFSM()->PostEvent(
+        static_cast<int>(event->GetEventClass()), event,
+        static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+  }
+
+  if (instigator == nullptr) return;
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId instigatorId{instigator->GetEntityNumber()};
+  worldState->AddEntityState(gameState, &logic, instigatorId,
+                             AISTIM_HEARING, 1.0F, instigatorId);
+
+  if (dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) == nullptr &&
+      aiEventState.alertCycle < ALERTCYCLE_COMBAT &&
+      behaviorEventDeclarationsConfigured) {
+    gameLocal->AddAIEvent(
+        behaviorEventDeclarations.heardSomethingVoiceEventDecl,
+        gameLocal->GetGameTimeMs(), this, instigator,
+        GetPhysics()->GetOrigin(), 500);
+  }
+}
 // DIA: idAI2::OnAIEvent_DeadBodyLand
-idRecoveredValue idAI2::OnAIEvent_DeadBodyLand(...) { return RecordCoreCall("OnAIEvent_DeadBodyLand"); }
+void idAI2::OnAIEvent_DeadBodyLand(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  if (dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) != nullptr) {
+    return;
+  }
+  if (aiEventState.alertCycle >= ALERTCYCLE_COMBAT) return;
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  idEncounterGroupManager* groupManager =
+      gameLocal->GetEncounterGroupManager();
+  if (groupManager != nullptr && encounterGroupHandle != -1 &&
+      groupManager->GroupForHandle(
+          encounterGroupHandle_t{encounterGroupHandle}) != nullptr) {
+    idEncounterGroup* group =
+        encounterGroupHandle != -1
+            ? groupManager->GroupForHandle(
+                  encounterGroupHandle_t{encounterGroupHandle})
+            : nullptr;
+    (void)group->AnyMemberHighestAlertCycle();
+  }
+
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+
+  if (instigator == nullptr || GetAlertCycle() >= ALERTCYCLE_COMBAT) return;
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId instigatorId{instigator->GetEntityNumber()};
+  worldState->AddEntityState(gameState, &logic, instigatorId,
+                             AISTIM_HEARING, 1.0F, instigatorId);
+
+  if (behaviorEventDeclarationsConfigured) {
+    gameLocal->AddAIEvent(
+        behaviorEventDeclarations.heardSomethingVoiceEventDecl,
+        gameLocal->GetGameTimeMs(), this, instigator,
+        GetPhysics()->GetOrigin(), 500);
+  }
+}
 // DIA: idAI2::OnAIEvent_DoorMotion
-idRecoveredValue idAI2::OnAIEvent_DoorMotion(...) { return RecordCoreCall("OnAIEvent_DoorMotion"); }
+void idAI2::OnAIEvent_DoorMotion(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  const bool hasControllingPlayer =
+      dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) != nullptr;
+
+  if (!hasControllingPlayer &&
+      aiEventState.alertCycle < ALERTCYCLE_COMBAT &&
+      instigator != nullptr) {
+    idAIGameState* gameState = gameLocal->GetAIGameState();
+    idAILogic logic(idSpawnId{GetEntityNumber()});
+    logic.SetGameState(gameState);
+    const idSpawnId instigatorId{instigator->GetEntityNumber()};
+    worldState->AddEntityStateFakePosition(
+        gameState, &logic, instigatorId, AISTIM_HEARING, 1.0F,
+        instigatorId, event->GetOrigin());
+
+    idEncounterGroupManager* groupManager =
+        gameLocal->GetEncounterGroupManager();
+    if (groupManager != nullptr && encounterGroupHandle != -1 &&
+        groupManager->GroupForHandle(
+            encounterGroupHandle_t{encounterGroupHandle}) != nullptr) {
+      idEncounterGroup* group =
+          encounterGroupHandle != -1
+              ? groupManager->GroupForHandle(
+                    encounterGroupHandle_t{encounterGroupHandle})
+              : nullptr;
+      if (group->AnyMemberHighestAlertCycle() == ALERTCYCLE_RELAXED) {
+        localVoiceController->PlayVoice(this, AIVOICE_SEARCH_NOTICE);
+      }
+    }
+  }
+
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+}
 // DIA: idAI2::OnAIEvent_DeploySound
-idRecoveredValue idAI2::OnAIEvent_DeploySound(...) { return RecordCoreCall("OnAIEvent_DeploySound"); }
+void idAI2::OnAIEvent_DeploySound(const idAIEventSound* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  const bool hasControllingPlayer =
+      dynamic_cast<const idPlayer*>(
+          resolveSpawnAwareEntity(controllingPlayer)) != nullptr;
+
+  if (!hasControllingPlayer &&
+      aiEventState.alertCycle < ALERTCYCLE_COMBAT) {
+    idEncounterGroupManager* groupManager =
+        gameLocal->GetEncounterGroupManager();
+    if (groupManager != nullptr && encounterGroupHandle != -1 &&
+        groupManager->GroupForHandle(
+            encounterGroupHandle_t{encounterGroupHandle}) != nullptr) {
+      idEncounterGroup* group =
+          encounterGroupHandle != -1
+              ? groupManager->GroupForHandle(
+                    encounterGroupHandle_t{encounterGroupHandle})
+              : nullptr;
+      if (group->AnyMemberHighestAlertCycle() == ALERTCYCLE_RELAXED) {
+        (void)GetPhysics()->GetOrigin();
+      }
+    }
+
+    if (behaviorEventDeclarationsConfigured) {
+      gameLocal->AddAIEvent(
+          behaviorEventDeclarations.heardSomethingVoiceEventDecl,
+          gameLocal->GetGameTimeMs(), this, instigator,
+          GetPhysics()->GetOrigin(), 500);
+    }
+  }
+
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+
+  if (instigator != nullptr) {
+    idAIGameState* gameState = gameLocal->GetAIGameState();
+    idAILogic logic(idSpawnId{GetEntityNumber()});
+    logic.SetGameState(gameState);
+    const idSpawnId instigatorId{instigator->GetEntityNumber()};
+    worldState->AddEntityStateFakePosition(
+        gameState, &logic, instigatorId, AISTIM_HEARING, 1.0F,
+        instigatorId, event->GetOrigin());
+  }
+}
 // DIA: idAI2::OnAIEvent_Grenade
-idRecoveredValue idAI2::OnAIEvent_Grenade(...) { return RecordCoreCall("OnAIEvent_Grenade"); }
+void idAI2::OnAIEvent_Grenade(const idAIEventProjectedSphere* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* originator =
+      resolveSpawnAwareEntity(event->GetOriginator());
+  if (originator == nullptr || originator->IsDead() ||
+      (!event->HasProjection() && !detectGrenadesInAir)) {
+    return;
+  }
+
+  float maximumSpeed = 10000.0F;
+  idFaction* originatorFaction = originator->GetFaction();
+  if (originatorFaction != nullptr &&
+      originatorFaction->GetAttitudeTowards(this) >=
+          idRelationship::ATTITUDE_NEUTRAL) {
+    maximumSpeed = 10.0F;
+  }
+  if (originator->GetPhysics()->GetLinearVelocity().LengthSqr() >
+      maximumSpeed * maximumSpeed) {
+    return;
+  }
+
+  const idVec3 delta =
+      GetPhysics()->GetOrigin() - originator->GetPhysics()->GetOrigin();
+  const float radius = event->GetRadius();
+  if (radius * radius > delta.LengthSqr()) {
+    memory->SetAvoidEntity(gameLocal->GetGameTimeMs(), originator,
+                           event->GetRadius(), 3.0F);
+    memory->SetAvoidPoint(event->HasProjection()
+                              ? event->GetProjectedOrigin()
+                              : originator->GetPhysics()->GetOrigin());
+  }
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId sourceId{GetEntityNumber()};
+  worldState->AddEntityState(
+      gameState, &logic, idSpawnId{originator->GetEntityNumber()},
+      AISTIM_HEARING, 1.0F, sourceId);
+
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  if (instigator != nullptr) {
+    worldState->AddEntityState(
+        gameState, &logic, idSpawnId{instigator->GetEntityNumber()},
+        AISTIM_GUNFIRE, 1.0F, sourceId);
+  }
+
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+}
 // DIA: idAI2::OnAIEvent_Vehicle
-idRecoveredValue idAI2::OnAIEvent_Vehicle(...) { return RecordCoreCall("OnAIEvent_Vehicle"); }
+void idAI2::OnAIEvent_Vehicle(const idAIEvent_Vehicle* event) {
+  const auto resolveSpawnAwareEntity = [](const idEntity* entity) {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) return entity;
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+
+  const idEntity* originator =
+      resolveSpawnAwareEntity(event->GetOriginator());
+  if (originator == nullptr || originator->IsDead()) return;
+
+  const idVehicle* vehicle = dynamic_cast<const idVehicle*>(originator);
+  if (vehicle != nullptr && vehicle->GetDriver() == nullptr) return;
+
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId sourceId{GetEntityNumber()};
+  const idEntity* instigator =
+      resolveSpawnAwareEntity(event->GetInstigator());
+  if (instigator != nullptr) {
+    idFaction* instigatorFaction = instigator->GetFaction();
+    if (ignoreFriendlyVehicles && instigatorFaction != nullptr &&
+        instigatorFaction->GetAttitudeTowards(this) >
+            idRelationship::ATTITUDE_NEUTRAL) {
+      return;
+    }
+    worldState->AddEntityState(
+        gameState, &logic, idSpawnId{instigator->GetEntityNumber()},
+        AISTIM_GUNFIRE, 1.0F, sourceId);
+  }
+
+  memory->SetAvoidEntity(gameLocal->GetGameTimeMs(), originator,
+                         event->GetRadius(), 3.0F);
+  worldState->AddEntityState(
+      gameState, &logic, idSpawnId{originator->GetEntityNumber()},
+      AISTIM_HEARING, 1.0F, sourceId);
+}
 // DIA: idAI2::UpdateAnimationControllers
-idRecoveredValue idAI2::UpdateAnimationControllers(...) { return RecordCoreCall("UpdateAnimationControllers"); }
+bool idAI2::UpdateAnimationControllers() {
+  if (IsHidden() || ShouldDeadThink() || corpseAnimationControllerBlocked) {
+    return false;
+  }
+
+  const idMat3 bodyAxis = bodyOrientation->GetAxis();
+  animationModelAxis = bodyAxis;
+
+  idPhysics* physics = GetPhysics();
+  if (usesDrone) {
+    animationControllerDroneAnimator->Update(
+        this, bodyAxis, physics->GetLinearVelocity(0));
+    idAIGameState* gameState = gameLocal->GetAIGameState();
+    gameState->ForceLatch(idSpawnId{GetEntityNumber()});
+    gameState->UpdateForcedLatches(gameLocal);
+  }
+
+  constexpr idVec4 colorYellow{1.0F, 1.0F, 0.0F, 1.0F};
+  constexpr idVec4 colorGreen{0.0F, 1.0F, 0.0F, 1.0F};
+  constexpr idVec4 colorOrange{1.0F, 0.5F, 0.0F, 1.0F};
+  constexpr idVec4 colorRed{1.0F, 0.0F, 0.0F, 1.0F};
+  constexpr idVec4 colorMagenta{1.0F, 0.0F, 1.0F, 1.0F};
+  constexpr idVec4 colorFOV{0.0F, 0.5F, 1.0F, 1.0F};
+
+  const auto getRenderDebug = []() -> idRenderDebug* {
+    idRenderWorld* renderWorld = gameLocal->GetRenderWorld();
+    return renderWorld != nullptr ? renderWorld->GetRenderDebug() : nullptr;
+  };
+
+  const int orientationDebugMode = ai_debugOrientation.GetInteger();
+  if (orientationDebugMode > 0) {
+    const idVec3 origin = physics->GetOrigin();
+    const idMat3& renderAxis = effectsTreeAnimator->GetRenderAxisForAI();
+    const idVec3 up = renderAxis[2];
+    idRenderDebug* renderDebug = getRenderDebug();
+
+    if (renderDebug != nullptr &&
+        (orientationDebugMode == 1 || orientationDebugMode >= 3)) {
+      const idVec3 currentEnd = origin + bodyAxis[0] * 48.0F;
+      const idVec3 idealEnd =
+          origin + bodyOrientation->GetIdealDir() * 64.0F;
+      renderDebug->DebugArrow(colorYellow, origin, currentEnd, 8.0F, 0,
+                              false);
+      renderDebug->DebugArrow(colorGreen, origin, idealEnd, 8.0F, 0,
+                              false);
+      renderDebug->DebugCircle(colorYellow, origin, up, 48.0F, 32, 0,
+                               false);
+      renderDebug->DebugCircle(colorGreen, origin, up, 64.0F, 32, 0,
+                               false);
+      renderDebug->DebugText("body::curr", currentEnd + up * 8.0F,
+                             0.125F, colorYellow, 1, 0, false, false);
+      renderDebug->DebugText("body::ideal", idealEnd + up * 16.0F,
+                             0.125F, colorGreen, 1, 0, false, false);
+    }
+
+    if (renderDebug != nullptr && orientationDebugMode >= 2) {
+      idAIOrientation* moveOrientation = moveState->GetMoveOrientation();
+      const idVec3 currentEnd =
+          origin + moveOrientation->GetAxis()[0] * 16.0F;
+      const idVec3 idealEnd =
+          origin + moveOrientation->GetIdealDir() * 32.0F;
+      renderDebug->DebugArrow(colorOrange, origin, currentEnd, 8.0F, 0,
+                              false);
+      renderDebug->DebugArrow(colorRed, origin, idealEnd, 8.0F, 0, false);
+      renderDebug->DebugCircle(colorOrange, origin, up, 16.0F, 32, 0,
+                               false);
+      renderDebug->DebugCircle(colorRed, origin, up, 32.0F, 32, 0, false);
+      renderDebug->DebugText("move::curr", currentEnd + up * 8.0F,
+                             0.125F, colorOrange, 1, 0, false, false);
+      renderDebug->DebugText("move::ideal", idealEnd + up * 16.0F,
+                             0.125F, colorRed, 1, 0, false, false);
+    }
+
+    if (renderDebug != nullptr && orientationDebugMode == 4) {
+      renderDebug->DebugLine(
+          colorMagenta, origin,
+          origin + physics->GetLinearVelocity(0) * 32.0F, 3000, false);
+    }
+  }
+
+  if (ai_showFOV.GetInteger() > 0 && GetDebugLevel() >= 0) {
+    const float radius = ai_showFOV.GetInteger() > 1
+                             ? actorPerceptionRadius
+                             : 64.0F;
+    idVec3 eyePosition;
+    idMat3 eyeAxis;
+    GetEyePos(&eyePosition);
+    GetEyeAxis(&eyeAxis);
+
+    const float halfFieldOfView = configuredFieldOfView * 0.5F;
+    const idRotation positiveRotation(
+        vec3_origin, physics->GetGravityNormal(), halfFieldOfView);
+    const idVec3 positiveBoundary = positiveRotation * eyeAxis[0];
+    const idRotation negativeRotation(
+        vec3_origin, physics->GetGravityNormal(), -halfFieldOfView);
+    const idVec3 negativeBoundary = negativeRotation * eyeAxis[0];
+    (void)positiveBoundary;
+    (void)negativeBoundary;
+
+    if (idRenderDebug* renderDebug = getRenderDebug()) {
+      renderDebug->DebugArc(colorFOV, eyePosition, eyeAxis[0], radius,
+                            -halfFieldOfView, halfFieldOfView, 10.0F, 1,
+                            true, true);
+      renderDebug->DebugArrow(colorFOV, eyePosition,
+                              eyePosition + eyeAxis[0] * radius, 8.0F, 1,
+                              true);
+    }
+  }
+
+  auto* animatedOwner = reinterpret_cast<idAnimatedEntity*>(this);
+  constexpr int cvarModified = 0x20000;
+  if ((ai_useAimTracker.flags & cvarModified) != 0) {
+    ai_useAimTracker.flags &= ~cvarModified;
+    if (ai_useAimTracker.GetInteger() == 0) {
+      focusInfos[0]->SetEnableTracking(animatedOwner, false);
+    } else if (animEventState.headTracking) {
+      focusInfos[0]->SetEnableTracking(animatedOwner, true);
+    }
+  }
+
+  focusInfos[0]->Update(animatedOwner, nullptr);
+  idAnimator_TrackerBase* aimAnimator = focusInfos[0]->GetAnimator(
+      focusInfos[0]->GetCurrentAnimatorIndex());
+
+  if ((ai_useLookTracker.flags & cvarModified) != 0) {
+    ai_useLookTracker.flags &= ~cvarModified;
+    if (ai_useLookTracker.GetInteger() == 0) {
+      focusInfos[1]->SetEnableTracking(animatedOwner, false);
+    } else if (animEventState.headTracking) {
+      focusInfos[1]->SetEnableTracking(animatedOwner, true);
+    }
+  }
+
+  focusInfos[1]->Update(animatedOwner, aimAnimator);
+  if (aiConstants->animation.useFaceManager) {
+    idVec3& lookFocusPoint = const_cast<idVec3&>(
+        focusInfos[1]->GetIdealFocusPoint());
+    faceManager->Update(this, effectsTreeAnimator, &lookFocusPoint);
+  }
+
+  if (animationInfo->ikEnableTime != -1 &&
+      gameLocal->GetGameTimeMs() >= animationInfo->ikEnableTime) {
+    animationInfo->ikEnableTime = -1;
+    eventVoid result;
+    AnimEvent_EnableIK(&result, nullptr);
+  }
+  return true;
+}
 // DIA: idAI2::Debug_Perception
-idRecoveredValue idAI2::Debug_Perception(...) { return RecordCoreCall("Debug_Perception"); }
+void idAI2::Debug_Perception() {
+  idPlayer* player = gameLocal->GetPlayer(0);
+  if (player == nullptr) return;
+
+  constexpr idVec4 colorWhite{1.0F, 1.0F, 1.0F, 1.0F};
+  constexpr idVec4 colorPurple{0.6F, 0.0F, 0.6F, 1.0F};
+  idVec4 color = colorWhite;
+  const char* marker = "";
+  const int currentTime = gameLocal->GetGameTimeMs();
+
+  const idAIEntityState* state =
+      worldState->StateForEntity(memory->GetEnemy());
+  if (state == nullptr) state = worldState->StateForEntity(player);
+  if (state != nullptr) {
+    switch (state->curAwareness) {
+      case 0:
+        marker = ".";
+        color = colorWhite;
+        break;
+      case 1:
+        marker = "?";
+        color = idColor::colorGreen;
+        break;
+      case 2:
+        marker = "?";
+        color = idColor::colorYellow;
+        break;
+      case 3:
+        marker = "!";
+        color = state->IsVisible() ? static_cast<const idVec4&>(
+                                         idColor::colorRed)
+                                   : static_cast<const idVec4&>(
+                                         idColor::colorYellow);
+        break;
+      default:
+        break;
+    }
+  }
+
+  const idScenePoint* scenePoint = memory->GetCurScenePointForTest();
+  const bool scriptedScene =
+      scenePoint != nullptr && (scenePoint->GetScriptFlags() & 1U) != 0U;
+
+  idVec3 base;
+  GetEyePos(&base);
+  base.z += 10.0F;
+  const idMat3* presentableAxis = GetPresentableAxis();
+  idVec3 up = presentableAxis != nullptr
+                  ? (*presentableAxis)[2]
+                  : idVec3{0.0F, 0.0F, 1.0F};
+  idVec3 forward = presentableAxis != nullptr
+                       ? (*presentableAxis)[0]
+                       : idVec3{1.0F, 0.0F, 0.0F};
+  if (robotState.usesRobot) {
+    idMat3 eyeAxis;
+    GetEyeAxis(&eyeAxis);
+    forward = eyeAxis[0];
+  }
+
+  idVec3 pyramidBase = base;
+  idVec3 pyramidUp = up;
+  idFaction* faction = GetFaction();
+  if (faction != nullptr &&
+      faction->GetAttitudeTowards(player) <=
+          idRelationship::ATTITUDE_DISLIKE) {
+    pyramidBase.z += 30.0F;
+    pyramidUp = -up;
+  }
+
+  idRenderDebug* renderDebug =
+      gameLocal->GetRenderWorld()->GetRenderDebug();
+  renderDebug->DebugPyramid(color, pyramidBase, pyramidUp, forward, 30.0F,
+                            30.0F, 0, false);
+  renderDebug->DebugArrow3(color, base, base + forward * 10.0F, 3.0F, 0,
+                           false);
+
+  if ((coreState.perceptionFlags & 1U) != 0U) {
+    renderDebug->DebugText("X", base + up * 5.0F, 1.0F, color, 1, 0,
+                           false, true);
+  } else {
+    renderDebug->DebugText(scriptedScene ? "S" : marker,
+                           base + up * 10.0F, 1.0F,
+                           scriptedScene
+                               ? static_cast<const idVec4&>(idColor::colorBlue)
+                               : color,
+                           1, 0, false, true);
+  }
+
+  if (memory->IsGangstaPoseEnabled()) {
+    renderDebug->DebugText("Gangsta", base + up * 50.0F, 0.25F, color, 1,
+                           1, false, false);
+  }
+  if (componentTimeLine->RunningActionScript(this)) {
+    renderDebug->DebugText("ActionScript", base + up * 30.0F, 0.25F,
+                           color, 1, 1, false, false);
+  }
+
+  if (state == nullptr || ai_debugPerception.GetInteger() < 2) return;
+
+  const aiSenseState_t* enemySense = GetEnemySenseState(AISENSE_MAX);
+  if (enemySense != nullptr) {
+    idVec3 enemyPosition =
+        enemySense->GetConfirmedPhysicalSafe()->origin;
+    renderDebug->DebugArrow3(color, base, enemyPosition, 3.0F, 0, false);
+    if (ai_debugPerception.GetInteger() < 3) return;
+
+    const idAIPos safePosition = memory->GetLastSafeEnemyPos();
+    if (safePosition.valid && !memory->IsEnemyPosInsideAASForTest()) {
+      renderDebug->DebugArrow3(colorWhite, safePosition.pos, enemyPosition,
+                               3.0F, 0, false);
+    }
+
+    if (ai_debugPerception.GetInteger() >= 4) {
+      for (int index = 0; index < 5; ++index) {
+        const idAIPos trailPosition = *memory->DebugGetEnemyTrailPos(index);
+        if (!trailPosition.valid) continue;
+        renderDebug->DebugArrow3(idColor::colorGreen, enemyPosition,
+                                 trailPosition.pos, 3.0F, 0, false);
+        enemyPosition = trailPosition.pos;
+      }
+    }
+  }
+
+  if (ai_debugPerception.GetInteger() < 3) return;
+
+  const auto* blocker =
+      dynamic_cast<const idAI2*>(memory->GetFriendlyBlocker());
+  if (blocker != nullptr) {
+    const idVec3 thisOrigin = GetPhysics()->GetOrigin();
+    const idVec3 blockerOrigin = blocker->GetPhysics()->GetOrigin();
+    if (currentTime > memory->GetCurrentFriendlyBlockerTimeForTest()) {
+      renderDebug->DebugArrow3(colorPurple, thisOrigin, blockerOrigin, 3.0F,
+                               0, false);
+    } else if (blocker->GetMemory().GetFriendlyBlocker() == this &&
+               currentTime <= blocker->GetMemory()
+                                  .GetCurrentFriendlyBlockerTimeForTest()) {
+      renderDebug->DebugArrow3(idColor::colorRed, thisOrigin, blockerOrigin,
+                               3.0F, 0, false);
+      renderDebug->DebugArrow3(idColor::colorRed, blockerOrigin, thisOrigin,
+                               3.0F, 0, false);
+    } else {
+      renderDebug->DebugArrow3(colorPurple, blockerOrigin, thisOrigin, 3.0F,
+                               0, false);
+    }
+  }
+
+  if (ai_debugPerception.GetInteger() >= 4) {
+    const auto* friendly = dynamic_cast<const idAI2*>(memory->GetFriendly());
+    if (friendly != nullptr &&
+        memory->HasCurrentFriendlyLOSBlockerForTest()) {
+      renderDebug->DebugArrow3(colorPurple, base,
+                               friendly->GetPhysics()->GetOrigin(), 3.0F, 0,
+                               false);
+    }
+  }
+}
 // DIA: idAI2::idVisibilityObscurity::Update
 idRecoveredValue idAI2::idVisibilityObscurity::Update(...) { return {}; }
 // DIA: idAI2::ShouldReloadWeapon
@@ -5085,6 +7797,13 @@ idAI2::idAIVolatile::idAIVolatile() = default;
 const idAnimator_AF* idActor::GetAF() const {
   return &articulatedFigureProperties;
 }
+// DIA: idActor::GetEyePos
+void idActor::GetEyePos(idVec3* eyePosition) {
+  const idVec3 origin =
+      GetPhysics() != nullptr ? GetPhysics()->GetOrigin() : idVec3{};
+  *eyePosition = origin + GetEyeOffset();
+}
+
 // DIA: idActor::GetLastEyePos
 void idActor::GetLastEyePos(idVec3* eyePosition) const {
   *eyePosition = lastEyePosition;
@@ -5344,7 +8063,9 @@ idCVar ai_enableScrambles(
 idCVar ai_scrambleTime("ai_scrambleTime", "2000", 2,
                        "ms for AI to scramble after being shot at");
 // DIA: `dynamic initializer for 'ai_searchToStimDist''
-idCVar ai_searchToStimDist("ai_searchToStimDist", "0", 0, "recovered AI tuning variable");
+idCVar ai_searchToStimDist(
+    "ai_searchToStimDist", "512", 4,
+    "how far from a search stimulus AI will first search to that stimulus");
 // DIA: `dynamic initializer for 'ai_mood''
 idCVar ai_mood("ai_mood", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_attitude''
@@ -5398,7 +8119,9 @@ idCVar ai_useStageCoverFilter("ai_useStageCoverFilter", "0", 0, "recovered AI tu
 // DIA: `dynamic initializer for 'ai_disableWanderGreetings''
 idCVar ai_disableWanderGreetings("ai_disableWanderGreetings", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_droppedLootDistance''
-idCVar ai_droppedLootDistance("ai_droppedLootDistance", "0", 0, "recovered AI tuning variable");
+idCVar ai_droppedLootDistance(
+    "ai_droppedLootDistance", "140.0", 4,
+    "the max distance the dropped item can be to auto loot it");
 // DIA: `dynamic initializer for 'ai_enableInfluenceTrails''
 idCVar ai_enableInfluenceTrails("ai_enableInfluenceTrails", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_debugGreetingDistance''
@@ -5424,7 +8147,8 @@ idCVar ai_thinkTrace("ai_thinkTrace", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'takedownWindoMaxTime''
 idCVar takedownWindoMaxTime("takedownWindoMaxTime", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'takedownType''
-idCVar takedownType("takedownType", "0", 0, "recovered AI tuning variable");
+idCVar takedownType("takedownType", "-1", 0,
+                    "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'takedownID''
 idCVar takedownID(
     "takedownID", "-1", 2,

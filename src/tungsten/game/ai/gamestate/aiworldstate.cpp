@@ -265,6 +265,10 @@ idAIEntityState* idAIWorldState::AddEntityState(
     aiSenseState_t* destination =
         stimulusType == AISTIM_SIGHT ? result->senses[AISENSE_SIGHT]
                                      : result->senses[AISENSE_HEARING];
+    const aiPhysicalState_t* sharedPhysical =
+        sourceSense->GetConfirmedPhysicalSafe();
+    destination->SetUnconfirmedPhysical(sharedPhysical);
+    destination->SetConfirmedPhysical(sharedPhysical);
     destination->lastUnconfirmedStimTime = sourceSense->lastUnconfirmedStimTime;
     destination->lastConfirmedStimTime = sourceSense->lastConfirmedStimTime;
     destination->senseFlags = sourceSense->senseFlags;

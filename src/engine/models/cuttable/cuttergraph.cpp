@@ -1,13 +1,45 @@
 #include "engine/models/cuttable/cuttergraph.h"
 
+#include "shared/idlib/containers/BitArray.h"
+#include "shared/idlib/lib.h"
+#include "shared/idlib/sys/sys_alloc.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <new>
+#include <utility>
 #include <vector>
 
 namespace {
+
+constexpr memTag_t kGameTag = static_cast<memTag_t>(0x4D);
+
+template <typename Type>
+Type* AllocateRaw(const char* location, std::size_t count, memTag_t tag) {
+  return static_cast<Type*>(idMem::Singleton()->AllocWithLocation(
+      location, sizeof(Type) * count, tag, false, ALIGN_16,
+      HEAP_DEFAULTHEAP));
+}
+
+template <typename Type, typename... Args>
+Type* AllocateObject(const char* location, memTag_t tag, Args&&... args) {
+  Type* storage = AllocateRaw<Type>(location, 1, tag);
+  return storage != nullptr
+             ? new (storage) Type(std::forward<Args>(args)...)
+             : nullptr;
+}
+
+template <typename Type>
+void FreeObject(Type*& object) {
+  if (object == nullptr)
+    return;
+  object->~Type();
+  idMem::Singleton()->Free(object, ALIGN_16);
+  object = nullptr;
+}
 
 bool SamePoint(const idVec2i& left, const idVec2i& right) {
   return left.x == right.x && left.y == right.y;
@@ -110,44 +142,6 @@ template <typename T> T* PointerAt(const std::vector<T*>& values, int index) {
   return index >= 0 ? values[static_cast<std::size_t>(index)] : nullptr;
 }
 
-bool PointInsideEdgeLoop(const Contour* contour, const idVec2i& point) {
-  std::vector<idVec2i> vertices;
-  for (const ContourEdge_t* edge = contour->edges; edge != nullptr; edge = edge->next)
-    vertices.push_back(edge->node->pos);
-  if (vertices.empty())
-    return false;
-
-  bool inside = false;
-  idVec2i previous = vertices.back();
-  for (const idVec2i& current : vertices) {
-    if (SamePoint(previous, point) || SamePoint(current, point))
-      return true;
-    if (((previous.y < point.y && current.y >= point.y) ||
-         (current.y < point.y && previous.y >= point.y)) &&
-        WrappedAdd(previous.x,
-                   WrappedMultiply(WrappedSubtract(current.x, previous.x),
-                                   WrappedSubtract(point.y, previous.y) /
-                                       WrappedSubtract(current.y, previous.y))) <
-            point.x) {
-      inside = !inside;
-    }
-    previous = current;
-  }
-  return inside;
-}
-
-bool EdgeLoopsOverlap(const Contour* first, const Contour* second) {
-  for (const ContourEdge_t* edge = first->edges; edge != nullptr; edge = edge->next) {
-    if (PointInsideEdgeLoop(second, edge->node->pos))
-      return true;
-  }
-  for (const ContourEdge_t* edge = second->edges; edge != nullptr; edge = edge->next) {
-    if (PointInsideEdgeLoop(first, edge->node->pos))
-      return true;
-  }
-  return false;
-}
-
 void NormalVectors(const idVec3& normal, idVec3& left, idVec3& down) {
   const float lengthSquared = normal.x * normal.x + normal.y * normal.y;
   if (lengthSquared == 0.0f) {
@@ -180,13 +174,13 @@ bool HasGraphLink(const idCutterGraphManager::Node_t* source,
 
 } // namespace
 
-idCutterGraphManager::IDHeap::IDHeap() : index(0), numBits(0) {}
+idCutterGraphManager::IDHeap::IDHeap() : index(0), isStatic(0), numBits(0) {}
 
 idCutterGraphManager::IDHeap::~IDHeap() { Clear(); }
 
 int idCutterGraphManager::IDHeap::Alloc() {
   const std::uint32_t oldIndex = index;
-  int byteIndex = static_cast<int>(oldIndex & 0x7fffffffU);
+  int byteIndex = static_cast<int>(oldIndex);
 
   if (buffer.list[byteIndex] == 0xffU) {
     do {
@@ -195,16 +189,16 @@ int idCutterGraphManager::IDHeap::Alloc() {
   }
 
   if (byteIndex >= (numBits >> 3) - 1) {
-    if ((oldIndex & 0x7fffffffU) == 0)
+    if (oldIndex == 0)
       return -1;
 
     byteIndex = 0;
-    while (byteIndex < static_cast<int>(oldIndex & 0x7fffffffU) &&
+    while (byteIndex < static_cast<int>(oldIndex) &&
            buffer.list[byteIndex] == 0xffU) {
       ++byteIndex;
     }
     if (buffer.list[byteIndex] == 0xffU) {
-      index = oldIndex & 0x80000000U;
+      index = 0;
       return -1;
     }
   }
@@ -215,21 +209,21 @@ int idCutterGraphManager::IDHeap::Alloc() {
     ++bitIndex;
   }
   buffer.list[byteIndex] |= static_cast<std::uint8_t>(1U << bitIndex);
-  index = (oldIndex & 0x80000000U) | (static_cast<std::uint32_t>(byteIndex) & 0x7fffffffU);
+  index = static_cast<std::uint32_t>(byteIndex);
   return bitIndex + 8 * byteIndex;
 }
 
 void idCutterGraphManager::IDHeap::Clear() {
   buffer.ClearFree();
-  index &= 0x80000000U;
+  index = 0;
   numBits = 0;
 }
 
 void idCutterGraphManager::IDHeap::Write(idFile* file) const {
   WriteBigInt(file, static_cast<std::uint32_t>(buffer.num));
   file->Write(buffer.list, static_cast<std::size_t>(buffer.num));
-  WriteBigInt(file, index & 0x7fffffffU);
-  WriteBigInt(file, (index & 0x80000000U) != 0U ? 1U : 0U);
+  WriteBigInt(file, index);
+  WriteBigInt(file, isStatic);
   WriteBigInt(file, static_cast<std::uint32_t>(numBits));
 }
 
@@ -240,8 +234,8 @@ void idCutterGraphManager::IDHeap::Read(idFile* file) {
   buffer.num = std::min(bufferSize, buffer.size);
   file->Read(buffer.list, static_cast<std::size_t>(bufferSize));
 
-  index = (index & 0x80000000U) | (ReadBigInt(file) & 0x7fffffffU);
-  index = (index & 0x7fffffffU) | (ReadBigInt(file) << 31);
+  index = ReadBigInt(file) & 0x7fffffffU;
+  isStatic = ReadBigInt(file) != 0U;
   numBits = static_cast<int>(ReadBigInt(file));
 }
 
@@ -386,7 +380,7 @@ void idCutterGraphManager::Graph::Init(const idStr& name_, Contour* contour) {
   if (idheap.buffer.size < 129)
     idheap.buffer.ResizeForPort(129);
   idheap.buffer.num = std::min(129, idheap.buffer.size);
-  idheap.index &= 0x80000000U;
+  idheap.index = 0;
   std::memset(idheap.buffer.list, 0, static_cast<std::size_t>(idheap.buffer.num));
   contoursOuter = contour;
   contoursInner = nullptr;
@@ -401,9 +395,17 @@ void idCutterGraphManager::Graph::AddNode(Node_t* node) {
 bool idCutterGraphManager::Graph::PathFind(idList<idVec2i>& points) {
   idList<Node_t*> pathNodes;
   pathNodes.ResizeForPort(1024);
+  idBitArray visited;
+  visited.bits = 1024;
+  visited.memTag = TAG_BITARRAY;
+  visited.free = true;
+  visited.buffer = static_cast<unsigned char*>(
+      idMem::Singleton()->AllocWithLocation(
+          "w:\\build\\tech5\\shared\\idlib\\containers/BitArray.h(112) : static_cast< memTag_t >( memTag )",
+          128, TAG_BITARRAY, false, ALIGN_16, HEAP_DEFAULTHEAP));
+  std::memset(visited.buffer, 0, 128);
   idList<Link_t*> pathLinks;
   pathLinks.ResizeForPort(1024);
-  std::uint8_t visited[128]{};
 
   for (int edgeIndex = 0; edgeIndex < edges.Num(); ++edgeIndex)
     edges[edgeIndex].data->visited = 0;
@@ -412,17 +414,17 @@ bool idCutterGraphManager::Graph::PathFind(idList<idVec2i>& points) {
   pathLinks.Append(lastNode->link);
   const auto setVisited = [&visited](int id) {
     if (static_cast<unsigned int>(id) < 1024U)
-      visited[static_cast<unsigned int>(id) >> 3] |=
+      visited.buffer[static_cast<unsigned int>(id) >> 3] |=
           static_cast<std::uint8_t>(1U << (id & 7));
   };
   const auto clearVisited = [&visited](int id) {
     if (static_cast<unsigned int>(id) < 1024U)
-      visited[static_cast<unsigned int>(id) >> 3] &=
+      visited.buffer[static_cast<unsigned int>(id) >> 3] &=
           static_cast<std::uint8_t>(~(1U << (id & 7)));
   };
   const auto isVisited = [&visited](int id) {
     return static_cast<unsigned int>(id) < 1024U &&
-           (visited[static_cast<unsigned int>(id) >> 3] &
+           (visited.buffer[static_cast<unsigned int>(id) >> 3] &
             static_cast<std::uint8_t>(1U << (id & 7))) != 0U;
   };
 
@@ -570,7 +572,9 @@ idCutterGraphManager::idCutterGraphManager() : contourManager(nullptr), graph(nu
     nodesPoolBlock.list[index] = nullptr;
   for (int index = 0; index < edgesPoolBlock.size; ++index)
     edgesPoolBlock.list[index] = nullptr;
-  contourManager = new idContourManager;
+  contourManager = AllocateObject<idContourManager>(
+      "w:\\build\\tech5\\engine\\models\\cuttable\\CutterGraph.cpp(968) : TAG_GAME",
+      kGameTag);
 }
 
 idCutterGraphManager::~idCutterGraphManager() {
@@ -581,22 +585,21 @@ idCutterGraphManager::~idCutterGraphManager() {
   nodesPool.ClearFree();
   edgesPool.ClearFree();
   for (int index = 0; index < linksPoolBlock.Num(); ++index) {
-    delete[] linksPoolBlock[index];
+    idMem::Singleton()->Free(linksPoolBlock[index], ALIGN_16);
     linksPoolBlock[index] = nullptr;
   }
   for (int index = 0; index < nodesPoolBlock.Num(); ++index) {
-    delete[] nodesPoolBlock[index];
+    idMem::Singleton()->Free(nodesPoolBlock[index], ALIGN_16);
     nodesPoolBlock[index] = nullptr;
   }
   for (int index = 0; index < edgesPoolBlock.Num(); ++index) {
-    delete[] edgesPoolBlock[index];
+    idMem::Singleton()->Free(edgesPoolBlock[index], ALIGN_16);
     edgesPoolBlock[index] = nullptr;
   }
   linksPoolBlock.ClearFree();
   nodesPoolBlock.ClearFree();
   edgesPoolBlock.ClearFree();
-  delete contourManager;
-  contourManager = nullptr;
+  FreeObject(contourManager);
 }
 
 void idCutterGraphManager::MergeContours(Contour* contour) {
@@ -660,7 +663,9 @@ void idCutterGraphManager::DebugDraw(int id, idRenderWorld* renderWorld, int lif
 
 void idCutterGraphManager::PreAllocatePools() {
   if (linksPool.Num() == 0) {
-    Link_t* block = new Link_t[NUM_POOLLINKS];
+    Link_t* block = AllocateRaw<Link_t>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterGraph.cpp(1399) : TAG_GAME",
+        NUM_POOLLINKS, kGameTag);
     for (int index = 0; index < NUM_POOLLINKS; ++index) {
       block[index].allocated = 0;
       block[index].invalid = 0;
@@ -669,7 +674,9 @@ void idCutterGraphManager::PreAllocatePools() {
     linksPoolBlock.Append(block);
   }
   if (nodesPool.Num() == 0) {
-    Node_t* block = new Node_t[NUM_POOLNODES];
+    Node_t* block = AllocateRaw<Node_t>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterGraph.cpp(1415) : TAG_GAME",
+        NUM_POOLNODES, kGameTag);
     for (int index = 0; index < NUM_POOLNODES; ++index) {
       block[index].allocated = 0;
       nodesPool.Append(&block[index]);
@@ -677,7 +684,9 @@ void idCutterGraphManager::PreAllocatePools() {
     nodesPoolBlock.Append(block);
   }
   if (edgesPool.Num() == 0) {
-    Edge_t* block = new Edge_t[NUM_POOLNODES];
+    Edge_t* block = AllocateRaw<Edge_t>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterGraph.cpp(1432) : TAG_GAME",
+        NUM_POOLNODES, kGameTag);
     for (int index = 0; index < NUM_POOLNODES; ++index) {
       block[index].allocated = 0;
       edgesPool.Append(&block[index]);
@@ -695,7 +704,7 @@ idCutterGraphManager::Node_t* idCutterGraphManager::AllocateNode() {
   node->next = nullptr;
   node->link = nullptr;
   node->pos = {};
-  node->allocated = 1;
+  node->allocated = -1;
   return node;
 }
 
@@ -822,12 +831,14 @@ void idCutterGraphManager::ProcessLinks(Contour* contour, Node_t* node) {
 int idCutterGraphManager::AllocateGraph(const idStr& name, const idVec3& position,
                                         const idMat3& orientation, const idPlane& plane,
                                         const idList<idVec3>& points) {
-  Graph* value = new Graph;
+  Graph* value = AllocateObject<Graph>(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(53) : TAG_NEW", TAG_NEW);
   value->SetPosition(position, orientation);
   value->plane = plane;
   NormalVectors({plane.a, plane.b, plane.c}, value->left, value->down);
 
-  idList<idVec2i> localPoints;
+  idStaticList<idVec2i, 1024> localPoints;
+  localPoints.granularity = 1;
   for (int index = 0; index < points.Num(); ++index) {
     idVec2i local;
     local.x = static_cast<int>(std::floor(points[index] * value->left + 0.5f));
@@ -884,7 +895,7 @@ void idCutterGraphManager::FreeGraph(int id) {
   value->edges.ClearFree();
   value->nodes.ClearFree();
   value->links.ClearFree();
-  delete value;
+  FreeObject(value);
   graphs[id].graph = nullptr;
 }
 
@@ -1115,13 +1126,21 @@ bool idCutterGraphManager::AddContour(Contour* contours, Contour* mergedContours
         int node0Index = graph->FindNodeIndex(pos0, 2);
         int node1Index = graph->FindNodeIndex(pos1, 2);
         if (node0Index < 0)
-          node0Index = graph->FindNodeIndex(pos0, 2);
+          idLib::Printf("idCutterGraphManager::AddContour: Couldn't find node 0, attempting search nearby!\n");
         if (node0Index < 0)
+          node0Index = graph->FindNodeIndex(pos0, 2);
+        if (node0Index < 0) {
+          idLib::Printf("idCutterGraphManager::AddContour: Couldn't find close node 0!\n");
           return false;
+        }
+        if (node1Index < 0)
+          idLib::Printf("idCutterGraphManager::AddContour: Couldn't find node 1, attempting search nearby!\n");
         if (node1Index < 0)
           node1Index = graph->FindNodeIndex(pos1, 2);
-        if (node1Index < 0)
+        if (node1Index < 0) {
+          idLib::Printf("idCutterGraphManager::AddContour: Couldn't find close node 1!\n");
           return false;
+        }
 
         Edge_t* graphEdge = nullptr;
         Node_t* node0 = graph->nodes[node0Index].data;
@@ -1138,8 +1157,10 @@ bool idCutterGraphManager::AddContour(Contour* contours, Contour* mergedContours
         }
 
         ContourEdge_t* mergedEdge = mergedContours->FindEdge(pos0, pos1);
-        if (mergedEdge == nullptr)
+        if (mergedEdge == nullptr) {
+          idLib::Printf("idCutterGraphManager::AddContour: Couldn't find contour edge!\n");
           return false;
+        }
         ContourNode_t* mergedNode = Contour::FindNode(mergedEdge, pos0, pos1);
         int currentIndex = graph->FindNodeIndex(mergedNode->pos, 2);
         while (std::abs(mergedNode->pos.x - pos1.x) > 2 ||
@@ -1147,15 +1168,16 @@ bool idCutterGraphManager::AddContour(Contour* contours, Contour* mergedContours
           const int nextIndex = graph->FindNodeIndex(mergedNode->next->pos, 2);
           Node_t* currentNode = graph->nodes[currentIndex].data;
           Node_t* nextNode = graph->nodes[nextIndex].data;
-          graphEdge = nullptr;
           for (Link_t* link = currentNode->link; link != nullptr; link = link->next) {
             if (link->node == nextNode) {
               graphEdge = link->edge;
               break;
             }
           }
-          if (graphEdge == nullptr)
+          if (graphEdge == nullptr) {
+            idLib::Printf("idCutterGraphManager::AddContour: Couldn't find graph edge!\n");
             return false;
+          }
           graphEdge->contour = contour;
           mergedNode = mergedNode->next;
           currentIndex = nextIndex;
@@ -1266,13 +1288,71 @@ bool idCutterGraphManager::AddContour(Contour* contours, Contour* mergedContours
 }
 
 Contour* idCutterGraphManager::IntersectContours(Contour* contour) {
+  idStaticList<idVec2i, 512> points;
+  points.granularity = 1;
+  for (ContourEdge_t* edge = contour->edges; edge != nullptr;
+       edge = edge->next) {
+    points.Append(edge->node->pos);
+  }
+  const int inputCount = points.Num();
+
   Contour* result = nullptr;
   Contour* previous = nullptr;
   Contour* current = graph->contoursInner;
   while (current != nullptr) {
     Contour* next = current->next;
-    if (contour->bound.IntersectBounds(current->bound) &&
-        EdgeLoopsOverlap(contour, current)) {
+    bool intersects = false;
+    if (contour->bound.IntersectBounds(current->bound)) {
+      points.SetNum(inputCount);
+      for (ContourEdge_t* edge = contour->edges; edge != nullptr;
+           edge = edge->next) {
+        points.Append(edge->node->pos);
+      }
+
+      const int totalCount = points.Num();
+      for (int pass = 0; pass < 2 && !intersects; ++pass) {
+        const int candidateEnd = pass == 0 ? inputCount : totalCount;
+        const int polygonEnd = pass == 1 ? inputCount : totalCount;
+        const int candidateBegin = candidateEnd - inputCount;
+        const int polygonBegin = polygonEnd - inputCount;
+        for (int candidateIndex = candidateBegin;
+             candidateIndex < candidateEnd && !intersects;
+             ++candidateIndex) {
+          const idVec2i candidate = points[candidateIndex];
+          bool inside = false;
+          int previousIndex = polygonEnd - 1;
+          for (int polygonIndex = polygonBegin;
+               polygonIndex < polygonEnd && !intersects;
+               ++polygonIndex) {
+            const idVec2i& previousPoint = points[previousIndex];
+            const idVec2i& currentPoint = points[polygonIndex];
+            if (SamePoint(previousPoint, candidate) ||
+                SamePoint(currentPoint, candidate)) {
+              intersects = true;
+            } else if (((previousPoint.y < candidate.y &&
+                         currentPoint.y >= candidate.y) ||
+                        (currentPoint.y < candidate.y &&
+                         previousPoint.y >= candidate.y)) &&
+                       WrappedAdd(
+                           previousPoint.x,
+                           WrappedMultiply(
+                               WrappedSubtract(currentPoint.x,
+                                               previousPoint.x),
+                               WrappedSubtract(candidate.y,
+                                               previousPoint.y) /
+                                   WrappedSubtract(currentPoint.y,
+                                                   previousPoint.y))) <
+                           candidate.x) {
+              inside = !inside;
+            }
+            previousIndex = polygonIndex;
+          }
+          intersects = intersects || inside;
+        }
+      }
+    }
+
+    if (intersects) {
       current->next = result;
       result = current;
       if (previous != nullptr)
@@ -1424,7 +1504,8 @@ void idCutterGraphManager::Read(idFile* file) {
   file->Read(&valid, sizeof(valid));
   if (valid == 0)
     return;
-  Graph* value = new Graph;
+  Graph* value = AllocateObject<Graph>(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(53) : TAG_NEW", TAG_NEW);
   value->lastNode = nullptr;
   value->prevNode = nullptr;
 

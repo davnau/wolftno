@@ -13,13 +13,18 @@ enum planeSide_t {
   PLANESIDE_CROSS = 3,
 };
 
-struct idBounds {
+class idBounds {
+public:
   idVec3 b[2];
 
   idVec3& operator[](int index) { return b[index]; }
   const idVec3& operator[](int index) const { return b[index]; }
   bool operator==(const idBounds& other) const;
   void Clear();
+  bool IsZero() const {
+    return b[0].x == 0.0f && b[0].y == 0.0f && b[0].z == 0.0f &&
+           b[1].x == 0.0f && b[1].y == 0.0f && b[1].z == 0.0f;
+  }
   bool AddPoint(const idVec3& point);
   float GetRadius() const;
   float GetMaxDistFromOrigin() const;
@@ -47,3 +52,7 @@ struct idBounds {
 };
 
 static_assert(sizeof(idBounds) == 24, "idBounds ABI drift");
+
+extern const idBounds bounds_zero;
+extern const idBounds bounds_zeroOneCube;
+extern const idBounds bounds_unitCube;

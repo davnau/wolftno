@@ -16,6 +16,23 @@ class idRenderWorldCommitted;
 struct worldArea_t;
 
 struct alignas(16) idRenderModelCommitted {
+private:
+  friend class idRender;
+  friend class idRenderModel;
+#ifdef WOLF_RENDERER_RENDERMODELCOMMITTED_TEST_ACCESS
+public:
+#endif
+  idRenderModelCommitted();
+  ~idRenderModelCommitted();
+
+public:
+  void LocalPointToGlobal(const idVec3& in, idVec3& out) const;
+  void SetFlagsFromSurfaces();
+  void PostCommit();
+  void CheckBounds() const;
+  idVec3 GetLightingPoint() const;
+  float GetLightingRadius() const;
+
   const char* name;
   idRenderWorldCommitted* world;
   idRenderIndex index;
@@ -38,13 +55,40 @@ struct alignas(16) idRenderModelCommitted {
   idRenderMatrix modelMatrix;
   idRenderMatrix inverseModelMatrix;
   approximateLighting_t approximateLighting[2];
-  std::uint32_t approximateState;
-  std::uint8_t committedFlags0;
-  std::uint8_t committedFlags1;
+  union {
+    std::uint32_t approximateState;
+    struct {
+      std::uint32_t currentApprox : 1;
+      std::uint32_t queuedApprox : 1;
+      std::uint32_t renderModelType : 30;
+    };
+  };
+  union {
+    std::uint8_t committedFlags0;
+    struct {
+      std::uint8_t lightCenterInitialized : 1;
+      std::uint8_t needsReferences : 1;
+      std::uint8_t needsApproximatedLighting : 1;
+      std::uint8_t mayBeDrawn : 1;
+      std::uint8_t mayCastShadows : 1;
+      std::uint8_t mayMakeInteractions : 1;
+      std::uint8_t mayMakeSubSurfaceScattering : 1;
+      std::uint8_t hasUniqueVirtualTexture : 1;
+    };
+  };
+  union {
+    std::uint8_t committedFlags1;
+    struct {
+      std::uint8_t mayContributeToPreZ : 1;
+      std::uint8_t forceApproximateLightingCalculation : 1;
+      std::uint8_t preventApproximateLightingCalculation : 1;
+      std::uint8_t forceNoGPUocclusionTest : 1;
+      std::uint8_t committedFlags1Unused : 4;
+    };
+  };
   std::uint8_t alignmentBeforeMvp[2];
   idRenderMatrix mvpMatrix;
   idVec4 highlightColor;
-  std::uint8_t alignmentTail[12];
 
   int CurrentApproximateLighting() const {
     return static_cast<int>(approximateState & 1u);

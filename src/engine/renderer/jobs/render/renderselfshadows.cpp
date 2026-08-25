@@ -372,7 +372,7 @@ void RenderSelfShadows(const renderSelfShadowsParms_t* parameters) {
     if (model->references.num <= 0)
       continue;
     if (model->r.suppressShadowInViewID != 0 &&
-        model->r.suppressShadowInViewID == view.viewID) {
+        model->r.suppressShadowInViewID == view.r.viewID) {
       continue;
     }
     const int modelIndex = static_cast<int>(model->index.index >> 8);
@@ -457,7 +457,7 @@ void RenderSelfShadows(const renderSelfShadowsParms_t* parameters) {
       const float radius = std::sqrt(std::max(radiusVector.LengthSqr(),
                                                FLT_MIN));
       const float lodDistance = ComputeShadowLODDistance(
-          bounds, view.viewOrigin, {0.0f, 0.0f, -1.0f});
+          bounds, view.r.vieworg, {0.0f, 0.0f, -1.0f});
       const float z = -lodDistance;
       const float screenLength =
           (radius * view.projectionMatrix.m[0] +

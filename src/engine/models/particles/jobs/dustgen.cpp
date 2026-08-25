@@ -1,5 +1,6 @@
 #include "engine/models/particles/jobs/dustgen.h"
 
+#include "engine/models/particles/jobs/particlegen.h"
 #include "shared/idlib/parallelism/paralleljoblist.h"
 
 #include <algorithm>
@@ -10,7 +11,6 @@
 namespace {
 
 constexpr float kRandomScale = 0.000030518509f;
-constexpr float kDegreesToRadians = 0.017453292f;
 
 std::uint32_t NextRandom(idRandom2& random) {
   random.seed = 1664525u * random.seed + 1013904223u;
@@ -36,215 +36,41 @@ std::uint8_t ToByte(float value) {
       std::clamp(static_cast<int>(value * 255.0f), 0, 255));
 }
 
-std::uint8_t ToTextureByte(float value) {
-  value = std::clamp(value, 0.0f, 1.0f);
-  return static_cast<std::uint8_t>(
-      std::clamp(static_cast<int>(value * 255.5f), 0, 255));
-}
-
-std::int16_t QuantizeTexCoord(float value) {
-  constexpr float zero = 0.5f;
-  constexpr float scale = 0.5f / 32767.0f;
-  return static_cast<std::int16_t>(std::clamp(
-      static_cast<int>(std::floor((value - zero) / scale + 0.5f)),
-      -32768, 32767));
-}
-
 void SinCos(float angle, float& sine, float& cosine) {
-  sine = std::sin(angle);
-  cosine = std::cos(angle);
-}
-
-void ParticleLeftAndUpForDust(const idParticleStage& stage,
-                              const idLookupTable* tables,
-                              particleGen_t& gen, const idVec3& viewUp,
-                              const idVec3& viewLeft, float extraRotation,
-                              idVec3& left, idVec3& up) {
-  if (stage.orientation.type == POR_XYZ) {
-    const float initialX = stage.initialRotation.initialAngle[0].Compute(
-        tables, gen.parmVal, gen.random);
-    const float initialY = stage.initialRotation.initialAngle[1].Compute(
-        tables, gen.parmVal, gen.random);
-    const float initialZ = stage.initialRotation.initialAngle[2].Compute(
-        tables, gen.parmVal, gen.random);
-    const float rotateX = stage.rotation.rotation[0].Compute(
-        tables, gen.parmVal, gen.random);
-    const float rotateY = stage.rotation.rotation[1].Compute(
-        tables, gen.parmVal, gen.random);
-    const float rotateZ = stage.rotation.rotation[2].Compute(
-        tables, gen.parmVal, gen.random);
-    float sx, cx, sy, cy, sz, cz;
-    SinCos((initialX + rotateX * gen.particleLife) * kDegreesToRadians,
-           sx, cx);
-    SinCos((initialY + rotateY * gen.particleLife) * kDegreesToRadians,
-           sy, cy);
-    SinCos((initialZ + rotateZ * gen.particleLife) * kDegreesToRadians,
-           sz, cz);
-    left = {cz * sy, sz * sy, -cy};
-    up = {cy * sx * sz - cz * cx,
-          cy * sx * cz + sz * cx,
-          sy * sx};
-    return;
-  }
-
-  const float initial = stage.initialRotation.initialAngle[0].Compute(
-      tables, gen.parmVal, gen.random);
-  const float rotation = stage.rotation.rotation[0].Compute(
-      tables, gen.parmVal, gen.random) * gen.particleLife;
-  const float angle = initial +
-      (((gen.index & 1) != 0 && stage.rotation.allowRotDirOverride)
-           ? -rotation : rotation) + extraRotation;
-  float sine, cosine;
-  SinCos(angle * kDegreesToRadians, sine, cosine);
-  switch (stage.orientation.type) {
-    case POR_Z:
-      left = {sine, cosine, 0.0f};
-      up = {cosine, -sine, 0.0f};
-      break;
-    case POR_X:
-      left = {0.0f, cosine, sine};
-      up = {0.0f, -sine, cosine};
-      break;
-    case POR_Y:
-      left = {cosine, 0.0f, sine};
-      up = {-sine, 0.0f, cosine};
-      break;
-    case POR_VIEW:
-    default:
-      left = viewLeft * cosine + viewUp * sine;
-      up = viewUp * cosine - viewLeft * sine;
-      break;
-  }
-}
-
-void ComputeTextureAnimation(const idParticleStage& stage,
-                             const idLookupTable* tables,
-                             particleGen_t& gen, float& width, float& s,
-                             float& height, float& t,
-                             std::uint8_t& frameBlend, bool& wrap) {
-  const int animationRows = stage.texAnimation.useRandomRow
-                                ? 1 : stage.texAnimation.numRows;
-  const int frameCount = animationRows * stage.texAnimation.numColumns;
-  int startFrame = stage.texAnimation.startFrame;
-  if (startFrame < 0)
-    startFrame = frameCount > 1
-                     ? static_cast<int>(((NextRandom(gen.random) >> 10) &
-                                         0x7fffu) % frameCount)
-                     : 0;
-
-  float frame = 0.0f;
-  if (stage.texAnimation.type == 0) {
-    const float rate = stage.texAnimation.rate.Compute(
-        tables, gen.parmVal, gen.random);
-    frame = (stage.texAnimation.rate.calcType == PARTICLE_CALC_GENERIC
-                 ? gen.totalAge : 1.0f) * rate + startFrame;
-  } else if (stage.texAnimation.type == 1) {
-    const float rate = stage.texAnimation.rate.Compute(
-        tables, gen.parmVal, gen.random);
-    frame = std::min((stage.texAnimation.rate.calcType ==
-                              PARTICLE_CALC_GENERIC ? gen.frac : 1.0f) * rate +
-                         startFrame,
-                     static_cast<float>(frameCount) - 1.0f);
-  } else if (stage.texAnimation.type == 2) {
-    frame = static_cast<float>(frameCount) * gen.frac + startFrame;
-  }
-
-  const int integerFrame = static_cast<int>(frame);
-  const float blend = frame - integerFrame;
-  int row;
-  if (stage.texAnimation.useRandomRow) {
-    row = stage.texAnimation.numRows > 1
-              ? static_cast<int>(((NextRandom(gen.random) >> 10) & 0x7fffu) %
-                                 stage.texAnimation.numRows)
-              : 0;
-  } else {
-    row = integerFrame % frameCount / stage.texAnimation.numColumns;
-  }
-  const int column = integerFrame % stage.texAnimation.numColumns;
-  width /= stage.texAnimation.numColumns;
-  s += column * width - std::floor(column * width);
-  height /= stage.texAnimation.numRows;
-  t += row * height - std::floor(row * height);
-  if (stage.texAnimation.useFrameBlending) {
-    frameBlend = ToByte(blend);
-    wrap = stage.texAnimation.numRows > 1 &&
-           !stage.texAnimation.useRandomRow &&
-           column == stage.texAnimation.numColumns - 1;
-  }
-}
-
-void ParticleTexCoordsForDust(const idParticleStage& stage,
-                              const idLookupTable* tables,
-                              particleGen_t& gen, const idVec2& sMinMax,
-                              const idVec2& tMinMax, int atlasWidth,
-                              int atlasHeight, idTransparencyVert* verts) {
-  float s = sMinMax.x;
-  float width = sMinMax.y;
-  float t = tMinMax.x;
-  float height = tMinMax.y;
-  std::uint8_t frameBlend = 0;
-  bool wrap = false;
-  if (stage.texAnimation.numColumns > 1 || stage.texAnimation.numRows > 1)
-    ComputeTextureAnimation(stage, tables, gen, width, s, height, t,
-                            frameBlend, wrap);
-
-  const bool flipS = stage.systemProperties.textureFlipS ==
-                         PTEXTURE_FLIP_ALWAYS ||
-                     (stage.systemProperties.textureFlipS ==
-                          PTEXTURE_FLIP_RANDOM && (gen.index & 1) != 0);
-  const bool flipT = stage.systemProperties.textureFlipT ==
-                         PTEXTURE_FLIP_ALWAYS ||
-                     (stage.systemProperties.textureFlipT ==
-                          PTEXTURE_FLIP_RANDOM && (gen.index & 1) != 0);
-  const float nextS = s + width;
-  const float secondS = std::fmod(nextS, 1.0f);
-  const float nextT = t + height;
-  const float secondT = wrap ? std::fmod(nextT, 1.0f) : nextT;
-  idVec2 textureS0 = flipS ? idVec2{nextS, s} : idVec2{s, nextS};
-  idVec2 textureT0 = flipT ? idVec2{nextT, t} : idVec2{t, nextT};
-  idVec2 textureS1 = flipS ? idVec2{secondS + width, secondS}
-                           : idVec2{secondS, secondS + width};
-  idVec2 textureT1 = flipT ? idVec2{secondT + height, secondT}
-                           : idVec2{secondT, secondT + height};
-
-  if ((stage.stageFlags & 4u) != 0) {
-    const float halfS = 0.5f / (atlasWidth * stage.atlasScaleBias.x);
-    const float halfT = 0.5f / (atlasHeight * stage.atlasScaleBias.y);
-    for (int i = 0; i < 2; ++i) {
-      textureS0[i] = std::clamp(textureS0[i], halfS, 1.0f - halfS) *
-                         stage.atlasScaleBias.x + stage.atlasScaleBias.z;
-      textureS1[i] = std::clamp(textureS1[i], halfS, 1.0f - halfS) *
-                         stage.atlasScaleBias.x + stage.atlasScaleBias.z;
-      textureT0[i] = std::clamp(textureT0[i], halfT, 1.0f - halfT) *
-                         stage.atlasScaleBias.y + stage.atlasScaleBias.w;
-      textureT1[i] = std::clamp(textureT1[i], halfT, 1.0f - halfT) *
-                         stage.atlasScaleBias.y + stage.atlasScaleBias.w;
+  float value = angle;
+  if (value < 0.0f || value >= 6.2831855f)
+    value -= std::floor(value * 0.15915494f) * 6.2831855f;
+  float cosineSign = 1.0f;
+  if (value < 3.1415927f) {
+    if (value > 1.5707964f) {
+      value = 3.1415927f - value;
+      cosineSign = -1.0f;
     }
+  } else if (value > 4.712389f) {
+    value -= 6.2831855f;
+  } else {
+    value = 3.1415927f - value;
+    cosineSign = -1.0f;
   }
-
-  const std::int16_t stS[2] = {QuantizeTexCoord(textureS0.x),
-                               QuantizeTexCoord(textureS0.y)};
-  const std::int16_t stT[2] = {QuantizeTexCoord(textureT0.x),
-                               QuantizeTexCoord(textureT0.y)};
-  const std::int16_t st1S[2] = {QuantizeTexCoord(textureS1.x),
-                                QuantizeTexCoord(textureS1.y)};
-  const std::int16_t st1T[2] = {QuantizeTexCoord(textureT1.x),
-                                QuantizeTexCoord(textureT1.y)};
-  const std::uint8_t unscaledS[2] = {ToTextureByte(sMinMax.x),
-                                    ToTextureByte(sMinMax.y)};
-  const std::uint8_t unscaledT[2] = {ToTextureByte(tMinMax.x),
-                                    ToTextureByte(tMinMax.y)};
-  constexpr int side[4] = {0, 1, 0, 1};
-  constexpr int vertical[4] = {0, 0, 1, 1};
-  for (int i = 0; i < 4; ++i) {
-    verts[i].st[0] = stS[side[i]];
-    verts[i].st[1] = stT[vertical[i]];
-    verts[i].st1[0] = st1S[side[i]];
-    verts[i].st1[1] = st1T[vertical[i]];
-    verts[i].tangent[0] = unscaledS[side[i]];
-    verts[i].tangent[1] = unscaledT[vertical[i]];
-    verts[i].tangent[2] = frameBlend;
-  }
+  const float square = value * value;
+  sine = (((((0.0000027526f - square * 0.0000000239f) * square -
+              0.000198409f) *
+                 square +
+             0.0083333319f) *
+                square -
+            0.16666667f) *
+               square +
+           1.0f) *
+          value;
+  cosine = cosineSign *
+           (((((0.0000247609f - square * 0.0000002605f) * square -
+                0.0013888397f) *
+                   square +
+               0.041666642f) *
+                  square -
+              0.5f) *
+                 square +
+             1.0f);
 }
 
 } // namespace
@@ -405,20 +231,21 @@ void DustGenJob(const deferredDustGenParms_t* parms) {
     gen.frac = parmFraction;
     gen.parmVal = parmFraction;
 
-    gen.vertColor.x = parms->stage->colorAttributes.baseColor[0].Compute(
+    const float alpha =
+        parms->stage->colorAttributes.baseColor[3].Compute(
+            parms->tables, parmFraction, gen.random) *
+        particle.fade * particle.baseAlpha;
+    const float blue = parms->stage->colorAttributes.baseColor[2].Compute(
         parms->tables, parmFraction, gen.random);
-    gen.vertColor.y = parms->stage->colorAttributes.baseColor[1].Compute(
+    const float green = parms->stage->colorAttributes.baseColor[1].Compute(
         parms->tables, parmFraction, gen.random);
-    gen.vertColor.z = parms->stage->colorAttributes.baseColor[2].Compute(
+    const float red = parms->stage->colorAttributes.baseColor[0].Compute(
         parms->tables, parmFraction, gen.random);
-    gen.vertColor.w = parms->stage->colorAttributes.baseColor[3].Compute(
-        parms->tables, parmFraction, gen.random) * particle.fade *
-                      particle.baseAlpha;
+    gen.vertColor = {red, green, blue, alpha};
 
     idVec3 left, up;
-    ParticleLeftAndUpForDust(*parms->stage, parms->tables, gen,
-                             adjustedViewUp, parms->viewLeft,
-                             particle.rotation, left, up);
+    ParticleLeftAndUp(parms->stage, parms->tables, &gen, adjustedViewUp,
+                      parms->viewLeft, particle.rotation, left, up);
     const float heightScale =
         (std::min(std::max(std::fabs(parms->viewOrg.z - particle.origin.z) -
                                parms->parms.heightScaleOffset,
@@ -435,17 +262,27 @@ void DustGenJob(const deferredDustGenParms_t* parms) {
                              parms->tables, parmFraction, gen.random) * size;
     const idVec3 scaledUp = up * size;
     const idVec3 scaledLeft = left * aspect;
-    idTransparencyVert* verts = parms->verts + index * 4;
+    alignas(16) idTransparencyVert verts[4];
     verts[0].xyz = particle.origin + scaledUp - scaledLeft;
     verts[1].xyz = particle.origin + scaledUp + scaledLeft;
     verts[2].xyz = particle.origin - scaledUp - scaledLeft;
     verts[3].xyz = particle.origin - scaledUp + scaledLeft;
 
-    std::uint8_t generic[4];
-    for (int channel = 0; channel < 4; ++channel)
-      generic[channel] = ToByte(
-          parms->stage->genericParm.genericParm[channel].Compute(
-              parms->tables, parmFraction, gen.random));
+    const float generic3 =
+        parms->stage->genericParm.genericParm[3].Compute(
+            parms->tables, parmFraction, gen.random);
+    const float generic2 =
+        parms->stage->genericParm.genericParm[2].Compute(
+            parms->tables, parmFraction, gen.random);
+    const float generic1 =
+        parms->stage->genericParm.genericParm[1].Compute(
+            parms->tables, parmFraction, gen.random);
+    const float generic0 =
+        parms->stage->genericParm.genericParm[0].Compute(
+            parms->tables, parmFraction, gen.random);
+    const std::uint8_t generic[4] = {
+        ToByte(generic0), ToByte(generic1), ToByte(generic2),
+        ToByte(generic3)};
     const std::uint8_t color[4] = {ToByte(gen.vertColor.x),
                                    ToByte(gen.vertColor.y),
                                    ToByte(gen.vertColor.z),
@@ -459,13 +296,13 @@ void DustGenJob(const deferredDustGenParms_t* parms) {
     }
 
     parms->depths[index] = viewDistance;
-    ParticleTexCoordsForDust(*parms->stage, parms->tables, gen,
-                             {0.0f, 1.0f}, {0.0f, 1.0f},
-                             static_cast<int>(parms->transSortWidth),
-                             static_cast<int>(parms->transSortHeight), verts);
+    ParticleTexCoords(parms->stage, parms->tables, &gen, {0.0f, 1.0f},
+                      {0.0f, 1.0f},
+                      static_cast<int>(parms->transSortWidth),
+                      static_cast<int>(parms->transSortHeight), verts);
+    std::memcpy(parms->verts + index * 4, verts, sizeof(verts));
   }
 }
 
 idParallelJobRegistration register_DustGenJob(
     reinterpret_cast<jobRun_t>(DustGenJob), "DustGenJob");
-

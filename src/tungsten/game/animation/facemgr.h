@@ -72,6 +72,10 @@ public:
   virtual ~idFaceMgr();
 
   void SetEnableEyeTracking(idEntity* owner, bool enable);
+  void SetEnableFaceSetupEyeTrackingForAI(idEntity* owner, bool enable) {
+    (void)owner;
+    faceSetupEyeTrackingEnabled = enable;
+  }
   void SetMood(mood_t value) { currentMood = value; }
   mood_t GetMoodForTest() const { return currentMood; }
   mood_t GetDefaultMood() const { return defaultMood; }
@@ -116,6 +120,9 @@ public:
 
   idFaceAnimator& GetAnimator() { return animator; }
   bool IsEyeTrackingEnabled() const { return eyeTrackingEnabled; }
+  bool IsFaceSetupEyeTrackingEnabledForTest() const {
+    return faceSetupEyeTrackingEnabled;
+  }
   bool IsBlinkingEnabled() const { return blinkingEnabled && !blinkingSuppressed; }
   bool IsLidDeformationEnabled() const {
     return lidDeformationEnabled && !lidDeformationSuppressed;
@@ -124,6 +131,12 @@ public:
   bool IsMoodAnimationEnabled() const { return moodAnimationEnabled; }
   bool IsLipSyncAnimationEnabled() const { return lipSyncAnimationEnabled; }
   bool IsGestureAnimationEnabled() const { return gestureAnimationEnabled; }
+  int GetSetBlinkingCountForTest() const { return setBlinkingCount; }
+  int GetSetEyeTrackingCountForTest() const { return setEyeTrackingCount; }
+  int GetSetMoodAnimationCountForTest() const {
+    return setMoodAnimationCount;
+  }
+  int GetUpdateCountForTest() const { return updateCount; }
   int GetGlanceIndex() const { return glanceIndex; }
   int GetFidgetIndex() const { return fidgetIndex; }
   const std::vector<std::string>& GetVisemes() const { return visemeAnimations; }
@@ -147,12 +160,16 @@ private:
   bool lipSyncAnimationEnabled{true};
   bool gestureAnimationEnabled{true};
   bool eyeTrackingEnabled{true};
+  bool faceSetupEyeTrackingEnabled{true};
   bool blinkingEnabled{true};
   bool lidDeformationEnabled{true};
   bool blinkingSuppressed{false};
   bool lidDeformationSuppressed{false};
   bool voicePlaying{false};
   bool eyesClosed{false};
+  int setBlinkingCount{0};
+  int setEyeTrackingCount{0};
+  int setMoodAnimationCount{0};
   mood_t currentMood{MOOD_NONE};
   mood_t defaultMood{MOOD_NONE};
 };

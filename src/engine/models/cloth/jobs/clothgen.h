@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-struct idDrawVert;
+class idDrawVert;
 
 struct idClothParticle {
   enum : std::uint16_t {

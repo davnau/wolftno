@@ -51,6 +51,7 @@ public:
   static void SwapSamples(ambientSample_t* samples, int numSamples);
 
 private:
+  friend class idRender;
   void FreeData();
 
   ambientMapCPU_t* ambientMap;

@@ -31,6 +31,11 @@ public:
   virtual idResource* Alloc(const char* name) const;
   virtual int AllocSize() const;
   idResource* Load(const char* name, bool load = true, bool forceReload = false);
+  idResource* FindExisting(const char* name,
+                           bool skipStaleCheck = false) const;
+  idResource* Index(int index) const;
+  void GetLoadedResources(idList<idResource*, 99>& resources) const;
+  void Add(idResource* resource);
   void Remove(idResource* resource);
   const idResource* ReadResourceFromMsg(idBitMsg* message) const;
   void WriteResourceToMsg(const idResource* resource, idBitMsg* message) const;
@@ -180,6 +185,8 @@ public:
   void GetDeclTextHeader(const idDeclInfo& info, const char* name, idStr& header) const;
   virtual bool ShouldLogMissingDecl(const idDecl& decl) const;
   static void ArgCompletion_DeclTypeAndName(idAutoComplete* completion);
+  template <typename T>
+  static void ArgCompletion_Decl(idAutoComplete& completion);
 };
 
 enum scFileStatus_t { SCF_UNKNOWN, SCF_CHECKEDIN, SCF_CHECKEDOUT, SCF_NOTIMPORTED };

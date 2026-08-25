@@ -8,7 +8,7 @@
 class idDeclRenderParm;
 class idRenderView;
 class idVec3;
-struct idBounds;
+class idBounds;
 class idRenderDestination;
 struct idRenderLightParms;
 struct idRenderLightCommitted;

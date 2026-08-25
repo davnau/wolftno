@@ -139,11 +139,17 @@ bool idBox::LineIntersection(const idVec3& start, const idVec3& end) const {
 }
 
 void idBox::ToPoints(idVec3 points[8]) const {
-  for (int corner = 0; corner < 8; ++corner) {
-    points[corner] = center + axis.mat[0] * (((corner >> 0) & 1) ? extents.x : -extents.x) +
-                     axis.mat[1] * (((corner >> 1) & 1) ? extents.y : -extents.y) +
-                     axis.mat[2] * (((corner >> 2) & 1) ? extents.z : -extents.z);
-  }
+  const idVec3 x = axis.mat[0] * extents.x;
+  const idVec3 y = axis.mat[1] * extents.y;
+  const idVec3 z = axis.mat[2] * extents.z;
+  points[0] = center - x - y - z;
+  points[1] = center + x - y - z;
+  points[2] = center + x + y - z;
+  points[3] = center - x + y - z;
+  points[4] = center - x - y + z;
+  points[5] = center + x - y + z;
+  points[6] = center + x + y + z;
+  points[7] = center - x + y + z;
 }
 
 void idMatX::SetData(int rows, int columns, float* data) {

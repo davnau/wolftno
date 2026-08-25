@@ -9,6 +9,7 @@ public:
     this->list = staticList;
     this->num = 0;
     this->size = Capacity;
+    this->granularity = 1;
     this->listStatic = 1;
   }
   ~idStaticList() = default;

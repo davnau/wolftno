@@ -6,6 +6,13 @@
 #include <algorithm>
 #include <cmath>
 
+const idBounds bounds_zero{{{0.0f, 0.0f, 0.0f},
+                            {0.0f, 0.0f, 0.0f}}};
+const idBounds bounds_zeroOneCube{{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 1.0f}}};
+const idBounds bounds_unitCube{{{-1.0f, -1.0f, -1.0f},
+                                {1.0f, 1.0f, 1.0f}}};
+
 namespace {
 idVec3 TransformPoint(const idVec3& point, const idVec3& origin, const idMat3& axis) {
   return origin + axis * point;

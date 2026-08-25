@@ -101,7 +101,7 @@ void WriteOrientedQuad(idDrawVert* destination, const beamNodeParms_t& node,
     const idVec3 direction = Subtract(node.endPos, node.startPos);
     const idVec3 orientation = orientType == BEAM_ORIENT_AXIS
                                    ? node.orientVec
-                                   : Subtract(view->viewOrigin, node.startPos);
+                                   : Subtract(view->r.vieworg, node.startPos);
     const idVec3 cross = Cross(direction, orientation);
     const float lengthSquared = cross.x * cross.x + cross.y * cross.y +
                                 cross.z * cross.z;

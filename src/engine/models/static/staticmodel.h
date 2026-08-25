@@ -40,6 +40,19 @@ public:
   idList<const idMaterial*, 5> materials;
 };
 
+class idStaticModelManager {
+public:
+  virtual ~idStaticModelManager() = default;
+  virtual void Init() {}
+  virtual const idStaticModel* FindStaticModel(const char* name,
+                                               bool load) = 0;
+  virtual void AddStaticModel(idStaticModel*) {}
+  virtual void ReloadModels() {}
+  virtual void CalculateStats(void*) {}
+};
+
+extern idStaticModelManager* staticModelManager;
+
 static_assert(sizeof(idStaticModelSurface) == 128,
               "idStaticModelSurface ABI drift");
 static_assert(offsetof(idStaticModelSurface, skinRemaps) == 104,

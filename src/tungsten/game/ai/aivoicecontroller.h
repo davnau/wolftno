@@ -129,6 +129,7 @@ public:
   }
   aiVoicePriority_t GetLastPriority() const { return lastVoicePriority; }
   bool WasFaded() const { return faded; }
+  int GetStopVoiceOverCountForTest() const { return stopVoiceOverCount; }
 
 private:
   int CurrentTime() const;
@@ -143,6 +144,7 @@ private:
   std::array<int, AIVOICE_MAX> nextPlayTime{};
   std::uint32_t randomSeed{0x12345678u};
   bool faded{false};
+  int stopVoiceOverCount{0};
 
   inline static idAIVoiceController* globalController{nullptr};
   inline static std::array<logEntry_t, 50> logEntries{};

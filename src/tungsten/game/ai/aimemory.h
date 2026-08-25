@@ -13,6 +13,41 @@ enum aiMelee_t : int {
 };
 
 struct idDeclAIBehavior {
+  struct damageBehaviors_t {
+    float movingPainSpeed{0.0F};
+    float movingDeathSpeed{0.0F};
+    float slowMovingDeathSpeed{0.0F};
+    unsigned int longPainDamageFilter{0};
+    float longPainHealthLimit{0.0F};
+    float injuredHealthLimit{0.0F};
+    int injuredChance{0};
+    float injuredBleedOutTime{0.0F};
+    float injuredStandUpTime{0.0F};
+    std::array<float, 5> difficultyDamageScale{};
+    bool canTakeDamage{false};
+  } damageBehaviors;
+  struct movementBehaviors_t {
+    float crouchMoveMax{0.0F};
+    float injuredCrouchMoveMax{0.0F};
+    float runMoveMin{0.0F};
+    float sprintMoveMin{0.0F};
+    int coverCrouchPathTime{0};
+    int coverRunPathTime{0};
+    int coverSprintPathTime{0};
+    int fireRunningToCoverChance{0};
+    float cornerCircleRadius{0.0F};
+    float alignToPointDistance{0.0F};
+    bool runsIfShotAt{false};
+    bool crouchWhenStill{false};
+    bool allowTransitionOvershoot{false};
+    bool useOldAlignToPoint{false};
+    bool runFacingForward{false};
+    bool strafeMoveToEntity{false};
+    bool enemyCloseObscurityTest{false};
+    bool allowEnemySightedCrouchIdle{false};
+    bool obstacleAvoidIgnorePlayer{false};
+    bool aasPush{false};
+  } movementBehaviors;
   struct runTypeBehaviors_t {
     int scrambleRunIndex{0};
     int farRunIndex{0};
@@ -45,6 +80,14 @@ struct idDeclAIBehavior {
   float aimOffset{0.0F};
   bool canGreetHumans{false};
   bool canGreetPlayers{false};
+  float grappleMaxDistance{0.0F};
+  float grappleHeight{0.0F};
+  std::uint8_t traversalFlagsByte0{1};
+  std::uint8_t traversalFlagsByte1{0};
+  int traversalAimEvasionDuration{0};
+  int traversalGunfireEvasionDuration{0};
+  float traversalEvasionAimDist{400.0F};
+  float traversalEvasionGunfireDist{1024.0F};
 };
 
 class idInfoPath : public idEntity {
@@ -190,11 +233,18 @@ public:
   bool ShouldAvoid(int currentTime);
   void SetAvoidEntity(int currentTime, const idEntity* entity, float radius,
                       float durationSeconds);
+  void ClearAvoid() {
+    avoidEntity = nullptr;
+    avoidRadius = 0.0F;
+    avoidFinishedTime = -1;
+  }
   void SetSpottedEnemyTrigger(const idEntity* entity);
   const idEntity* GetSpottedEnemyTrigger() const;
   void SetDetectedEnemyTrigger(const idEntity* entity);
   const idEntity* GetDetectedEnemyTrigger() const;
   void SetTriggeredInteraction(idPlayer* entity);
+  void SetInteractionUsableForTest(bool value) { interactionIsUsable = value; }
+  bool IsInteractionUsable() const { return interactionIsUsable; }
 
   void SetCurrentTime(int value) { currentTime = value; }
   void SetEnemy(idEntity* value) { currentEnemy = value; }
@@ -208,9 +258,19 @@ public:
   int GetNextBurstTimeForTest() const { return nextBurstTime; }
   int GetEndBurstTimeForTest() const { return endBurstTime; }
   int GetLastFiredAtTimeForTest() const { return lastFiredAtTime; }
+  void SetLastFiredAtTime(int value) { lastFiredAtTime = value; }
+  void SetTraversalThreatTimesForTest(int lastAimedAt, int lastFiredAt,
+                                      int lastAvoid) {
+    lastAimedAtTime = lastAimedAt;
+    lastFiredAtTime = lastFiredAt;
+    lastAvoidTime = lastAvoid;
+  }
+  int GetLastAimedAtTimeForTest() const { return lastAimedAtTime; }
+  int GetLastAvoidTimeForTest() const { return lastAvoidTime; }
   void SetCurrentNeutral(idEntity* value) { currentNeutral = value; }
   void SetLastAttacker(idEntity* value) { lastAttacker = value; }
   void SetSoundAlarmTime(int value) { timeToSoundAlarm = value; }
+  int GetSoundAlarmTimeForTest() const { return timeToSoundAlarm; }
   void SetEnemyTrailUpdatePeriod(int value) { enemyTrailUpdatePeriod = value; }
   void AddVoiceVolume(idVolume_LocationVoice* value) {
     voiceVolumes.Append(value);
@@ -243,9 +303,38 @@ public:
     lastSafeEnemyPos.pos = value;
     lastSafeEnemyPos.valid = true;
   }
+  void SetLastSafeEnemyPosValidForTest(bool value) {
+    lastSafeEnemyPos.valid = value;
+  }
+  void SetEnemyPosInsideAASForTest(bool value) {
+    enemyPosInsideAAS = value;
+  }
+  bool IsEnemyPosInsideAASForTest() const { return enemyPosInsideAAS; }
+  void SetCurrentFriendlyBlockerTimeForTest(int value) {
+    currentFriendlyBlockerTime = value;
+  }
+  int GetCurrentFriendlyBlockerTimeForTest() const {
+    return currentFriendlyBlockerTime;
+  }
+  void SetCurrentFriendlyLOSBlockerForTest(bool value) {
+    currentFriendlyLOSBlocker = value;
+  }
+  bool HasCurrentFriendlyLOSBlockerForTest() const {
+    return currentFriendlyLOSBlocker;
+  }
+  void SetEnemyTrailPosForTest(int index, const idVec3& value, bool valid) {
+    if (index < 0 || index >= static_cast<int>(enemyTrailPositions.size())) {
+      return;
+    }
+    const int wrapped = (index + enemyTrailFinger) % 5;
+    enemyTrailPositions[wrapped] = {value, valid};
+  }
   int GetEnemyTrailFingerForTest() const { return enemyTrailFinger; }
   int GetNextEnemyTrailTimeForTest() const { return nextEnemyTrailTime; }
   idScenePoint* GetCurScenePointForTest() const { return curScenePoint; }
+  idScenePoint* GetCurLookScenePointForTest() const {
+    return curLookScenePoint;
+  }
   void SetEmergencyCoverExit(bool value) { emergencyCoverExit = value; }
   bool HasEmergencyCoverExit() const { return emergencyCoverExit; }
   void SetAnimAfterOverride(aiMemoryAnimAfterOverride value) {
@@ -259,6 +348,8 @@ public:
   const idEntity* GetAvoidEntityForTest() const { return avoidEntity; }
   float GetAvoidRadiusForTest() const { return avoidRadius; }
   int GetAvoidFinishedTimeForTest() const { return avoidFinishedTime; }
+  void SetAvoidPoint(const idVec3& value) { avoidPoint = value; }
+  const idVec3& GetAvoidPointForTest() const { return avoidPoint; }
   idPlayer* GetTriggeredInteractionForTest() const;
 
   const idEntity* scriptedAggroEntity{nullptr};
@@ -308,6 +399,8 @@ private:
   int nextBurstTime{0};
   int endBurstTime{0};
   int lastFiredAtTime{-1};
+  int lastAimedAtTime{-1};
+  int lastAvoidTime{-1};
   idEntity* currentNeutral{nullptr};
   int lastDamageTime{-1};
   const idInfoPath* currentPath{nullptr};
@@ -333,10 +426,15 @@ private:
   const idEntity* avoidEntity{nullptr};
   float avoidRadius{0.0F};
   int avoidFinishedTime{0};
+  idVec3 avoidPoint{};
   const idEntity* spottedEnemyTrigger{nullptr};
   int spottedEnemyTriggerNumber{-1};
   const idEntity* detectedEnemyTrigger{nullptr};
   int detectedEnemyTriggerNumber{-1};
   idPlayer* triggeredInteraction{nullptr};
   int triggeredInteractionNumber{-1};
+  bool interactionIsUsable{false};
+  bool enemyPosInsideAAS{false};
+  int currentFriendlyBlockerTime{-1};
+  bool currentFriendlyLOSBlocker{false};
 };

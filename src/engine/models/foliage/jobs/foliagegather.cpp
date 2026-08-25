@@ -56,27 +56,32 @@ void SetupDataPointers(fm_subTreeDataPtrs_t& pointers,
 
 } // namespace
 
-bool R_CullFoliageBoundsToMVP(const std::int16_t (*bounds)[3],
+bool R_CullFoliageBoundsToMVP(const std::int16_t (*const bounds)[3],
                               const float* mvp, idBounds& floatBounds) {
-  for (int side = 0; side < 2; ++side) {
-    floatBounds.b[side] = {static_cast<float>(bounds[side][0]),
-                           static_cast<float>(bounds[side][1]),
-                           static_cast<float>(bounds[side][2])};
-  }
+  floatBounds.b[0].x = static_cast<float>(bounds[0][0]);
+  floatBounds.b[1].x = static_cast<float>(bounds[1][0]);
+  floatBounds.b[0].y = static_cast<float>(bounds[0][1]);
+  floatBounds.b[1].y = static_cast<float>(bounds[1][1]);
+  floatBounds.b[0].z = static_cast<float>(bounds[0][2]);
+  floatBounds.b[1].z = static_cast<float>(bounds[1][2]);
   int clipMask = 0;
   for (int x = 0; x < 2; ++x) {
     for (int y = 0; y < 2; ++y) {
       for (int z = 0; z < 2; ++z) {
         const idVec3 point{floatBounds.b[x].x, floatBounds.b[y].y,
                            floatBounds.b[z].z};
-        const float clipW = mvp[12] * point.x + mvp[13] * point.y +
-                            mvp[14] * point.z + mvp[15];
-        const float clipX = mvp[0] * point.x + mvp[1] * point.y +
-                            mvp[2] * point.z + mvp[3];
-        const float clipY = mvp[4] * point.x + mvp[5] * point.y +
-                            mvp[6] * point.z + mvp[7];
-        const float clipZ = mvp[8] * point.x + mvp[9] * point.y +
-                            mvp[10] * point.z + mvp[11];
+        const float clipW = mvp[14] * point.z +
+                                (mvp[13] * point.y + mvp[12] * point.x) +
+                            mvp[15];
+        const float clipY = mvp[6] * point.z +
+                                (mvp[5] * point.y + mvp[4] * point.x) +
+                            mvp[7];
+        const float clipX = mvp[2] * point.z +
+                                (mvp[1] * point.y + mvp[0] * point.x) +
+                            mvp[3];
+        const float clipZ = mvp[10] * point.z +
+                                (mvp[9] * point.y + mvp[8] * point.x) +
+                            mvp[11];
         if (clipX > -clipW) clipMask |= 1;
         if (clipW > clipX) clipMask |= 2;
         if (clipY > -clipW) clipMask |= 4;
@@ -111,7 +116,10 @@ void GetFoliageRenderListForView_r(fm_subTreeDataPtrs_t& data,
         fm_subTreeBounds_t frontBounds = bounds;
         frontBounds.b[0][axis] = node.planeDist;
         GetFoliageRenderListForView_r(data, tree, frontBounds, gather,
-                                      node.children[0], 0, 0, frontOffset);
+                                      node.children[0],
+                                      (node.planeType >> 2) & 7U,
+                                      static_cast<std::uint8_t>(node.planeType) >> 5,
+                                      frontOffset);
         stackOffset = PartitionInfluences(
             gather, stackOffset, axis, static_cast<float>(node.planeDist), false);
         bounds.b[1][axis] = node.planeDist;
@@ -141,8 +149,16 @@ void GetFoliageRenderListForView_r(fm_subTreeDataPtrs_t& data,
   std::uint16_t storedInfluenceOffset = 0;
   if (stackOffset < gather.influenceSphereStackSize &&
       gather.numInfluenceSphereIndices + 1 < gather.maxInfluenceSphereIndices) {
-    std::sort(gather.influenceSphereStack + stackOffset,
-              gather.influenceSphereStack + gather.influenceSphereStackSize);
+    for (unsigned last = gather.influenceSphereStackSize - 1;
+         last > stackOffset; --last) {
+      for (unsigned index = stackOffset; index < last; ++index) {
+        if (gather.influenceSphereStack[index] >
+            gather.influenceSphereStack[index + 1]) {
+          std::swap(gather.influenceSphereStack[index],
+                    gather.influenceSphereStack[index + 1]);
+        }
+      }
+    }
     const unsigned available = gather.maxInfluenceSphereIndices -
                                gather.numInfluenceSphereIndices;
     const unsigned end = std::min(gather.influenceSphereStackSize,
@@ -159,12 +175,21 @@ void GetFoliageRenderListForView_r(fm_subTreeDataPtrs_t& data,
   foliageCount = std::min(foliageCount,
                           gather.maxFoliageIndices - gather.numFoliageIndices);
   const unsigned smallEnd = leaf.foliageOffset + leaf.numSmallFoliage;
-  const idVec3 center = (floatBounds.b[0] + floatBounds.b[1]) * 0.5f;
-  const idVec3 extents = floatBounds.b[1] - center;
-  const float nearestDepth = (center - gather.viewOrg) * gather.viewDir -
-                             std::fabs(extents.x * gather.viewDir.x) -
-                             std::fabs(extents.y * gather.viewDir.y) -
-                             std::fabs(extents.z * gather.viewDir.z);
+  const float centerX = (floatBounds.b[1].x + floatBounds.b[0].x) * 0.5f;
+  const float centerY = (floatBounds.b[0].y + floatBounds.b[1].y) * 0.5f;
+  const float centerZ = (floatBounds.b[0].z + floatBounds.b[1].z) * 0.5f;
+  const float extentY = floatBounds.b[1].y - centerY;
+  const float zProjection =
+      (floatBounds.b[1].z - centerZ) * gather.viewDir.z;
+  const float absX =
+      std::fabs((floatBounds.b[1].x - centerX) * gather.viewDir.x);
+  const float projectedCenter =
+      (centerY - gather.viewOrg.y) * gather.viewDir.y +
+          (centerX - gather.viewOrg.x) * gather.viewDir.x +
+      (centerZ - gather.viewOrg.z) * gather.viewDir.z;
+  float nearestDepth = projectedCenter - absX;
+  nearestDepth -= std::fabs(extentY * gather.viewDir.y);
+  nearestDepth -= std::fabs(zProjection);
   const float fadeRange =
       gather.foliageSmallFadeDistMax - gather.foliageStartFadeDist;
   const unsigned foliageEnd = leaf.foliageOffset + foliageCount;
@@ -201,18 +226,25 @@ void GatherFoliageIndicesForSubTree(const deferredFoliageGatherParms_t* parms) {
   gather.viewDir = view.viewFwd;
   gather.viewOrg = view.viewOrg;
   const float distances[2] = {view.nearDist, view.farDist};
+  const float maxFoliageHeight =
+      static_cast<float>(parms->maxFoliageHeight);
   int corner = 0;
-  for (int distanceIndex = 0; distanceIndex < 2; ++distanceIndex) {
-    const float distance = distances[distanceIndex];
-    const idVec3 center = view.viewOrg + view.viewFwd * distance;
-    const idVec3 horizontal = view.viewLeft * (distance * view.fov[0]);
-    const idVec3 vertical = view.viewUp * (distance * view.fov[1]);
-    const idVec3 height = view.viewUp * static_cast<float>(parms->maxFoliageHeight);
-    const idVec3 corners[4] = {center + horizontal + vertical + height,
-                               center - horizontal + vertical + height,
-                               center - horizontal - vertical - height,
-                               center + horizontal - vertical - height};
-    for (const idVec3& point : corners) {
+  for (const float distance : distances) {
+    idVec3 points[4];
+    for (int axis = 0; axis < 3; ++axis) {
+      const float center =
+          view.viewOrg[axis] + view.viewFwd[axis] * distance;
+      const float horizontal =
+          (view.viewLeft[axis] * distance) * view.fov[0];
+      const float vertical =
+          (view.viewUp[axis] * distance) * view.fov[1];
+      const float height = view.viewUp[axis] * maxFoliageHeight;
+      points[0][axis] = center + horizontal + vertical + height;
+      points[1][axis] = center - horizontal + vertical + height;
+      points[2][axis] = center - horizontal - vertical - height;
+      points[3][axis] = center + horizontal - vertical - height;
+    }
+    for (const idVec3& point : points) {
       gather.frustumVerts[0][corner] = ToShort(point.x);
       gather.frustumVerts[1][corner] = ToShort(point.y);
       gather.frustumVerts[2][corner] = ToShort(point.z);

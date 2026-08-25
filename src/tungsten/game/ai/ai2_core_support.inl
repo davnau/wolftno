@@ -71,10 +71,11 @@ idFSMCallback::~idFSMCallback() = default;
 idFSMManager::idFSMStack::idFSMStack() = default;
 idFSMManager::~idFSMManager() = default;
 idLegsFSM::~idLegsFSM() = default;
-std::intptr_t idPresentable::SetModelFade(...) { return 0; }
+void idPresentable::SetModelFade(float value) {
+  modelFade = value;
+  ++modelFadeSetCount;
+}
 idScriptFunction::~idScriptFunction() = default;
-RECOVERED_METHOD(idSpawnFocusWithRequirement, RequirementFilled)
-
 std::intptr_t idBounds::Compare(...) const { return 0; }
 std::intptr_t idStr::GetFileName(...) const { return 0; }
 std::intptr_t idGameLocal::GetDebugEntity(...) { return 0; }

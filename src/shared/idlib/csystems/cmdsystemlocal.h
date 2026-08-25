@@ -42,6 +42,13 @@ public:
       completion->Append(suggestion, -1);
     }
   }
+  template <const char** Strings>
+  static void ArgCompletion_String(idAutoComplete* completion) {
+    for (int index = 0; Strings[index] != nullptr; ++index) {
+      idStr suggestion(Strings[index]);
+      completion->Append(suggestion, -1);
+    }
+  }
 };
 
 class idCmdSystemLocal final : public idCmdSystem {

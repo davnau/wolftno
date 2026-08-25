@@ -9,7 +9,7 @@ class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
 class idTriangles;
-struct idBounds;
+class idBounds;
 class idRenderDestination;
 struct idRenderMatrix;
 struct idRenderModelCommitted;

@@ -32,6 +32,14 @@ using glUnmapBufferProc_t = unsigned char (*)(unsigned int target);
 using glUnmapNamedBufferProc_t = unsigned char (*)(unsigned int buffer);
 using glBindFramebufferProc_t = void (*)(unsigned int target,
                                          unsigned int framebuffer);
+using glGenFramebuffersProc_t = void (*)(int count,
+                                         unsigned int* framebuffers);
+using glDeleteFramebuffersProc_t = void (*)(
+    int count, const unsigned int* framebuffers);
+using glCheckFramebufferStatusProc_t = unsigned int (*)(
+    unsigned int target);
+using glDrawBuffersProc_t = void (*)(int count,
+                                     const unsigned int* buffers);
 using glBlitFramebufferProc_t = void (*)(int sourceX0, int sourceY0,
                                          int sourceX1, int sourceY1,
                                          int destinationX0,
@@ -210,6 +218,10 @@ extern glMapNamedBufferRangeProc_t _glewMapNamedBufferRangeEXT;
 extern glUnmapBufferProc_t _glewUnmapBufferARB;
 extern glUnmapNamedBufferProc_t _glewUnmapNamedBufferEXT;
 extern glBindFramebufferProc_t _glewBindFramebufferEXT;
+extern glGenFramebuffersProc_t _glewGenFramebuffersEXT;
+extern glDeleteFramebuffersProc_t _glewDeleteFramebuffersEXT;
+extern glCheckFramebufferStatusProc_t _glewCheckFramebufferStatusEXT;
+extern glDrawBuffersProc_t _glewDrawBuffers;
 extern glBlitFramebufferProc_t _glewBlitFramebufferEXT;
 extern glGenerateMipmapProc_t _glewGenerateMipmapEXT;
 extern glBlendEquationProc_t _glewBlendEquation;
@@ -337,6 +349,8 @@ extern "C" void glCopyTexSubImage2D(unsigned int target, int level,
 extern "C" void glReadPixels(int x, int y, int width, int height,
                               unsigned int format, unsigned int type,
                               void* pixels);
+extern "C" void glReadBuffer(unsigned int mode);
+extern "C" void glDrawBuffer(unsigned int mode);
 extern "C" void glGetTexImage(unsigned int target, int level,
                                unsigned int format, unsigned int type,
                                void* pixels);

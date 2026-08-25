@@ -93,9 +93,9 @@ void CaptureViewDepth(const captureParms_t* parameters) {
   GL_Scissor(0, 0, parameters->renderWidth, parameters->renderHeight);
   GL_SetRenderDestination({parameters->renderDestViewDepth}, 0, 0);
   _glewBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_VALUE,
-                          parameters->renderDestViewDepth->fboHandle);
+                          parameters->renderDestViewDepth->FBOhandle);
   _glewBindFramebufferEXT(GL_READ_FRAMEBUFFER_VALUE,
-                          parameters->renderDestDefault->fboHandle);
+                          parameters->renderDestDefault->FBOhandle);
   _glewBlitFramebufferEXT(
       0, 0, parameters->renderWidth, parameters->renderHeight,
       0, 0, parameters->renderWidth, parameters->renderHeight,
@@ -108,9 +108,9 @@ void CaptureViewColor(const captureParms_t* parameters) {
   GL_Scissor(0, 0, parameters->renderWidth, parameters->renderHeight);
   GL_SetRenderDestination({parameters->renderDestViewColor}, 0, 0);
   _glewBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_VALUE,
-                          parameters->renderDestViewColor->fboHandle);
+                          parameters->renderDestViewColor->FBOhandle);
   _glewBindFramebufferEXT(GL_READ_FRAMEBUFFER_VALUE,
-                          parameters->renderDestDefault->fboHandle);
+                          parameters->renderDestDefault->FBOhandle);
   _glewBlitFramebufferEXT(
       0, 0, parameters->renderWidth, parameters->renderHeight,
       0, 0, parameters->renderWidth, parameters->renderHeight,

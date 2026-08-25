@@ -9,7 +9,7 @@
 struct dm_treeNode_t {
   std::uint16_t planeType;
   std::int16_t planeDist;
-  std::int16_t children[2];
+  std::uint16_t children[2];
   std::uint32_t counts[2];
 };
 
@@ -30,7 +30,6 @@ struct dm_subTreeTreeNodePtrs_t {
 struct detailGather_t {
   std::int16_t frustumVerts[3][8];
   int maxDetailHeight;
-  int pad;
   const float* mvpMatrix;
   std::uint16_t* detailIndices;
   std::uint32_t maxDetailIndices;
@@ -68,21 +67,20 @@ struct deferredDetailGatherParms_t {
   detailSubTreeStats_t* detailCount;
   std::uint16_t* detailIndices;
   std::uint32_t maxDetailIndices;
-  int pad;
 };
 
-void SetupSubTreePtrsFromTreeNodes(dm_subTreeTreeNodePtrs_t* subTreePtrs,
+void SetupSubTreePtrsFromTreeNodes(dm_subTreeTreeNodePtrs_t& subTreePtrs,
                                    const dm_subTreeTreeNodes_t* subTree);
-bool R_CullDetailBoundsToMVP(const dm_subTreeBounds_t* bounds,
+bool R_CullDetailBoundsToMVP(const dm_subTreeBounds_t& bounds,
                              int maxDetailHeight, const float* mvp);
-void GetDetailRenderListForView_r(dm_subTreeTreeNodePtrs_t* subTreePtrs,
-                                  dm_subTreeBounds_t* bounds,
-                                  detailGather_t* gather,
-                                  std::int16_t nodeNum,
+void GetDetailRenderListForView_r(dm_subTreeTreeNodePtrs_t& subTreePtrs,
+                                  dm_subTreeBounds_t& bounds,
+                                  detailGather_t& gather,
+                                  std::uint16_t nodeNum,
                                   std::uint16_t numDetailAtLeaf,
                                   std::uint32_t counts);
 void GatherDetailIndicesForSubTree(const deferredDetailGatherParms_t* parms,
-                                   int* numDetailIndices);
+                                   int& numDetailIndices);
 
 static_assert(sizeof(dm_treeNode_t) == 16, "dm_treeNode_t ABI drift");
 static_assert(offsetof(dm_treeNode_t, planeDist) == 2,
@@ -124,4 +122,3 @@ static_assert(offsetof(deferredDetailGatherParms_t, detailCount) == 32,
               "deferredDetailGatherParms_t::detailCount ABI drift");
 static_assert(offsetof(deferredDetailGatherParms_t, maxDetailIndices) == 48,
               "deferredDetailGatherParms_t::maxDetailIndices ABI drift");
-

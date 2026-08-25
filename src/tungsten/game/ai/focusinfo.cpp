@@ -115,6 +115,7 @@ void idFocusInfo::SetTrackingParmsIndex(int index) {
 // DIA: idFocusInfo::Init
 void idFocusInfo::Init(idAnimatedEntity* owner, aiFoci_t fociTypeValue) {
   Shutdown(owner);
+  ++initCount;
   fociType = fociTypeValue;
   if (fociType != AIFOCI_AIM && fociType != AIFOCI_LOOK) return;
   animators[0] = new idAnimator_TrackerBase();
@@ -251,6 +252,7 @@ void idFocusInfo::ShowTrackingInfo(idAnimatedEntity* owner, const char* label,
 void idFocusInfo::Update(idAnimatedEntity* owner,
                          idAnimator_TrackerBase* parentTracker) {
   if (!initialized || owner == nullptr) return;
+  lastParentTracker = parentTracker;
   ++updateCount;
   const int now = FocusTime();
   if (focusTimeout >= 0 && now >= focusTimeout) Clear(owner);

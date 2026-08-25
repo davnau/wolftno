@@ -1,4 +1,5 @@
 #include "file.h"
+#include "shared/idlib/lib.h"
 #include "shared/idlib/networking/bitmsg.h"
 
 #include <algorithm>
@@ -113,25 +114,24 @@ idFile_Memory::~idFile_Memory() {
     delete[] filePtr;
 }
 
-idFile_BitMsg::idFile_BitMsg(idBitMsg* message, bool writable)
-    : name("bit message"), mode(writable ? FS_WRITE : FS_READ), msg(message) {}
+idFile_BitMsg::idFile_BitMsg(idBitMsg* message)
+    : name("*bitmsg*"), mode(FS_READ_WRITE), msg(message) {}
 std::size_t idFile_BitMsg::Read(void* buffer, std::size_t length) {
-  return msg && mode == FS_READ
-             ? static_cast<std::size_t>(msg->ReadData(buffer, static_cast<int>(length)))
-             : 0;
+  return static_cast<std::size_t>(
+      msg->ReadData(buffer, static_cast<int>(length)));
 }
 std::size_t idFile_BitMsg::Write(const void* buffer, std::size_t length) {
-  if (!msg || mode == FS_READ)
-    return 0;
-  const int oldSize = msg->GetSize();
+  if (mode == FS_READ)
+    idLib::FatalError("idFile_Memory::Write: %s not opened in write mode",
+                      name.data);
   msg->WriteData(buffer, static_cast<int>(length));
-  return static_cast<std::size_t>(msg->GetSize() - oldSize);
+  return length;
 }
 std::int64_t idFile_BitMsg::Length() const {
   return msg ? msg->GetSize() : 0;
 }
 std::int64_t idFile_BitMsg::Tell() const {
-  return msg ? (mode == FS_READ ? msg->GetReadCount() : msg->GetSize()) : 0;
+  return mode != FS_READ ? msg->GetSize() : msg->GetReadCount();
 }
 
 void idFile_Memory::SetReadOnlyData(char* value, std::uint64_t length) {

@@ -31,7 +31,7 @@ bool idRenderModelCuttable::LoadModel(const char* modelName) {
       idRenderModelCuttableResource::resourceList.Load(modelName, false, false));
   if (modelResource == nullptr) {
     idLib::Warning("idRenderModelCuttableResource - failed to load model '%s'",
-                   modelName != nullptr ? modelName : "");
+                   modelName);
     return false;
   }
   modelResource->BuildSurfaces(this);
@@ -50,20 +50,17 @@ idRenderModelCuttable::idRenderModelCuttable(const char* modelName) {
 
 void idRenderModelCuttable::Save(idFile* file) {
   idRenderModel::Save(file);
-  if (file == nullptr)
-    return;
   const std::uint32_t stored = ByteSwap32(static_cast<std::uint32_t>(bufferIndex));
   file->Write(&stored, sizeof(stored));
 }
 
 bool idRenderModelCuttable::Load(idFile* file) {
-  if (!idRenderModel::Load(file) || file == nullptr)
+  if (!idRenderModel::Load(file))
     return false;
-  std::uint32_t stored = 0;
-  if (file->Read(&stored, sizeof(stored)) != sizeof(stored))
-    return false;
-  bufferIndex = static_cast<int>(ByteSwap32(stored));
-  return true;
+  const std::size_t bytes = file->Read(&bufferIndex, sizeof(bufferIndex));
+  bufferIndex = static_cast<int>(
+      ByteSwap32(static_cast<std::uint32_t>(bufferIndex)));
+  return bytes != 0;
 }
 
 int idRenderModelCuttable::UpdateSurfaces(int bufferIndex_,

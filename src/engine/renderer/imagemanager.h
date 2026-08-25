@@ -5,11 +5,30 @@
 #include "engine/renderer/image.h"
 #include "shared/idlib/containers/BitArray.h"
 
+struct idCmdArgs;
+class idCVar;
+
 class idImageManager {
 public:
+  idImage* AllocImage(const char* name);
   idImage* ScratchImage(const char* name, const idImageOpts& options);
-  idImage* ImageFromFile(const char* name, const void* filter, bool forceLoad);
+  idImage* ImageFromFile(const char* name, const char* overrideOptions,
+                         bool makeDefault);
   void CreateIntrinsicImages();
+  void UnbindAll();
+  void ChangeTextureFilter();
+  void CheckCvars();
+  void PurgeAllOverlays();
+  void Init();
+
+  static void WriteImage_f(const idCmdArgs& args);
+  static void ListImages_f(const idCmdArgs& args);
+  static void ListImagesCollated_f(const idCmdArgs& args);
+
+  static idCVar image_useCompression;
+  static idCVar image_filter;
+  static idCVar image_anisotropy;
+  static idCVar image_lodbias;
 
   idImage* defaultImage{};
   idImage* whiteImage{};

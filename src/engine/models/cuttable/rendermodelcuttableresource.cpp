@@ -47,70 +47,40 @@ float ByteSwapFloat(float value) {
   return value;
 }
 
-bool ReadExact(idFile* file, void* data, std::size_t size) {
-  return file != nullptr && file->Read(data, size) == size;
+void ReadBigInt(idFile* file, int& value) {
+  file->Read(&value, sizeof(value));
+  value = static_cast<int>(ByteSwap32(static_cast<std::uint32_t>(value)));
 }
 
-bool ReadBigInt(idFile* file, int& value) {
-  std::uint32_t bits = 0;
-  if (!ReadExact(file, &bits, sizeof(bits)))
-    return false;
-  value = static_cast<int>(ByteSwap32(bits));
-  return true;
-}
-
-bool ReadBigUInt(idFile* file, std::uint32_t& value) {
-  if (!ReadExact(file, &value, sizeof(value)))
-    return false;
+void ReadBigUInt(idFile* file, std::uint32_t& value) {
+  file->Read(&value, sizeof(value));
   value = ByteSwap32(value);
-  return true;
 }
 
-bool ReadBigFloat(idFile* file, float& value) {
-  if (!ReadExact(file, &value, sizeof(value)))
-    return false;
+void ReadBigFloat(idFile* file, float& value) {
+  file->Read(&value, sizeof(value));
   value = ByteSwapFloat(value);
-  return true;
 }
 
-bool ReadBigVec2Array(idFile* file, idVec2* values, int count) {
+void ReadBigVec2Array(idFile* file, idVec2* values, int count) {
   if (count <= 0)
-    return true;
-  if (!ReadExact(file, values, sizeof(idVec2) * static_cast<std::size_t>(count)))
-    return false;
+    return;
+  file->Read(values, sizeof(idVec2) * static_cast<std::size_t>(count));
   for (int i = 0; i < count; ++i) {
     values[i].x = ByteSwapFloat(values[i].x);
     values[i].y = ByteSwapFloat(values[i].y);
   }
-  return true;
 }
 
-bool ReadBigVec3Array(idFile* file, idVec3* values, int count) {
+void ReadBigVec3Array(idFile* file, idVec3* values, int count) {
   if (count <= 0)
-    return true;
-  if (!ReadExact(file, values, sizeof(idVec3) * static_cast<std::size_t>(count)))
-    return false;
+    return;
+  file->Read(values, sizeof(idVec3) * static_cast<std::size_t>(count));
   for (int i = 0; i < count; ++i) {
     values[i].x = ByteSwapFloat(values[i].x);
     values[i].y = ByteSwapFloat(values[i].y);
     values[i].z = ByteSwapFloat(values[i].z);
   }
-  return true;
-}
-
-bool ReadString(idFile* file, idStr& value) {
-  int length = 0;
-  if (!ReadExact(file, &length, sizeof(length)))
-    return false;
-  if (length <= 0) {
-    value.Empty();
-    return true;
-  }
-  std::vector<char> bytes(static_cast<std::size_t>(length) + 1u, '\0');
-  if (!ReadExact(file, bytes.data(), static_cast<std::size_t>(length)))
-    return false;
-  value = bytes.data();
-  return true;
 }
 
 int VertexSizeFromMask(std::uint32_t mask) {
@@ -121,6 +91,55 @@ int VertexSizeFromMask(std::uint32_t mask) {
          ((mask & 0x40u) != 0 ? 4 : 0) +
          ((mask & 0x1000u) != 0 ? 12 : 0) +
          static_cast<int>((mask >> 9) & 4u);
+}
+
+void SwapPackedVertexBuffer(std::uint8_t* buffer, int numVerts,
+                            std::uint32_t vertexMask) {
+  auto swapWord = [](std::uint8_t* bytes) {
+    std::swap(bytes[0], bytes[3]);
+    std::swap(bytes[1], bytes[2]);
+  };
+  std::uint8_t* cursor = buffer;
+  for (int vertex = 0; vertex < numVerts; ++vertex) {
+    if ((vertexMask & 0x20u) != 0) {
+      swapWord(cursor);
+      swapWord(cursor + 4);
+      cursor += 8;
+    } else if ((vertexMask & 0x01u) != 0) {
+      swapWord(cursor);
+      swapWord(cursor + 4);
+      swapWord(cursor + 8);
+      cursor += 12;
+    }
+    if ((vertexMask & 0x1000u) != 0) {
+      swapWord(cursor);
+      swapWord(cursor + 4);
+      swapWord(cursor + 8);
+      cursor += 12;
+    }
+    if ((vertexMask & 0x40u) != 0) {
+      swapWord(cursor);
+      cursor += 4;
+    } else if ((vertexMask & 0x02u) != 0) {
+      swapWord(cursor);
+      swapWord(cursor + 4);
+      cursor += 8;
+    }
+    if ((vertexMask & 0x800u) != 0) {
+      swapWord(cursor);
+      cursor += 4;
+    } else if ((vertexMask & 0x400u) != 0) {
+      swapWord(cursor);
+      swapWord(cursor + 4);
+      cursor += 8;
+    }
+    if ((vertexMask & 0x04u) != 0)
+      cursor += 4;
+    if ((vertexMask & 0x10u) != 0)
+      cursor += 4;
+    if ((vertexMask & 0x08u) != 0)
+      cursor += 4;
+  }
 }
 
 idTriangles* AllocTriangles() {
@@ -141,16 +160,15 @@ void FreeTriangles(idTriangles* triangles) {
   delete triangles;
 }
 
-bool ReadDrawVerts(idFile* file, idTriangles& triangles) {
+void ReadDrawVerts(idFile* file, idTriangles& triangles) {
   const int count = triangles.numVerts;
-  triangles.verts = count > 0 ? new idDrawVert[count]{} : nullptr;
   if (count <= 0)
-    return true;
+    return;
 
-  if (triangles.vertexMask == 31) {
-    if (!ReadExact(file, triangles.verts,
-                   sizeof(idDrawVert) * static_cast<std::size_t>(count)))
-      return false;
+  if (!triangles.allowGpuHosting || triangles.vertexMask == 31) {
+    triangles.verts = new idDrawVert[count]{};
+    file->Read(triangles.verts,
+               sizeof(idDrawVert) * static_cast<std::size_t>(count));
     for (int i = 0; i < count; ++i) {
       triangles.verts[i].xyz.x = ByteSwapFloat(triangles.verts[i].xyz.x);
       triangles.verts[i].xyz.y = ByteSwapFloat(triangles.verts[i].xyz.y);
@@ -158,77 +176,52 @@ bool ReadDrawVerts(idFile* file, idTriangles& triangles) {
       triangles.verts[i].st.x = ByteSwapFloat(triangles.verts[i].st.x);
       triangles.verts[i].st.y = ByteSwapFloat(triangles.verts[i].st.y);
     }
-    return true;
+    return;
   }
 
   const int stride = VertexSizeFromMask(triangles.vertexMask);
   if (stride <= 0)
-    return false;
+    return;
   std::vector<std::uint8_t> packed(static_cast<std::size_t>(stride) * count);
-  if (!ReadExact(file, packed.data(), packed.size()))
-    return false;
-  for (int i = 0; i < count; ++i) {
-    const std::uint8_t* source = packed.data() + static_cast<std::size_t>(i) * stride;
-    int offset = 0;
-    if ((triangles.vertexMask & 1u) != 0) {
-      std::memcpy(&triangles.verts[i].xyz, source + offset, sizeof(idVec3));
-      triangles.verts[i].xyz.x = ByteSwapFloat(triangles.verts[i].xyz.x);
-      triangles.verts[i].xyz.y = ByteSwapFloat(triangles.verts[i].xyz.y);
-      triangles.verts[i].xyz.z = ByteSwapFloat(triangles.verts[i].xyz.z);
-      offset += 12;
-    }
-    if ((triangles.vertexMask & 2u) != 0) {
-      std::memcpy(&triangles.verts[i].st, source + offset, sizeof(idVec2));
-      triangles.verts[i].st.x = ByteSwapFloat(triangles.verts[i].st.x);
-      triangles.verts[i].st.y = ByteSwapFloat(triangles.verts[i].st.y);
-      offset += 8;
-    }
-    if ((triangles.vertexMask & 4u) != 0) {
-      std::memcpy(triangles.verts[i].normal, source + offset, 4);
-      offset += 4;
-    }
-    if ((triangles.vertexMask & 8u) != 0) {
-      std::memcpy(triangles.verts[i].tangent, source + offset, 4);
-      offset += 4;
-    }
-    if ((triangles.vertexMask & 16u) != 0)
-      std::memcpy(triangles.verts[i].color, source + offset, 4);
-  }
-  return true;
+  file->Read(packed.data(), packed.size());
+  SwapPackedVertexBuffer(packed.data(), count, triangles.vertexMask);
+  triangles.vertexBuffer.AllocBufferObject(
+      packed.data(), static_cast<int>(packed.size()), triangles.vertexMask,
+      BU_DEFAULT);
 }
 
-bool ReadTriangles(idFile* file, idTriangles& triangles) {
-  if (!ReadBigInt(file, triangles.numVerts) ||
-      !ReadBigInt(file, triangles.numIndexes) || triangles.numVerts < 0 ||
-      triangles.numIndexes < 0 || !ReadBigUInt(file, triangles.vertexMask))
-    return false;
+void ReadTriangles(idFile* file, idTriangles& triangles) {
+  ReadBigInt(file, triangles.numVerts);
+  ReadBigInt(file, triangles.numIndexes);
+  if (triangles.numVerts < 0)
+    idLib::FatalError("idTriangles::ReadFromFile: bad numVerts (surf %d)",
+                      triangles.numVerts);
+  if (triangles.numIndexes < 0)
+    idLib::FatalError("idTriangles::ReadFromFile: bad numIndexes (surf %d)",
+                      triangles.numIndexes);
+  ReadBigUInt(file, triangles.vertexMask);
   triangles.cpuVertexMask = triangles.vertexMask;
 
   float* scaleAndBias = &triangles.vsb.xyzScale.x;
-  for (int i = 0; i < 10; ++i) {
-    if (!ReadBigFloat(file, scaleAndBias[i]))
-      return false;
-  }
-  if (!ReadDrawVerts(file, triangles))
-    return false;
+  for (int i = 0; i < 10; ++i)
+    ReadBigFloat(file, scaleAndBias[i]);
+  ReadDrawVerts(file, triangles);
 
   triangles.indexes = triangles.numIndexes > 0
                           ? new std::uint16_t[triangles.numIndexes]
                           : nullptr;
-  if (triangles.numIndexes > 0 &&
-      !ReadExact(file, triangles.indexes,
-                 sizeof(std::uint16_t) *
-                     static_cast<std::size_t>(triangles.numIndexes)))
-    return false;
+  if (triangles.numIndexes > 0)
+    file->Read(triangles.indexes,
+               sizeof(std::uint16_t) *
+                   static_cast<std::size_t>(triangles.numIndexes));
   for (int i = 0; i < triangles.numIndexes; ++i)
     triangles.indexes[i] = ByteSwap16(triangles.indexes[i]);
   for (int bound = 0; bound < 2; ++bound) {
-    if (!ReadBigFloat(file, triangles.bounds[bound].x) ||
-        !ReadBigFloat(file, triangles.bounds[bound].y) ||
-        !ReadBigFloat(file, triangles.bounds[bound].z))
-      return false;
+    ReadBigFloat(file, triangles.bounds[bound].x);
+    ReadBigFloat(file, triangles.bounds[bound].y);
+    ReadBigFloat(file, triangles.bounds[bound].z);
   }
-  return ReadBigInt(file, triangles.detailOffset);
+  ReadBigInt(file, triangles.detailOffset);
 }
 
 idTriangles* ReferenceGeometry(const idTriangles* source,
@@ -245,36 +238,8 @@ idTriangles* ReferenceGeometry(const idTriangles* source,
   geometry->indexes = nullptr;
   geometry->vertexBuffer.Reference(&source->vertexBuffer);
   geometry->indexBuffer.Reference(&source->indexBuffer);
+  geometry->CreateBounds();
   return geometry;
-}
-
-idStr CuttableFileName(const char* resourceName) {
-  const char* selectedName = resourceName != nullptr ? resourceName : "";
-  if (idStr::Icmpn(selectedName, "../../", 6) == 0)
-    selectedName += 6;
-  idStr fullPath(selectedName);
-  fullPath.SetFileExtension("cmodel");
-  idStr fileName;
-  fullPath.ExtractFileName(fileName);
-  if (fileName.Length() < 38)
-    return fullPath;
-
-  idStr filePath;
-  fullPath.ExtractFilePath(filePath);
-  fileName.StripFileExtension();
-  fullPath.Empty();
-  fullPath.AppendPath(filePath.data);
-  int runLength = 0;
-  for (int i = 0; i < fileName.Length(); ++i) {
-    if (runLength >= 30) {
-      fullPath += '/';
-      runLength = 0;
-    }
-    fullPath += fileName[i];
-    ++runLength;
-  }
-  fullPath.SetFileExtension("cmodel");
-  return fullPath;
 }
 
 const char* SurfaceTypeSuffix(surfTypes_t type) {
@@ -304,17 +269,6 @@ const idMaterial* FindMaterial(const char* name, bool makeDefault) {
       idMaterial::resourceList.FindWithInheritance(name, makeDefault, true));
 }
 
-void UploadGeometryBuffers(idTriangles& triangles) {
-  triangles.vertexBuffer.size = triangles.numVerts * VertexSizeFromMask(triangles.vertexMask);
-  triangles.vertexBuffer.offsetInOtherBuffer = 0;
-  triangles.vertexBuffer.apiObject = reinterpret_cast<void*>(static_cast<std::uintptr_t>(1));
-  triangles.vertexBuffer.usage = BU_STATIC;
-  triangles.indexBuffer.size = triangles.numIndexes * 2;
-  triangles.indexBuffer.offsetInOtherBuffer = 0;
-  triangles.indexBuffer.apiObject = reinterpret_cast<void*>(static_cast<std::uintptr_t>(1));
-  triangles.indexBuffer.usage = BU_STATIC;
-}
-
 } // namespace
 
 void idRenderModelCuttableResource::FreeCPUData() {
@@ -325,12 +279,14 @@ void idRenderModelCuttableResource::FreeCPUData() {
 }
 
 bool idRenderModelCuttableResource::ReloadIfStale() {
-  const idStr binaryFileName = CuttableFileName(name.str);
+  char binaryFileName[256]{};
+  fileSystem->FixLongFilename("", "cmodel", name.str, binaryFileName,
+                              sizeof(binaryFileName));
   const bool stale = g_cuttablemodel_forcestale.GetInteger() != 0 ||
-                     fileSystem->GetTimestamp(binaryFileName.data) != timestamp;
+                     fileSystem->GetTimestamp(binaryFileName, false) != timestamp;
   if (stale) {
     SetResourceError(nullptr);
-    fileSystem->RemoveFile(binaryFileName.data);
+    fileSystem->RemoveFile(binaryFileName, FSPATH_BASE);
     LoadResource();
     return true;
   }
@@ -357,7 +313,7 @@ const idMaterial* idRenderModelCuttableResource::BuildDepthOnlyMaterial(
   if (coverMapName == nullptr || idStr::Length(coverMapName) <= 0)
     return nullptr;
 
-  idStr materialName(modelName != nullptr ? modelName : "");
+  idStr materialName(modelName);
   materialName.StripFileExtension();
   materialName += "_cover";
   if (idLib::production >= PROD_PRODUCTION) {
@@ -382,21 +338,12 @@ const idMaterial* idRenderModelCuttableResource::BuildDepthOnlyMaterial(
     material->ReParse(true);
     return material;
   }
-  if (declManager != nullptr) {
-    material = static_cast<idMaterial*>(declManager->CreateNewDecl(
-        &idMaterial::resourceList, materialName.data, fileName.data,
-        definition.data));
-    if (material != nullptr) {
-      material->ReplaceSourceFileText(false);
-      idMaterial::resourceList.Remove(material);
-      delete material;
-      material = static_cast<idMaterial*>(
-          idMaterial::resourceList.FindWithInheritance(materialName.data, true,
-                                                        true));
-    }
-  }
-  if (material != nullptr)
-    return material;
+  material = static_cast<idMaterial*>(declManager->CreateNewDecl(
+      &idMaterial::resourceList, materialName.data, fileName.data,
+      definition.data));
+  material->ReplaceSourceFileText(false);
+  idMaterial::resourceList.Remove(material);
+  delete material;
   return static_cast<const idMaterial*>(
       idMaterial::resourceList.Load(materialName.data, true, false));
 }
@@ -444,7 +391,7 @@ idRenderModelCuttableResource::idRenderModelCuttableResource()
       isOpaque(true) {}
 
 bool idRenderModelCuttableResource::LoadBinary(const char* fileName) {
-  idFileLocal file(fileSystem->OpenFileRead(fileName));
+  idFileLocal file(fileSystem->OpenFileRead(fileName, true, false));
   if (file.file == nullptr) {
     idLib::Warning(
         "idRenderModelCuttableResource::LoadBinary - Couldn't load cuttable "
@@ -454,8 +401,7 @@ bool idRenderModelCuttableResource::LoadBinary(const char* fileName) {
   }
 
   std::uint32_t magic = 0;
-  if (!ReadBigUInt(file.file, magic))
-    return false;
+  ReadBigUInt(file.file, magic);
   if (magic != kCuttableMagic) {
     idLib::Warning(
         "idRenderModelCuttableResource::LoadBinary - Old version, re-compile "
@@ -464,39 +410,32 @@ bool idRenderModelCuttableResource::LoadBinary(const char* fileName) {
       return false;
   }
 
-  if (!ReadExact(file.file, &isOpaque, sizeof(isOpaque)) ||
-      !ReadBigFloat(file.file, thickness) ||
-      !ReadBigInt(file.file, numInterpolatorTriangles))
-    return false;
+  file.file->Read(&isOpaque, sizeof(isOpaque));
+  ReadBigFloat(file.file, thickness);
+  ReadBigInt(file.file, numInterpolatorTriangles);
 
   int numContourVertices = 0;
-  if (!ReadBigInt(file.file, numContourVertices) || numContourVertices < 0)
-    return false;
+  ReadBigInt(file.file, numContourVertices);
   contourBound.SetNum(numContourVertices);
-  if (!ReadBigVec3Array(file.file, contourBound.list, numContourVertices))
-    return false;
+  ReadBigVec3Array(file.file, contourBound.list, numContourVertices);
 
   idStr materialName;
   idStr coverMapName;
-  if (!ReadString(file.file, materialName) ||
-      !ReadString(file.file, coverMapName))
-    return false;
+  file.file->ReadString(materialName);
+  file.file->ReadString(coverMapName);
 
   triangles = AllocTriangles();
-  if (!ReadTriangles(file.file, *triangles))
-    return false;
+  ReadTriangles(file.file, *triangles);
   if (triangles->numVerts > 0) {
     stData = new idVec2[triangles->numVerts];
-    if (!ReadBigVec2Array(file.file, stData, triangles->numVerts))
-      return false;
+    ReadBigVec2Array(file.file, stData, triangles->numVerts);
   }
 
   if (magic == kOldCuttableMagic) {
     surfaceType = SURFTYPE_METAL;
   } else {
     int storedSurfaceType = 0;
-    if (!ReadBigInt(file.file, storedSurfaceType))
-      return false;
+    ReadBigInt(file.file, storedSurfaceType);
     surfaceType = static_cast<surfTypes_t>(storedSurfaceType);
   }
 
@@ -615,14 +554,16 @@ bool idRenderModelCuttableResource::GenerateSurfaces(
 
 void idRenderModelCuttableResource::LoadResource() {
   FreeData();
-  const idStr binaryFileName = CuttableFileName(name.str);
-  if (!fileSystem->FileExists(binaryFileName.data)) {
-    SetResourceError("missing file '%s'", binaryFileName.data);
+  char binaryFileName[256]{};
+  fileSystem->FixLongFilename("", "cmodel", name.str, binaryFileName,
+                              sizeof(binaryFileName));
+  if (!fileSystem->FileExists(binaryFileName, false)) {
+    SetResourceError("missing file '%s'", binaryFileName);
     return;
   }
-  if (!LoadBinary(binaryFileName.data)) {
+  if (!LoadBinary(binaryFileName)) {
     SetResourceError("Binary file corrupt or inaccessible '%s'",
-                     binaryFileName.data);
+                     binaryFileName);
     return;
   }
 
@@ -630,15 +571,13 @@ void idRenderModelCuttableResource::LoadResource() {
     triangleInterpolator.AddTriangles(
         triangles->verts, stData, triangles->indexes,
         numInterpolatorTriangles);
-    UploadGeometryBuffers(*triangles);
+    idTriangles::UpdateVertexBuffer(triangles);
+    idTriangles::UpdateIndexBuffer(triangles);
   }
   if (stData != nullptr) {
     stMap = new idVertexBuffer{};
-    stMap->size = 8 * triangles->numVerts;
-    stMap->offsetInOtherBuffer = 0;
-    stMap->apiObject =
-        reinterpret_cast<void*>(static_cast<std::uintptr_t>(1));
-    stMap->usage = BU_STATIC;
+    stMap->AllocBufferObject(stData, 8 * triangles->numVerts, 0x2400,
+                             BU_DEFAULT);
   }
   if (r_cuttablemodel_freecpudata.GetInteger() != 0)
     FreeCPUData();

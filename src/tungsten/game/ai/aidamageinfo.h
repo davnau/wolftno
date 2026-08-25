@@ -46,8 +46,8 @@ public:
               idJointIndex impactJoint, bool killed, bool armorPoppedOff,
               bool forceInjured, bool blinded);
 
-  idEntity* GetAttacker();
-  idEntity* GetInflictor();
+  idEntity* GetAttacker() const;
+  idEntity* GetInflictor() const;
   const idEntity* GetAttackerEntity() const { return attacker; }
   const idEntity* GetInflictorEntity() const { return inflictor; }
 
@@ -55,12 +55,25 @@ public:
   const idDamageImpulse* GetImpulseForTest(int index) const {
     return index >= 0 && index < impulses.Num() ? &impulses[index] : nullptr;
   }
+  const idDamageImpulse* GetLastImpulse() const {
+    return impulses.Num() > 0 ? &impulses[impulses.Num() - 1] : nullptr;
+  }
+  idJointIndex GetJointIndex() const { return jointIndex; }
   float GetFrameDamage() const { return frameDamage; }
   float GetFrameArmorDamage() const { return frameArmorDamage; }
   float GetRecentUnscaledDamage() const { return recentUnscaledDamage; }
   float GetRecentBodyDamage() const { return recentBodyDamage; }
   bool ShouldPain() const { return shouldPain; }
   void SetShouldPain(bool value) { shouldPain = value; }
+  const char* GetInjuryDamageGroup() const { return injuryDamageGroup.data; }
+  int GetInjuryGoreLevelIndex() const { return injuryGoreLevelIndex; }
+  void ConfigureInjuryGroupForTest(const char* groupName,
+                                   int goreLevelIndex) {
+    injuryDamageGroup = groupName != nullptr ? groupName : "";
+    injuryGoreLevelIndex = goreLevelIndex;
+  }
+  int GetMostDamagedIndex() const { return mostDamagedIndex; }
+  void SetMostDamagedIndex(int value) { mostDamagedIndex = value; }
   void ConfigureDeathInfoForTest(const idEntity* attackerEntity,
                                  const idEntity* inflictorEntity,
                                  const idDamageImpulse* deathImpulse) {
@@ -85,5 +98,6 @@ private:
   int lastBloodSprayTime{-1};
   int mostDamagedIndex{-1};
   bool shouldPain{false};
+  idStr injuryDamageGroup;
   int injuryGoreLevelIndex{0};
 };

@@ -42,8 +42,8 @@ idRenderLightParms::idRenderLightParms()
       target{}, right{}, up{}, start{}, end{},
       dynamicModelLightingScale{1.0f, 1.0f, 1.0f}, dimShadowStretch(1.0f),
       maxVisibleRange(0.0f), fadeVisibilityOver(400.0f), diffuseScale(1.0f),
-      specularScale(1.0f), environmentScale(1.0f), eyeDiffuseScale(1.0f),
-      eyeSpecularScale(1.0f), eyeEnvironmentScale(1.0f),
+      specularScale(1.0f), environmentScale(0.0f), eyeDiffuseScale(1.0f),
+      eyeSpecularScale(1.0f), eyeEnvironmentScale(0.0f),
       staticSpecularScale(10.0f), staticSpecularVector{0.0f, 0.70700002f,
                                                        0.70700002f},
       bakedParallelShadows(false), areaLightSize(8.0f), shadowSampleScale(1.0f),
@@ -51,8 +51,7 @@ idRenderLightParms::idRenderLightParms()
 
 idRenderLightParms& idRenderLightParms::operator=(
     const idRenderLightParms& other) {
-  if (this != &other)
-    std::memcpy(this, &other, sizeof(*this));
+  std::memcpy(this, &other, sizeof(*this));
   return *this;
 }
 
@@ -77,7 +76,7 @@ idRenderLight::idRenderLight() {
   unlinked = true;
   needWriteToSnapshot = true;
   skipAutoReplication = false;
-  serializedChangeCount = 1;
+  serializedChangeCount = 0;
   world = nullptr;
   committed = new idRenderLightCommitted;
 }
@@ -86,7 +85,6 @@ idRenderLight::~idRenderLight() {
   if (world != nullptr)
     world->CommitLight(GetIndex()) = false;
   delete committed;
-  committed = nullptr;
 }
 
 void idRenderLight::Delete() {
@@ -105,11 +103,11 @@ void idRenderLight::Unlink() {
 }
 
 void idRenderLight::SerializeSnapshot(idSerializer* serializer) {
-  idFile_BitMsg file(serializer->msg, serializer->writing);
+  idFile_BitMsg file(serializer->msg);
   if (serializer->writing)
-    gameParmBlock.Save(file);
+    gameParmBlock.Save(&file);
   else
-    gameParmBlock.Load(file);
+    gameParmBlock.Load(&file);
 
   if (serializer->writing) {
     idMaterial::resourceList.WriteResourceToMsg(g.shader, serializer->msg);
@@ -176,8 +174,7 @@ void idRenderLight::Commit() {
   }
   committed->lightMtr = material;
   committed->name = name.str;
-  const bool materialCastsShadows =
-      material != nullptr && material->MaterialCastsShadows();
+  const bool materialCastsShadows = material->MaterialCastsShadows();
   committed->castsShadows =
       !g.noShadows && materialCastsShadows && r_shadows.valueInteger != 0;
   committed->needsReferences = true;

@@ -17,6 +17,12 @@ struct updateInViewStats_t {
 
 class idRenderModelTransparency : public idRenderModel {
 public:
+  static bool AllocateQuads(int numQuads, int& quadsOffset,
+                            idTransparencyVert*& verts,
+                            float*& quadDepths);
+  static bool AllocateSegment(bool hasEmissivePass, bool forceNewSegment,
+                              int*& quadsOffset, int*& quadsAllocated,
+                              int*& quadsUsed);
   static bool AllocateQuadSegment(int numQuads,
                                   idTransparencyVert*& verts,
                                   float*& quadDepths, int*& quadsUsed,

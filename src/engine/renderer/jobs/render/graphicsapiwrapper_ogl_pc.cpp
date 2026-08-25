@@ -936,7 +936,7 @@ void GL_SetRenderDestination(
   idRenderDestination* mutableDestination =
       const_cast<idRenderDestination*>(destination.objectPtr);
   _glewBindFramebufferEXT(GL_FRAMEBUFFER_VALUE,
-                          destination.objectPtr->fboHandle);
+                          destination.objectPtr->FBOhandle);
   if ((destination.objectPtr->targetImage[0] != nullptr ||
        destination.objectPtr->depthImage != nullptr ||
        destination.objectPtr->stencilImage != nullptr) &&

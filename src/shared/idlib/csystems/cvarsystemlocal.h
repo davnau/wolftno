@@ -46,10 +46,10 @@ public:
   void UpdateValue();
   void Reset();
   void Set(const char* value, bool force = false);
-  void SetString(const char*);
-  void SetBool(bool);
-  void SetInteger(int);
-  void SetFloat(float);
+  void SetString(const char*, bool force = false);
+  void SetBool(bool, bool force = false);
+  void SetInteger(int, bool force = false);
+  void SetFloat(float, bool force = false);
   const char* GetString() const { return valueString.data; }
   bool GetBool() const { return valueInteger != 0; }
   int GetInteger() const { return valueInteger; }

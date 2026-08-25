@@ -27,6 +27,43 @@ float ParticleSignedRandom(idRandom2& random) {
   return ParticleUnitRandom(random) * 2.0f - 1.0f;
 }
 
+void ParticleSinCos16(float angle, float& sine, float& cosine) {
+  float value = angle;
+  if (value < 0.0f || value >= 6.2831855f)
+    value -= std::floor(value * 0.15915494f) * 6.2831855f;
+  float cosineSign = 1.0f;
+  if (value < 3.1415927f) {
+    if (value > 1.5707964f) {
+      value = 3.1415927f - value;
+      cosineSign = -1.0f;
+    }
+  } else if (value > 4.712389f) {
+    value -= 6.2831855f;
+  } else {
+    value = 3.1415927f - value;
+    cosineSign = -1.0f;
+  }
+  const float square = value * value;
+  sine = (((((0.0000027526f - square * 0.0000000239f) * square -
+              0.000198409f) *
+                 square +
+             0.0083333319f) *
+                square -
+            0.16666667f) *
+               square +
+           1.0f) *
+          value;
+  cosine = cosineSign *
+           (((((0.0000247609f - square * 0.0000002605f) * square -
+                0.0013888397f) *
+                   square +
+               0.041666642f) *
+                  square -
+              0.5f) *
+                 square +
+             1.0f);
+}
+
 idVec3 NormalizeParticleVector(const idVec3& vector) {
   const float inverseLength = 1.0f / std::sqrt(std::max(
       vector.LengthSqr(), std::numeric_limits<float>::min()));
@@ -50,6 +87,8 @@ std::int16_t QuantizeParticleTexCoord(float value) {
       static_cast<int>(std::floor((value - zero) / scale + 0.5f)),
       -32768, 32767));
 }
+
+} // namespace
 
 static void ComputeTextureAnimationEx(
     const idParticleStage* stage, const idLookupTable* tables,
@@ -109,8 +148,6 @@ static void ComputeTextureAnimationEx(
            column == stage->texAnimation.numColumns - 1;
   }
 }
-
-} // namespace
 
 float particleMeshDistTri_t::CaluclateArea() {
   const idVec3 first = vertices[0] - vertices[1];
@@ -246,8 +283,10 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     const float angle = (stage->distribution.random
                              ? ParticleSignedRandom(gen->random)
                              : 1.0f) * 6.2831855f;
-    origin = {std::cos(angle) * scaleX, std::sin(angle) * scaleY,
-              vertical * scaleZ};
+    float sine;
+    float cosine;
+    ParticleSinCos16(angle, sine, cosine);
+    origin = {sine * scaleX, cosine * scaleY, vertical * scaleZ};
     break;
   }
   case PDIST_SPHERE: {
@@ -281,8 +320,10 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
   case PDIST_CYLINDER_SURFACE: {
     const float vertical = ParticleSignedRandom(gen->random);
     const float angle = ParticleSignedRandom(gen->random) * 6.2831855f;
-    const idVec3 direction = NormalizeParticleVector(
-        {std::cos(angle), std::sin(angle), 0.0f});
+    float sine;
+    float cosine;
+    ParticleSinCos16(angle, sine, cosine);
+    const idVec3 direction = NormalizeParticleVector({sine, cosine, 0.0f});
     origin = {direction.x * scaleX, direction.y * scaleY,
               vertical * scaleZ};
     break;
@@ -296,13 +337,10 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     break;
   }
   case PDIST_MESH_SURFACE:
-    origin = inputs->meshDistribution != nullptr
-                 ? inputs->meshDistribution->GenerateRandomPointOnSurface(
-                       gen->random)
-                 : idVec3{};
+    origin = inputs->meshDistribution->GenerateRandomPointOnSurface(
+        gen->random);
     break;
   default:
-    origin = {};
     break;
   }
 
@@ -327,7 +365,10 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
                             ? ParticleUnitRandom(gen->random) *
                                   height * inputs->distribScale.z
                             : 0.0f;
-    origin += {std::cos(angle) * radiusX, std::sin(angle) * radiusY,
+    float sine;
+    float cosine;
+    ParticleSinCos16(angle, sine, cosine);
+    origin += {cosine * radiusX, sine * radiusY,
                axialSpeed * gen->cycleAge + spawn};
   } else if (stage->customPath.type == PPATH_FLIES) {
     const float radialSpeed = stage->customPath.parms[0].Compute(
@@ -351,9 +392,15 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     const float radius = stage->customPath.parms[2].Compute(
                              tables, gen->parmVal, gen->random) *
                          inputs->distribScale.x;
-    origin += {std::cos(firstAngle) * std::cos(secondAngle) * radius,
-               std::sin(firstAngle) * std::cos(secondAngle) * radius,
-               -std::sin(secondAngle) * radius};
+    float firstSine;
+    float firstCosine;
+    float secondSine;
+    float secondCosine;
+    ParticleSinCos16(firstAngle, firstSine, firstCosine);
+    ParticleSinCos16(secondAngle, secondSine, secondCosine);
+    origin += {secondCosine * firstCosine * radius,
+               secondCosine * firstSine * radius,
+               -secondSine * radius};
   } else if (stage->customPath.type == PPATH_ORBIT) {
     const float speed = stage->customPath.parms[1].Compute(
         tables, gen->parmVal, gen->random);
@@ -362,9 +409,11 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
                             : 0.0f;
     const float radius = stage->customPath.parms[0].Compute(
         tables, gen->parmVal, gen->random);
-    idVec3 orbit{std::cos(speed * gen->cycleAge + phase) * radius,
-                 std::sin(speed * gen->cycleAge + phase) * radius, 0.0f};
-    orbit = NormalizeParticleVector(orbit) * radius;
+    float sine;
+    float cosine;
+    ParticleSinCos16(speed * gen->cycleAge + phase, sine, cosine);
+    idVec3 orbit{cosine * radius, sine * radius, 0.0f};
+    orbit.ProjectSelfOntoSphere(radius);
     origin += orbit;
   } else if (stage->customPath.type == PPATH_DRIP) {
     const float speed = stage->customPath.parms[0].Compute(
@@ -375,14 +424,21 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
   const float indexFraction = static_cast<float>(gen->index) /
                               std::max(static_cast<float>(inputs->totalParticles),
                                        1.0f);
-  for (int axis = 0; axis < 3; ++axis) {
-    origin[axis] += inputs->location->loc[axis].Compute(
+  idVec3 locationOffset;
+  idVec3 spawnOffset;
+  idVec3 stageOffset;
+  for (int axis = 0; axis < 3; ++axis)
+    locationOffset[axis] = inputs->location->loc[axis].Compute(
         tables, indexFraction, gen->random);
-    origin[axis] += stage->spawnLocation.spawnLocation[axis].Compute(
+  origin += locationOffset;
+  for (int axis = 0; axis < 3; ++axis)
+    spawnOffset[axis] = stage->spawnLocation.spawnLocation[axis].Compute(
         tables, indexFraction, gen->random);
-    origin[axis] += stage->offset.offset[axis].Compute(
+  origin += spawnOffset;
+  for (int axis = 0; axis < 3; ++axis)
+    stageOffset[axis] = stage->offset.offset[axis].Compute(
         tables, gen->parmVal, gen->random);
-  }
+  origin += stageOffset;
 
   idVec3 speed;
   for (int axis = 0; axis < 3; ++axis) {
@@ -401,9 +457,14 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
     const float coneAngle = ParticleSignedRandom(gen->random) *
                             stage->direction.parms[0] * kDegreesToRadians;
     const float radialAngle = ParticleSignedRandom(gen->random) * 3.1415927f;
-    direction = {std::cos(radialAngle) * std::sin(coneAngle),
-                 std::sin(radialAngle) * std::sin(coneAngle),
-                 std::cos(coneAngle)};
+    float coneSine;
+    float coneCosine;
+    float radialSine;
+    float radialCosine;
+    ParticleSinCos16(coneAngle, coneSine, coneCosine);
+    ParticleSinCos16(radialAngle, radialSine, radialCosine);
+    direction = {radialCosine * coneSine, radialSine * coneSine,
+                 coneCosine};
   } else if (stage->direction.type == PDIR_OUTWARD) {
     direction = NormalizeParticleVector(origin);
     direction.z += stage->direction.parms[0];
@@ -437,7 +498,7 @@ idVec3 ParticleOrigin(const particleInput_t* inputs, particleGen_t* gen,
   const idVec3 instantaneous = acceleration + gravity * gen->cycleAge +
                                inputs->wind * windBias;
   velocity += instantaneous * gen->cycleAge;
-  origin += velocity * gen->cycleAge;
+  origin += velocity;
   origin = inputs->stageAxis * origin;
   origin = inputs->globalAxis * origin + inputs->globalOrigin;
 
@@ -555,9 +616,10 @@ void ParticleLeftAndUp(const idParticleStage* const stage,
                     kDegreesToRadians;
     const float z = (initialZ + rotateZ * gen->particleLife) *
                     kDegreesToRadians;
-    const float sx = std::sin(x), cx = std::cos(x);
-    const float sy = std::sin(y), cy = std::cos(y);
-    const float sz = std::sin(z), cz = std::cos(z);
+    float sx, cx, sy, cy, sz, cz;
+    ParticleSinCos16(x, sx, cx);
+    ParticleSinCos16(y, sy, cy);
+    ParticleSinCos16(z, sz, cz);
     left = {cz * cy, sz * cy, -sy};
     up = {sy * sx * cz - sz * cx,
           sy * sx * sz + cz * cx,
@@ -575,8 +637,9 @@ void ParticleLeftAndUp(const idParticleStage* const stage,
           : rotation;
   const float angle = (initial + signedRotation + extraRotation) *
                       kDegreesToRadians;
-  const float sine = std::sin(angle);
-  const float cosine = std::cos(angle);
+  float sine;
+  float cosine;
+  ParticleSinCos16(angle, sine, cosine);
   switch (stage->orientation.type) {
   case POR_Z:
     left = {sine, cosine, 0.0f};
@@ -635,9 +698,10 @@ static int GenerateStaticMeshVerts(const particleInput_t* inputs,
       (initial.y + rotation.y * gen->particleLife) * kDegreesToRadians;
   const float angleZ =
       (initial.z + rotation.z * gen->particleLife) * kDegreesToRadians;
-  const float sx = std::sin(angleX), cx = std::cos(angleX);
-  const float sy = std::sin(angleY), cy = std::cos(angleY);
-  const float sz = std::sin(angleZ), cz = std::cos(angleZ);
+  float sx, cx, sy, cy, sz, cz;
+  ParticleSinCos16(angleX, sx, cx);
+  ParticleSinCos16(angleY, sy, cy);
+  ParticleSinCos16(angleZ, sz, cz);
   idMat3 axis{};
   axis.mat[0] = {cz * cy, sz * cy, -sy};
   axis.mat[1] = {sy * sx * cz - sz * cx,
@@ -733,9 +797,6 @@ static int GenerateAimedVerts(const particleInput_t* inputs,
   }
   const idVec3 halfWidth = left * size;
   const idVec3 halfLength = segment * 0.5f;
-  ParticleTexCoords(stage, inputs->tables, gen, {0.0f, 1.0f}, {0.0f, 1.0f},
-                    inputs->view->atlasWidth, inputs->view->atlasHeight,
-                    outputs->verts);
   outputs->verts[0].xyz = center + halfLength - halfWidth;
   outputs->verts[1].xyz = center + halfLength + halfWidth;
   outputs->verts[2].xyz = center - halfLength - halfWidth;
@@ -757,6 +818,9 @@ static int GenerateAimedVerts(const particleInput_t* inputs,
       }
     }
   }
+  ParticleTexCoords(stage, inputs->tables, gen, {0.0f, 1.0f}, {0.0f, 1.0f},
+                    inputs->view->atlasWidth, inputs->view->atlasHeight,
+                    outputs->verts);
   if (outputs->quadDepth != nullptr) {
     const idVec3 depthDelta = center - inputs->view->viewOrg;
     *outputs->quadDepth = depthDelta.x * inputs->view->viewFwd.x +
