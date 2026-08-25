@@ -150,23 +150,3 @@ eventVoid* idAIScriptedAnimWeb::Event_SetScriptedAnimWebState(
   }
   return result;
 }
-
-void idAI2::SetActionScript(const idList<idScriptAction, 5>* actions,
-                            idEntity* source, idEntity* activator) {
-  scriptedActionName.Empty();
-  scriptedActionState = -1;
-  scriptedActionSource = source;
-  scriptedActionActivator = activator;
-  if (actions == nullptr || actions->Num() <= 0) return;
-  const idScriptAction& action = (*actions)[0];
-  scriptedActionName = action.name;
-  if (action.parameters.Num() > 1 &&
-      action.parameters[1].type == idAIActionParm::PARM_INTEGER) {
-    scriptedActionState = action.parameters[1].intVal;
-  }
-}
-
-void idAI2::StartActionScript(int gameTime) {
-  scriptedActionStartTime = gameTime;
-  ++scriptedActionStartCount;
-}

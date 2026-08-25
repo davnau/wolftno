@@ -8,15 +8,15 @@
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 class idTriangles;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderModelCommitted;
 class idRenderView;
 struct occlusionState_t;
 struct renderSettings_t;
 
-template <typename T> struct idODSObject;
+template <typename T> class idODSObject;
 
 struct viewWorldArea_t {
   int areaNum;

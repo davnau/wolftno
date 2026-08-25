@@ -234,8 +234,8 @@ void idRenderModelCable::BuildModel(const idMaterial* material_,
       (lengthMaxSubdivisions - 1);
   for (int index = 0; index < 3; ++index) {
     vertexBuffer[index].AllocBufferObject(nullptr, vertexBufferSize, 31,
-                                          BU_STREAM);
-    indexBuffer[index].AllocBufferObject(nullptr, indexBufferSize, BU_STREAM);
+                                          BU_DYNAMIC);
+    indexBuffer[index].AllocBufferObject(nullptr, indexBufferSize, BU_DYNAMIC);
   }
 
   FreeSurfaces();

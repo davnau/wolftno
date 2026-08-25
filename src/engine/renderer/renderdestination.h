@@ -4,7 +4,8 @@
 
 class idImage;
 
-struct idRenderDestination {
+class idRenderDestination {
+public:
   void Resize(int width, int height);
 
   bool isDefault;

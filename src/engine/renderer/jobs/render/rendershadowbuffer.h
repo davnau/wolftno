@@ -9,10 +9,10 @@ class idDeclRenderParm;
 class idRenderView;
 class idVec3;
 struct idBounds;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderLightParms;
 struct idRenderLightCommitted;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 struct idRenderModelCommitted;
 struct renderSettings_t;
 

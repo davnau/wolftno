@@ -8,7 +8,7 @@ class idDeclRenderProg;
 class idImage;
 class idTriangles;
 struct idBounds;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderMatrix;
 struct idRenderModelCommitted;
 class idRenderView;

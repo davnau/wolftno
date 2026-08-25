@@ -12,8 +12,10 @@
 #include "tungsten/game/ai/aidefs.h"
 #include "tungsten/game/ai/gamestate/aientitystate.h"
 #include "tungsten/game/ai/gamestate/aiworldstate.h"
+#include "tungsten/game/ai/encountergroupmanager.h"
 #include "tungsten/game/animation/facemgr.h"
 #include "engine/animation/md6.h"
+#include "engine/decls/animwebs/declanimweb.h"
 #include "engine/framework/keyinput.h"
 #include "engine/framework/coderesource.h"
 #include "shared/idlib/lib.h"
@@ -22,6 +24,190 @@
 #include <cmath>
 #include <limits>
 #include <string_view>
+
+namespace {
+
+struct overrideWebInfo_t {
+  aiSubWeb_t subWeb;
+  const char* stateName;
+  aiSubWeb_t destinationSubWeb;
+  const char* destinationStateName;
+};
+static_assert(sizeof(overrideWebInfo_t) == 32,
+              "override web-info ABI drift");
+
+constexpr std::array<overrideWebInfo_t, 110> overrideWebInfo{{
+    {static_cast<aiSubWeb_t>(24), "", static_cast<aiSubWeb_t>(0), ""},
+    {aiSubWeb_t::react, "alarm", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::react, "first_spot", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::react, "first_detect_forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::react, "first_detect_left", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::react, "first_detect_right", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::react, "first_detect_backward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::surprise, "forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::surprise, "backward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::surprise, "left", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::surprise, "right", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::search, "forward", aiSubWeb_t::hostile, "idle"},
+    {aiSubWeb_t::search, "left", aiSubWeb_t::hostile, "idle"},
+    {aiSubWeb_t::search, "right", aiSubWeb_t::hostile, "idle"},
+    {aiSubWeb_t::search, "above", aiSubWeb_t::hostile, "idle"},
+    {aiSubWeb_t::search, "below", aiSubWeb_t::hostile, "idle"},
+    {aiSubWeb_t::dive, "forward", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::dive, "right", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::dive, "left", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::dive, "back", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::dodge, "forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "right", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "left", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "back", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "flinch_left", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "flinch_right", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::dodge, "cower", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::throwAttack, "throw", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::throwAttack, "throw_low", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::fullCover, "throw_left", aiSubWeb_t::fullCover, "idle"},
+    {aiSubWeb_t::fullCover, "throw_right", aiSubWeb_t::fullCover, "idle"},
+    {aiSubWeb_t::fullCover, "throw_over", aiSubWeb_t::fullCover,
+     "idle_crouch"},
+    {aiSubWeb_t::melee, "punch", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "kick", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "back", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "left", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "right", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "crouch_forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "medium", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "long", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "moving_forward", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "takedown", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::melee, "leap_attack", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::throwAttack, "shoot", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::overrideAnimation, "blocked", aiSubWeb_t::max, "idle"},
+    {aiSubWeb_t::overrideAnimation, "blocked_outsider", aiSubWeb_t::max,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "blocked_accepted", aiSubWeb_t::max,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "blocked_heroic", aiSubWeb_t::max,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "bumped", aiSubWeb_t::max, "idle"},
+    {aiSubWeb_t::overrideAnimation, "investigate_body", aiSubWeb_t::max,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "angry_rage", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::combat, "taunt", aiSubWeb_t::combat, "idle"},
+    {aiSubWeb_t::overrideAnimation, "climb256jumpleft", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbledge64", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbledge128", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbledge256", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbledge512", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbpipecage96", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "climbrail128", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "climbrail256", aiSubWeb_t::combat,
+     "idle"},
+    {aiSubWeb_t::overrideAnimation, "crawldownpipe0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "crawldownpipe64", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "crawllargepipe64", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "crawluppipe0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "floorroundcoverup0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "floorroundpanelup0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "floorsquarepanelup0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpforward128", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpforward256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpforward384", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpledgedown64", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpledgedown128", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpledgedown192", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpledgedown256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpledgeout256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumprailup64then192", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumprailup256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpraildown0", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpraildown64", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpraildown128", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpraildown128double",
+     aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpraildown256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumprailout128", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumprailout256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpleftwallup256", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "pipedropdown192", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "pipedropdowncling192",
+     aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "pipedropout192", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyarms512", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyarms768", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyarms1024", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyquad512", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyquad768", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "poleshimmyquad1024", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "slidepipe0", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "slidepipe64", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "swoopraildown128", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "trackdrop240", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "wallentrance", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "rafterentrance320", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "swooprailentrance128",
+     aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "attackbarswing", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "attackbounceleft", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "attackbounceright", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "attackrailrunleft", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "attackwallrunright", aiSubWeb_t::combat,
+     "run"},
+    {aiSubWeb_t::overrideAnimation, "jumpcover", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::overrideAnimation, "divecover", aiSubWeb_t::combat, "run"},
+    {aiSubWeb_t::max, "", aiSubWeb_t::max, ""},
+}};
+
+}  // namespace
 
 idCodeResource<idDeclRenderParm> rp_aiRobotGlow("aiRobotGlow");
 idCodeResource<idDeclRenderParm> rp_aiSelfDestructGlow(
@@ -35,12 +221,17 @@ idCVar joy_pitchSpeed("joy_pitchSpeed", "1", 0,
 idCVar joy_yawSpeed("joy_yawSpeed", "1", 0, "controller yaw speed");
 extern idCVar ai_debugScenePoints;
 extern idCVar takedownID;
+extern idCVar ai_enableScrambles;
+extern idCVar ai_scrambleTime;
 
 const idEventDef EV_DisintigrateHide{};
 const idEventDef EV_Hide{};
 const idEventDef EV_Activate{};
+const idEventDef EV_AnimWeb_Wait{};
 const idEventDef ACTION_CrouchToStandEnter{1, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_StandToCrouchEnter{2, idEventDef::EVENT_FSMEVENT};
+const idEventDef ACTION_PlayOverrideAnimEnter{3,
+                                              idEventDef::EVENT_FSMEVENT};
 
 idRecoveredValue idAI2::RecordCoreCall(const char* methodName) {
   const std::string_view call = methodName != nullptr ? methodName : "";
@@ -80,7 +271,12 @@ idAI2::idAI2()
       bodyOrientation(std::make_unique<idAIOrientation>()),
       moveState(std::make_unique<idAIMoveState>()),
       actionFSM(std::make_unique<idLegsFSM>()),
-      fsmManager(std::make_unique<idFSMManager>()) {
+      fsmManager(std::make_unique<idFSMManager>()),
+      actionManager(std::make_unique<idAIActionManager>()),
+      fsmCallback(std::make_unique<idAIFSMCallback>()),
+      painAnimator(std::make_unique<idAnimator_Channel>()),
+      memory(std::make_unique<idAIMemory>()),
+      shootAnimator(std::make_unique<idAnimator_Channel>()) {
   animWebAnimators[AIANIMWEB_BODY] = std::make_unique<idAnimator_AnimWeb>();
   animWebAnimators[AIANIMWEB_HEAD] = std::make_unique<idAnimator_AnimWeb>();
   focusInfos[0] = std::make_unique<idFocusInfo>();
@@ -105,9 +301,40 @@ bool idAI2::IsAnimWebEventPendingForTest(aiAnimWeb_t web,
       eventType);
 }
 
+idAnimator_AnimWeb* idAI2::GetAnimWebAnimatorForTest(aiAnimWeb_t web) {
+  return animWebAnimators[static_cast<std::size_t>(web)].get();
+}
+
 const idAnimator_AnimWeb* idAI2::GetAnimWebAnimatorForTest(
     aiAnimWeb_t web) const {
   return animWebAnimators[static_cast<std::size_t>(web)].get();
+}
+
+void idAI2::SetAnimWebDeclarationForTest(const idDeclAnimWeb* value) {
+  animWebState.declaration = value;
+  for (const auto& animator : animWebAnimators) {
+    animator->SetDeclarationForTest(value);
+  }
+}
+
+void idAI2::SetAnimWebDeclarationForTest(
+    const aiAnimWeb_t web, const idDeclAnimWeb* value) {
+  animWebAnimators[static_cast<std::size_t>(web)]->SetDeclarationForTest(
+      value);
+}
+
+void idAI2::ConfigureEmergencyCoverExitForTest(
+    bool usesEmergencyExit, bool alreadyUsed, coverAction_t action,
+    bool hostileStance) {
+  usesEmergencyCoverExit = usesEmergencyExit;
+  memory->SetEmergencyCoverExit(alreadyUsed);
+  coreState.coverAction = action;
+  coverOrientation = COVERORIENT_BACKWARD;
+  allowHostileStance = hostileStance;
+}
+
+bool idAI2::HasUsedEmergencyCoverExitForTest() const {
+  return memory->HasEmergencyCoverExit();
 }
 
 // DIA: idAnimatedEntity::SetModelByName
@@ -510,7 +737,23 @@ void idAI2::SetSleeping(bool sleep) {
 // DIA: idAI2::ApplyWaterEffects
 idRecoveredValue idAI2::ApplyWaterEffects(...) { return RecordCoreCall("ApplyWaterEffects"); }
 // DIA: idAI2::InitEncounterGroup
-idRecoveredValue idAI2::InitEncounterGroup(...) { return RecordCoreCall("InitEncounterGroup"); }
+void idAI2::InitEncounterGroup() {
+  if (encounterGroupHandle != -1) return;
+
+  const char* selectedGroupName = encounterGroupName.IsEmpty()
+                                      ? GetName()
+                                      : encounterGroupName.data;
+  idEncounterGroupManager* manager =
+      gameLocal->GetEncounterGroupManager();
+  const encounterGroupHandle_t handle = manager->AddGroup(selectedGroupName);
+  encounterGroupHandle = handle.value;
+  if (encounterGroupHandle != -1) {
+    idEncounterGroup* group = manager->GroupForHandle(handle);
+    if (group != nullptr) {
+      group->Add(this);
+    }
+  }
+}
 // DIA: idAI2::OnActivate
 void idAI2::OnActivate(idEntity* activator) {
   (void)activator;
@@ -561,9 +804,38 @@ void idAI2::SetWalkState(walkState_t state) {
   }
 }
 // DIA: idAI2::InitScriptObjects
-idRecoveredValue idAI2::InitScriptObjects(...) { return RecordCoreCall("InitScriptObjects"); }
+void idAI2::InitScriptObjects() {
+  if (!hasScriptObject) return;
+  if (scriptState.threads.Num() != 0) {
+    primaryScriptThread = idThread::Find(scriptState.threads[0].value);
+    if (primaryScriptThread != nullptr) {
+      primaryScriptThread->ManualDelete();
+    }
+  } else {
+    idLib::Warning(
+        "AI %s has a script object but no thread. Make sure the script object "
+        "has a constructor (init) defined.",
+        GetName());
+  }
+}
 // DIA: idAI2::SendGrappleActivationTest
-idRecoveredValue idAI2::SendGrappleActivationTest(...) { return RecordCoreCall("SendGrappleActivationTest"); }
+void idAI2::SendGrappleActivationTest(idEntity* target) {
+  if (target == nullptr) return;
+
+  idVec3 start = GetPhysics()->GetOrigin();
+  start.z += 32.0F;
+  idVec3 end = target->GetPhysics()->GetOrigin();
+  end.z += 32.0F;
+  idMat3 identity;
+  identity[0] = {1.0F, 0.0F, 0.0F};
+  identity[1] = {0.0F, 1.0F, 0.0F};
+  identity[2] = {0.0F, 0.0F, 1.0F};
+  grappleQueryIndex = gameLocal->SubmitTranslationQuery(
+      start, end, 32, identity, 106521, GetEntityNumber(), true,
+      "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(3008) : GrappleTest");
+  meleeCountBetweenGrappleChecks = 0;
+  lastGrappleCheck = gameLocal->GetGameTimeMs();
+}
 // DIA: idAI2::IsWeaponEquipped
 bool idAI2::IsWeaponEquipped() const {
   return GetEquippedWeapon(2) != nullptr || GetEquippedWeapon(1) != nullptr;
@@ -716,11 +988,41 @@ void idAI2::ApplyFakeDamageImpulse(const idVec3* impulse) {
                      false, false);
 }
 // DIA: idAI2::PlayAdditivePainAnim
-idRecoveredValue idAI2::PlayAdditivePainAnim(...) { return RecordCoreCall("PlayAdditivePainAnim"); }
+bool idAI2::PlayAdditivePainAnim(const aiAnimationHandle_t* painAlias) {
+  if (painAlias->value == 0xFFFFU) return false;
+  return painAnimator->PlayAnim(painAlias->value, gameLocal->GetGameTimeMs(),
+                                1.0F, 5, 5, 1.0F);
+}
 // DIA: idAI2::PlayAdditiveFireAnim
-idRecoveredValue idAI2::PlayAdditiveFireAnim(...) { return RecordCoreCall("PlayAdditiveFireAnim"); }
+void idAI2::PlayAdditiveFireAnim() {
+  const idList<unsigned short, 5>* animations = nullptr;
+  if (IsCrouching() && additiveCrouchFireAnimations.Num() > 0) {
+    animations = &additiveCrouchFireAnimations;
+  } else {
+    animations = &additiveFireAnimations;
+  }
+
+  const int animationCount = animations->Num();
+  if (animationCount > 0) {
+    const int animationIndex = RandomInt(animationCount);
+    const unsigned short aliasHandle = (*animations)[animationIndex];
+    if (aliasHandle != 0xFFFFU) {
+      const int blendOutDurationMs =
+          static_cast<int>(additiveFireAnimationBlendTime * 1000.0F);
+      const int blendDurationMs = (std::max)(blendOutDurationMs, 100);
+      const float rateScale = RandomFloat(0.0F, 0.75F) + 0.25F;
+      shootAnimator->PlayAnim(aliasHandle, gameLocal->GetGameTimeMs(),
+                              rateScale, blendDurationMs,
+                              blendOutDurationMs, 1.0F);
+    }
+  }
+}
 // DIA: idAI2::PlayAdditiveAlarmAnimation
-idRecoveredValue idAI2::PlayAdditiveAlarmAnimation(...) { return RecordCoreCall("PlayAdditiveAlarmAnimation"); }
+void idAI2::PlayAdditiveAlarmAnimation() {
+  if (additiveAlarmAnimation == 0xFFFFU) return;
+  painAnimator->PlayAnim(additiveAlarmAnimation, gameLocal->GetGameTimeMs(),
+                         1.0F, 46, 0, 1.0F);
+}
 // DIA: idAI2::CheckPain
 idRecoveredValue idAI2::CheckPain(...) { return RecordCoreCall("CheckPain"); }
 // DIA: idAI2::DeathPending
@@ -772,9 +1074,85 @@ void idAI2::DoBlockedMeleeReaction() {
   stunnedByPlayerBlock = true;
 }
 // DIA: idAI2::GetMeleeInterval
-idRecoveredValue idAI2::GetMeleeInterval(...) { return RecordCoreCall("GetMeleeInterval"); }
+int idAI2::GetMeleeInterval(const aiMelee_t meleeType) {
+  int minimumInterval;
+  int maximumInterval;
+  if (meleeType == AIMELEE_MEDIUM) {
+    minimumInterval = minimumMediumMeleeInterval;
+    if (minimumInterval == -1) {
+      minimumInterval = behaviorDeclaration->minMediumMeleeInterval;
+    }
+    maximumInterval = maximumMediumMeleeInterval;
+    if (maximumInterval == -1) {
+      maximumInterval = behaviorDeclaration->maxMediumMeleeInterval;
+    }
+  } else if (meleeType == AIMELEE_LONG) {
+    minimumInterval = minimumLongMeleeInterval;
+    if (minimumInterval == -1) {
+      minimumInterval = behaviorDeclaration->minLongMeleeInterval;
+    }
+    maximumInterval = maximumLongMeleeInterval;
+    if (maximumInterval == -1) {
+      maximumInterval = behaviorDeclaration->maxLongMeleeInterval;
+    }
+  } else {
+    minimumInterval = minimumCloseMeleeInterval;
+    if (minimumInterval == -1) {
+      minimumInterval = behaviorDeclaration->minCloseMeleeInterval;
+    }
+    maximumInterval = maximumCloseMeleeInterval;
+    if (maximumInterval == -1) {
+      maximumInterval = behaviorDeclaration->maxCloseMeleeInterval;
+    }
+  }
+
+  const int intervalRange = maximumInterval - minimumInterval;
+  if (intervalRange == 0) return minimumInterval;
+
+  const unsigned int seed =
+      1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+  gameLocal->SetRandomSeed(seed);
+  return static_cast<int>((seed >> 10U) & 0x7FFFU) % intervalRange +
+         minimumInterval;
+}
 // DIA: idAI2::IsTargetInMeleeRange
-idRecoveredValue idAI2::IsTargetInMeleeRange(...) { return RecordCoreCall("IsTargetInMeleeRange"); }
+bool idAI2::IsTargetInMeleeRange(const idVec3* targetPosition,
+                                 const aiMelee_t meleeType) {
+  const idDeclAIBehavior* declaration = behaviorDeclaration;
+  float meleeDistance = declaration->closeMeleeDist;
+  if (!declaration->meleeEnabled) return false;
+
+  if ((meleeType & AIMELEE_LONG) != 0) {
+    meleeDistance = (std::max)(declaration->longMeleeDist, meleeDistance);
+  }
+  if ((meleeType & AIMELEE_MEDIUM) != 0) {
+    meleeDistance = (std::max)(declaration->mediumMeleeDist, meleeDistance);
+  }
+  if ((meleeType & AIMELEE_MOVING_FORWARD) != 0 &&
+      (groupStatusCondition & 8) == 0) {
+    meleeDistance = (std::max)(declaration->movingMeleeDist, meleeDistance);
+  }
+  meleeDistance = (std::max)(declaration->closeMeleeDist, meleeDistance);
+
+  const idVec3& origin = GetPhysics()->GetOrigin();
+  const float deltaX = targetPosition->x - origin.x;
+  const float deltaY = targetPosition->y - origin.y;
+  const float verticalDistance = std::fabs(targetPosition->z - origin.z);
+  const float horizontalDistance = std::sqrt((std::max)(
+      deltaX * deltaX + deltaY * deltaY,
+      std::numeric_limits<float>::min()));
+  if (meleeDistance < horizontalDistance) return false;
+
+  if (declaration->meleeHeight <= 0.0F) {
+    const idBounds& bounds = GetPhysics()->GetAbsBounds();
+    if ((bounds[1].z - bounds[0].z) * 0.75F <= verticalDistance) {
+      return false;
+    }
+  } else if (declaration->meleeHeight <= verticalDistance) {
+    return false;
+  }
+  return true;
+}
 // DIA: idAI2::MeleeMaskForTarget
 unsigned int idAI2::MeleeMaskForTarget(const idEntity* target) {
   const auto* targetActor = dynamic_cast<const idActor*>(target);
@@ -1000,7 +1378,34 @@ void idAI2::OnAIEvent_Body(idAIEventSphere* event) {
       static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
 }
 // DIA: idAI2::OnAIEvent_PlayerInteraction
-idRecoveredValue idAI2::OnAIEvent_PlayerInteraction(...) { return RecordCoreCall("OnAIEvent_PlayerInteraction"); }
+void idAI2::OnAIEvent_PlayerInteraction(idAIEventSphere* event) {
+  if (gameLocal->GetFrameNum() <= 10) return;
+  if (!mutantActorClass) {
+    if (speakingMoodCapability) {
+      faceManager->SetEnableMoodAnimation(this, true);
+    }
+    if (speakingLipSyncCapability) {
+      faceManager->SetEnableLipSyncAnimation(this, true);
+    }
+    if (speakingGestureCapability) {
+      faceManager->SetEnableGestureAnimation(this, true);
+    }
+    if (speakingEyeTrackingCapability) {
+      faceManager->SetEnableEyeTracking(this, true);
+    }
+    if (speakingBlinkingCapability) {
+      faceManager->SetEnableBlinking(this, true);
+    }
+    if (speakingLidDeformationCapability) {
+      faceManager->SetEnableLidDeformation(this, true);
+    }
+  }
+  lastSignal = 10;
+  ++signalCount;
+  GetAlertCycleFSM()->PostEvent(
+      static_cast<int>(event->GetEventClass()), event,
+      static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
+}
 // DIA: idAI2::SetSubWeb
 bool idAI2::SetSubWeb(aiSubWeb_t subWeb) {
   constexpr aiModeRestricFlag_t subWebRestriction = 0x10;
@@ -1338,7 +1743,27 @@ void idAI2::PerformCrouchAction() {
   fsm->ProcessEvent(&ACTION_StandToCrouchEnter, this);
 }
 // DIA: idAI2::PerformOverrideAnimAction
-idRecoveredValue idAI2::PerformOverrideAnimAction(...) { return RecordCoreCall("PerformOverrideAnimAction"); }
+void idAI2::PerformOverrideAnimAction(const int overrideAnim,
+                                      const bool holdFireUntilDone) {
+  if (componentTimeLine->NumScriptActions(this) <= 0) {
+    componentTimeLine->ClearActionScript(this);
+  }
+
+  idFiniteStateMachine* fsm = GetAlertCycleFSM();
+  fsm->SetActionCallerState(fsm->GetCurrentStateForTest());
+
+  idEventArg ownerArgument{};
+  ownerArgument.type = static_cast<unsigned char>('e');
+  ownerArgument.value.pointer = this;
+  idEventArg overrideArgument{};
+  overrideArgument.type = static_cast<unsigned char>('i');
+  overrideArgument.value.i = overrideAnim;
+  idEventArg holdFireArgument{};
+  holdFireArgument.type = static_cast<unsigned char>('i');
+  holdFireArgument.value.i = holdFireUntilDone;
+  (void)fsm->ProcessEvent(&ACTION_PlayOverrideAnimEnter, ownerArgument,
+                          overrideArgument, holdFireArgument);
+}
 // DIA: `idAI2::PerformOverrideAnimAction'::`1'::dtor$0
 // DIA: `idAI2::PerformOverrideAnimAction'::`1'::dtor$1
 // DIA: `idAI2::PerformOverrideAnimAction'::`1'::dtor$2
@@ -1683,9 +2108,44 @@ void idAI2::InhibitRunning(bool inhibit) {
   }
 }
 // DIA: idAI2::InitFSMs
-idRecoveredValue idAI2::InitFSMs(...) { return RecordCoreCall("InitFSMs"); }
+void idAI2::InitFSMs() {
+  actionManager->Init(this);
+  fsmManager->Init(this);
+  for (int index = 0; index < fsmManager->NumFSMs(); ++index) {
+    fsmManager->GetFSM(index)->SetCallback(fsmCallback.get());
+  }
+}
 // DIA: idAI2::UpdateMeleeCapabilities
-idRecoveredValue idAI2::UpdateMeleeCapabilities(...) { return RecordCoreCall("UpdateMeleeCapabilities"); }
+void idAI2::UpdateMeleeCapabilities() {
+  static constexpr std::array<const char*, 15> meleeAnimNodeNames{{
+      "none",           "forward",      "back",         "left",
+      "right",          "kick",         "punch",        "medium",
+      "long",           "crouch_forward", "crouch_back", "crouch_left",
+      "crouch_right",   "moving_forward", "takedown",
+  }};
+
+  unsigned int meleeFlag = 1U;
+  meleeAnimationFlags = 1U;
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[AIANIMWEB_BODY]->GetDeclaration();
+  if (declaration == nullptr) return;
+
+  idStr subWebName;
+  GetSubWebPrefix(aiSubWeb_t::melee, &subWebName);
+  const animWebSubWebIndex_t subWebIndex =
+      declaration->GetSubWebIndexForName(subWebName.data);
+  if (subWebIndex.value < 0) return;
+
+  for (const char* stateName : meleeAnimNodeNames) {
+    const animWebStateIndex_t stateIndex =
+        declaration->GetStateIndexForName(stateName);
+    if (stateIndex.value >= 0 &&
+        declaration->FindNodeIndex(subWebIndex, stateIndex).value >= 0) {
+      meleeAnimationFlags |= meleeFlag;
+    }
+    meleeFlag = (meleeFlag << 1U) | (meleeFlag >> 31U);
+  }
+}
 // DIA: idAI2::EquipItem
 bool idAI2::EquipItem(idInventoryItem* item, equipSlot_t equipSlot) {
   const bool equipped = idActor::EquipItem(item, equipSlot);
@@ -1715,7 +2175,18 @@ idRecoveredValue idAI2::InitPhysics(...) { return RecordCoreCall("InitPhysics");
 // DIA: `idAI2::InitPhysics'::`1'::dtor$0
 // DIA: `idAI2::InitPhysics'::`1'::dtor$1
 // DIA: idAI2::InitPerception
-idRecoveredValue idAI2::InitPerception(...) { return RecordCoreCall("InitPerception"); }
+void idAI2::InitPerception(alertCycle_t cycle) {
+  float radius = actorPerceptionRadius;
+  if (cycle == ALERTCYCLE_RELAXED && actorIdlePerceptionRadius >= 0.0F) {
+    radius = actorIdlePerceptionRadius;
+  } else if (cycle == ALERTCYCLE_SEARCH &&
+             actorSearchPerceptionRadius >= 0.0F) {
+    radius = actorSearchPerceptionRadius;
+  }
+  worldState->SetRadius(radius);
+  SetFOV(&configuredFieldOfView);
+  maxFireRange = (std::max)(actorPerceptionRadius, maxFireRange);
+}
 // DIA: idAI2::OnHide
 idRecoveredValue idAI2::OnHide(...) { return RecordCoreCall("OnHide"); }
 // DIA: idAI2::UpdateSpriteAnimator
@@ -1735,7 +2206,22 @@ idRecoveredValue idAI2::DoMeleeDamage(idRecoveredOverloadTag<1>) { return Record
 // DIA: idAI2::GetMeleeDirection
 idRecoveredValue idAI2::GetMeleeDirection(...) { return RecordCoreCall("GetMeleeDirection"); }
 // DIA: idAI2::IsFacingMe
-idRecoveredValue idAI2::IsFacingMe(...) { return RecordCoreCall("IsFacingMe"); }
+bool idAI2::IsFacingMe(const idEntity* entity, float dotThreshold) {
+  idAIEntityState* entityState = worldState->StateForEntity(entity);
+  if (entity == nullptr || entityState == nullptr) return false;
+
+  aiSenseState_t* sightSense = entityState->senses[1];
+  if (sightSense->lastUnconfirmedStimTime < 0) return false;
+
+  const aiPhysicalState_t* physical =
+      sightSense->GetConfirmedPhysicalSafe();
+  const idVec3 delta = GetPhysics()->GetOrigin() - physical->origin;
+  const float inverseLength =
+      1.0F / std::sqrt((std::max)(delta.LengthSqr(),
+                                  std::numeric_limits<float>::min()));
+  const idVec3 direction = delta * inverseLength;
+  return physical->viewfwd * direction > dotThreshold;
+}
 // DIA: idAI2::StartReloading
 idRecoveredValue idAI2::StartReloading(...) { return RecordCoreCall("StartReloading"); }
 // DIA: `idAI2::StartReloading'::`1'::dtor$0
@@ -1764,7 +2250,26 @@ void idAI2::SetTakeDownWindow(bool open) {
   counterBlockedUntil = counterBlockTime.GetInteger() + currentTime;
 }
 // DIA: idAI2::GetUsableState
-idRecoveredValue idAI2::GetUsableState(...) { return RecordCoreCall("GetUsableState"); }
+int idAI2::GetUsableState(const idEntity* activator,
+                          const idFocusTrace* focusTrace) {
+  (void)focusTrace;
+  if (disassembleLootBoxCount > 0) return USABLE_DISASSEMBLE;
+
+  if (IsDead() || IsDying() || usableDeathState) {
+    if (!usableDeathLootSuppressed && IsLootable() &&
+        (!looted || HasLootableItems())) {
+      return USABLE_LOOT;
+    }
+  } else {
+    const auto* player = dynamic_cast<const idPlayer*>(activator);
+    if (player != nullptr &&
+        !player->PlayerBehavior_Takedown_IsInTakedown()) {
+      const int focusState = player->GetTakedownFocusState();
+      if (focusState == 1 || focusState == 6) return USABLE_INFO;
+    }
+  }
+  return USABLE_NONE;
+}
 // DIA: idAI2::GetOnlineUsableState
 int idAI2::GetOnlineUsableState() {
   if (disassembleLootBoxCount > 0) return USABLE_DISASSEMBLE;
@@ -1820,13 +2325,107 @@ bool idAI2::AnimEventReceived(idAnimWebEvent::priority_t priority) const {
   return !animWebEventPending;
 }
 // DIA: idAI2::WaitForAnimToEnd
-idRecoveredValue idAI2::WaitForAnimToEnd(...) { return RecordCoreCall("WaitForAnimToEnd"); }
+bool idAI2::WaitForAnimToEnd(
+    const idAnimWebEvent::priority_t priority, const char* subWebName,
+    const char* stateName, const animWebEvent_t eventType) {
+  idAnimator_AnimWeb* bodyAnimator =
+      animWebAnimators[AIANIMWEB_BODY].get();
+  const idAnimWebIndex currentSubWeb =
+      bodyAnimator->GetCurrentSubWebIndex();
+  const idAnimWebIndex currentState = bodyAnimator->GetCurrentStateIndex();
+  const idDeclAnimWeb* declaration = bodyAnimator->GetDeclaration();
+  const animWebSubWebIndex_t requestedSubWeb =
+      declaration->GetSubWebIndexForName(subWebName);
+  const animWebStateIndex_t requestedState =
+      declaration->GetStateIndexForName(stateName);
+  if (requestedSubWeb.value < 0) {
+    idLib::Warning(
+        "idAI2::WaitForAnimToEnd - subweb '%s' not found in animWeb '%s'",
+        subWebName, declaration->name.str);
+    return false;
+  }
+  if (requestedState.value < 0) {
+    idLib::Warning(
+        "idAI2::WaitForAnimToEnd - state '%s' not found in animWeb '%s'",
+        stateName, declaration->name.str);
+    return false;
+  }
+
+  const idAnimWebIndex viaSubWeb{requestedSubWeb.value};
+  const idAnimWebIndex viaState{requestedState.value};
+  const int pathResult = bodyAnimator->ChangeStateVia(
+      currentSubWeb, currentState, viaSubWeb, viaState, 1, 0, 0);
+  if (pathResult < 0) return false;
+  if (pathResult == 0) {
+    bodyAnimator->SetEvent(eventType, viaSubWeb, viaState,
+                           &EV_AnimWeb_Wait, priority);
+  }
+  return true;
+}
 // DIA: idAI2::WaitForAnimToStart
-idRecoveredValue idAI2::WaitForAnimToStart(...) { return RecordCoreCall("WaitForAnimToStart"); }
+bool idAI2::WaitForAnimToStart(
+    const aiAnimWeb_t lookupWeb,
+    const idAnimWebEvent::priority_t priority, const char* subWebName,
+    const char* stateName, const animWebEvent_t eventType) {
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[static_cast<std::size_t>(lookupWeb)]->GetDeclaration();
+  const animWebSubWebIndex_t subWebIndex =
+      declaration->GetSubWebIndexForName(subWebName);
+  const animWebStateIndex_t stateIndex =
+      declaration->GetStateIndexForName(stateName);
+  idAnimator_AnimWeb* bodyAnimator =
+      animWebAnimators[AIANIMWEB_BODY].get();
+  const idAnimWebIndex destinationSubWeb{subWebIndex.value};
+  const idAnimWebIndex destinationState{stateIndex.value};
+  const int pathResult = bodyAnimator->ChangeState(
+      destinationSubWeb, destinationState, 1, 0, 0);
+  if (pathResult < 0) return false;
+  if (pathResult == 0) {
+    bodyAnimator->SetEvent(eventType, destinationSubWeb, destinationState,
+                           &EV_AnimWeb_Wait, priority);
+  }
+  return true;
+}
 // DIA: idAI2::WaitForAnimToStartVia
-idRecoveredValue idAI2::WaitForAnimToStartVia(...) { return RecordCoreCall("WaitForAnimToStartVia"); }
+bool idAI2::WaitForAnimToStartVia(
+    const aiAnimWeb_t web, const idAnimWebEvent::priority_t priority,
+    const idAnimWebIndex destinationSubWeb,
+    const idAnimWebIndex destinationState, const idAnimWebIndex viaSubWeb,
+    const idAnimWebIndex viaState, const animWebEvent_t eventType) {
+  const int pathResult = animWebAnimators[static_cast<std::size_t>(web)]
+                             ->ChangeStateVia(
+                                 destinationSubWeb, destinationState,
+                                 viaSubWeb, viaState, 1, 0, 0);
+  if (pathResult < 0) return false;
+  if (pathResult == 0) {
+    animWebAnimators[AIANIMWEB_BODY]->SetEvent(
+        eventType, destinationSubWeb, destinationState, &EV_AnimWeb_Wait,
+        priority);
+  }
+  return true;
+}
 // DIA: idAI2::WaitForAnimToStartVia
-idRecoveredValue idAI2::WaitForAnimToStartVia(idRecoveredOverloadTag<1>) { return RecordCoreCall("WaitForAnimToStartVia"); }
+bool idAI2::WaitForAnimToStartVia(
+    const aiAnimWeb_t web, const idAnimWebEvent::priority_t priority,
+    const char* destinationSubWebName,
+    const char* destinationStateName, const char* viaSubWebName,
+    const char* viaStateName) {
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[static_cast<std::size_t>(web)]->GetDeclaration();
+  const animWebSubWebIndex_t viaSubWebIndex =
+      declaration->GetSubWebIndexForName(viaSubWebName);
+  const animWebStateIndex_t viaStateIndex =
+      declaration->GetStateIndexForName(viaStateName);
+  const animWebSubWebIndex_t destinationSubWebIndex =
+      declaration->GetSubWebIndexForName(destinationSubWebName);
+  const animWebStateIndex_t destinationStateIndex =
+      declaration->GetStateIndexForName(destinationStateName);
+  return WaitForAnimToStartVia(
+      web, priority, idAnimWebIndex{destinationSubWebIndex.value},
+      idAnimWebIndex{destinationStateIndex.value},
+      idAnimWebIndex{viaSubWebIndex.value},
+      idAnimWebIndex{viaStateIndex.value}, ANIMWEB_EVENT_START_BLEND_IN);
+}
 // DIA: idAI2::UpdateExtendedClipModel
 idRecoveredValue idAI2::UpdateExtendedClipModel(...) { return RecordCoreCall("UpdateExtendedClipModel"); }
 // DIA: idAI2::GetVoiceController
@@ -1906,13 +2505,92 @@ void idAI2::UpdateActions(int curTime) {
   componentTimeLine->Update();
 }
 // DIA: idAI2::SetAlertCycle
-idRecoveredValue idAI2::SetAlertCycle(...) { return RecordCoreCall("SetAlertCycle"); }
+void idAI2::SetAlertCycle(alertCycle_t alertCycle) {
+  alertCycle_t effectiveCycle = alertCycle;
+  if (alwaysInCombat && alertCycle != ALERTCYCLE_DYING &&
+      alertCycle != ALERTCYCLE_DEAD) {
+    effectiveCycle = ALERTCYCLE_COMBAT;
+  }
+
+  if (aiEventState.alertCycle != effectiveCycle) {
+    previousAlertCycle = aiEventState.alertCycle;
+    alertCycleTimestamp = gameLocal->GetGameTimeMs();
+    InitPerception(alertCycle);
+  }
+  aiEventState.alertCycle = effectiveCycle;
+
+  if (effectiveCycle == ALERTCYCLE_COMBAT) {
+    highestAlertCycle = ALERTCYCLE_COMBAT;
+    if (previousAlertCycle != ALERTCYCLE_COMBAT) {
+      lastSurprisedTime = gameLocal->GetGameTimeMs();
+    }
+  } else if (effectiveCycle == ALERTCYCLE_SEARCH) {
+    highestAlertCycle = (std::max)(highestAlertCycle,
+                                   static_cast<int>(ALERTCYCLE_SEARCH));
+  }
+
+  const aiSubWeb_t subWeb =
+      effectiveCycle < ALERTCYCLE_MAX
+          ? static_cast<aiSubWeb_t>(
+                AlertCycleToSubWeb(static_cast<int>(effectiveCycle)))
+          : aiSubWeb_t::relaxed;
+  SetSubWeb(subWeb);
+}
 // DIA: idAI2::DoEmergencyCoverExit
-idRecoveredValue idAI2::DoEmergencyCoverExit(...) { return RecordCoreCall("DoEmergencyCoverExit"); }
+bool idAI2::DoEmergencyCoverExit() {
+  const coverAction_t coverAction = coreState.coverAction;
+  if (!usesEmergencyCoverExit || memory->HasEmergencyCoverExit() ||
+      coverAction == COVERACTION_NONE || coverAction == COVERACTION_HIDE ||
+      coverAction == COVERACTION_FLINCH) {
+    return false;
+  }
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  memory->SetCurScenePoint(this, currentTime, nullptr);
+  coreState.coverAction = COVERACTION_NONE;
+  coreState.coverActionTimestamp = currentTime;
+  coverOrientation = COVERORIENT_NONE;
+  SetPosture(POSTURE_STANDING);
+  moveState->Stop(MOVE_STATUS_DONE);
+  SetEnableHeadTracking(true);
+
+  idStr targetState("idle");
+  idStr targetSubWeb;
+  GetSubWebPrefix(
+      static_cast<aiSubWeb_t>(static_cast<int>(allowHostileStance) + 1),
+      &targetSubWeb);
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[AIANIMWEB_BODY]->GetDeclaration();
+  const animWebSubWebIndex_t subWebIndex =
+      declaration->GetSubWebIndexForName(targetSubWeb.data);
+  const animWebStateIndex_t stateIndex =
+      declaration->GetStateIndexForName(targetState.data);
+
+  blendParms_t forceBlendParms;
+  forceBlendParms.SetDuration(10);
+  forceBlendParms.SetDestStartFrame(0);
+  forceBlendParms.parms.originBlend = 2;
+  animWebAnimators[AIANIMWEB_BODY]->ForceState(
+      idAnimWebIndex{subWebIndex.value}, idAnimWebIndex{stateIndex.value},
+      forceBlendParms, 0);
+  memory->SetEmergencyCoverExit(true);
+  return true;
+}
 // DIA: `idAI2::DoEmergencyCoverExit'::`1'::dtor$0
 // DIA: `idAI2::DoEmergencyCoverExit'::`1'::dtor$1
 // DIA: idAI2::GetAnimationPathReachability
-idRecoveredValue idAI2::GetAnimationPathReachability(...) { return RecordCoreCall("GetAnimationPathReachability"); }
+bool idAI2::GetAnimationPathReachability(const idAnimWebIndex subWeb,
+                                         const idAnimWebIndex state) const {
+  idAnimator_AnimWeb* animator = animWebAnimators[AIANIMWEB_BODY].get();
+  idAnimWebRoute testPath;
+  for (idAnimWebIndex& nodeIndex : testPath.path) {
+    nodeIndex.value = -1;
+  }
+  testPath.num = 0;
+  testPath.cost = std::numeric_limits<int>::max();
+  return animator->FindPath(animator->GetCurrentNodeIndex(), state, subWeb,
+                            idAnimWebIndex{-1}, &testPath);
+}
 // DIA: idAI2::GetAnimationDuration
 idRecoveredValue idAI2::GetAnimationDuration(...) { return RecordCoreCall("GetAnimationDuration"); }
 // DIA: idAI2::GetAnimationDelta
@@ -1928,7 +2606,23 @@ idRecoveredValue idAI2::GetCoverTransitionRadius(...) { return RecordCoreCall("G
 // DIA: `idAI2::GetCoverTransitionRadius'::`1'::dtor$2
 // DIA: `idAI2::GetCoverTransitionRadius'::`1'::dtor$3
 // DIA: idAI2::ShouldScramble
-idRecoveredValue idAI2::ShouldScramble(...) { return RecordCoreCall("ShouldScramble"); }
+bool idAI2::ShouldScramble() {
+  if (ai_enableScrambles.GetInteger() == 0) return false;
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  if (currentTime - lastFireTime < ai_scrambleTime.GetInteger() ||
+      (groupStatusCondition & 0x10) != 0) {
+    return true;
+  }
+
+  const idCombatStage* stage = GetCurrentCombatStage();
+  if (stage != nullptr &&
+      stage->stageType == idCombatStage::COMBAT_STAGE_RETREAT) {
+    const idEncounterGroup* group = GetEncounterGroup();
+    if (group->stageChangeTime + 8000 > currentTime) return true;
+  }
+  return false;
+}
 // DIA: idAI2::StartRagdoll
 idAnimator_AF::testSolidResult_t idAI2::StartRagdoll(
     const idRagdollInfo* info) {
@@ -2118,7 +2812,21 @@ idRecoveredValue idAI2::UpdateGrappleActivation(...) { return RecordCoreCall("Up
 // DIA: idAI2::Remove
 idRecoveredValue idAI2::Remove(...) { return RecordCoreCall("Remove"); }
 // DIA: idAI2::ShouldEnterDormancy
-idRecoveredValue idAI2::ShouldEnterDormancy(...) { return RecordCoreCall("ShouldEnterDormancy"); }
+bool idAI2::ShouldEnterDormancy() const {
+  if (ai_enableDormancy.GetInteger() == 0) return false;
+  if (immediatePhysicsDormancyGate &&
+      GetPhysics()->ShouldEnterDormancyImmediately()) {
+    return true;
+  }
+  if (controllingPlayer != nullptr) return false;
+  if (animWebTransitionActive) return false;
+  if ((articulatedFigureActive || articulatedFigureClientActive) &&
+      !articulatedFigureAtRest) {
+    return false;
+  }
+  if (const_cast<idAI2*>(this)->IsExecutingScript()) return false;
+  return idEntity::ShouldEnterDormancy();
+}
 // DIA: idAI2::UpdateFSMs
 idRecoveredValue idAI2::UpdateFSMs(...) { return RecordCoreCall("UpdateFSMs"); }
 // DIA: idAI2::UpdateMovement
@@ -2176,14 +2884,54 @@ idRecoveredValue idAI2::OnAIEvent_Projectile(...) { return RecordCoreCall("OnAIE
 // DIA: idAI2::OnAIEvent_PlayerAim
 idRecoveredValue idAI2::OnAIEvent_PlayerAim(...) { return RecordCoreCall("OnAIEvent_PlayerAim"); }
 // DIA: idAI2::ForceStopOverrideAnim
-idRecoveredValue idAI2::ForceStopOverrideAnim(...) { return RecordCoreCall("ForceStopOverrideAnim"); }
+void idAI2::ForceStopOverrideAnim(
+    const idAnimWebEvent::priority_t priority, int blendDurationMs) {
+  (void)priority;
+  idAnimator_AnimWeb* animator = animWebAnimators[AIANIMWEB_BODY].get();
+  if (animator->IsAnyEventPending()) {
+    idAnimWebIndex destSubWebIndex{-1};
+    idAnimWebIndex destStateIndex{-1};
+    if (animator->GetDestinationIndices(&destSubWebIndex,
+                                        &destStateIndex)) {
+      animator->ClearEvent(ANIMWEB_EVENT_START_BLEND_IN);
+      blendParms_t blendParms;
+      const int millisecondsPerFrame = gameLocal->GetGameMsPerFrame();
+      const float durationFrames = std::floor(
+          static_cast<float>(blendDurationMs) /
+                  static_cast<float>(millisecondsPerFrame) +
+              0.5F);
+      blendParms.SetDuration(static_cast<int>(durationFrames));
+      blendParms.SetDestStartFrame(0);
+      animator->ForceState(destSubWebIndex, destStateIndex, blendParms, 0);
+    }
+  }
+}
 // DIA: idAI2::ClearSyncedAnimData
 void idAI2::ClearSyncedAnimData() {
   syncedOverrideAnimation = 0;
   syncedTargetSpawnId = 0x1FFF;
 }
 // DIA: idAI2::IsOverrideAnimSupported
-idRecoveredValue idAI2::IsOverrideAnimSupported(...) { return RecordCoreCall("IsOverrideAnimSupported"); }
+bool idAI2::IsOverrideAnimSupported(const overrideAnim_t anim) const {
+  if (anim == ANIMOVERRIDE_NONE) return false;
+
+  const overrideWebInfo_t& webInfo =
+      overrideWebInfo[static_cast<std::size_t>(anim)];
+  idStr subWebName;
+  GetSubWebPrefix(webInfo.subWeb, &subWebName);
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[AIANIMWEB_BODY]->GetDeclaration();
+  const animWebSubWebIndex_t subWebIndex =
+      declaration->GetSubWebIndexForName(subWebName.data);
+  if (subWebIndex.value < 0) return false;
+
+  const animWebStateIndex_t stateIndex =
+      declaration->GetStateIndexForName(webInfo.stateName);
+  if (stateIndex.value < 0) return false;
+
+  return GetAnimationPathReachability(idAnimWebIndex{subWebIndex.value},
+                                      idAnimWebIndex{stateIndex.value});
+}
 // DIA: idAI2::WaitForOverrideAnim
 idRecoveredValue idAI2::WaitForOverrideAnim(...) { return RecordCoreCall("WaitForOverrideAnim"); }
 // DIA: idAI2::SetLookFocusEntity
@@ -2449,7 +3197,42 @@ void idAI2::ClearWorldState() {
   fakeEnemy = nullptr;
 }
 // DIA: idAI2::SetupFakePosition
-idRecoveredValue idAI2::SetupFakePosition(...) { return RecordCoreCall("SetupFakePosition"); }
+void idAI2::SetupFakePosition(const idEntity* instigator,
+                              const idVec3& fakePosition, bool detected) {
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  const idSpawnId instigatorId{
+      instigator != nullptr ? instigator->GetEntityNumber() : 0x1fff};
+  const idSpawnId sourceId{GetEntityNumber()};
+
+  if (detected) {
+    worldState->AddEntityState(gameState, &logic, instigatorId,
+                               AISTIM_GUNFIRE, 1.0F, sourceId);
+  } else {
+    if (controllingPlayer == nullptr &&
+        aiEventState.alertCycle == ALERTCYCLE_RELAXED) {
+      localVoiceController->PlayVoice(this, AIVOICE_SEARCH_NOTICE);
+    }
+    worldState->AddEntityState(gameState, &logic, instigatorId,
+                               AISTIM_HEARING, 1.0F, sourceId);
+  }
+
+  idAIEntityState* entityState = worldState->StateForEntity(instigator);
+  if (entityState == nullptr) return;
+
+  aiPhysicalState_t physical;
+  gameState->GetPhysicalState(gameLocal, instigator, &physical);
+  const idVec3 eyeOffset = physical.eyePos - physical.origin;
+  physical.origin = fakePosition;
+  physical.eyePos = fakePosition + eyeOffset;
+  entityState->SetSenseState(gameState, &logic, AISENSE_HEARING, &physical,
+                             AISTIM_HEARING, sourceId);
+  if (detected) {
+    entityState->SetSenseState(gameState, &logic, AISENSE_SIGHT, &physical,
+                               AISTIM_SIGHT, sourceId);
+  }
+}
 // DIA: idAI2::OnAIEvent_Voice
 idRecoveredValue idAI2::OnAIEvent_Voice(...) { return RecordCoreCall("OnAIEvent_Voice"); }
 // DIA: idAI2::OnAIEvent_Footstep
@@ -2479,7 +3262,26 @@ idRecoveredValue idAI2::Debug_Perception(...) { return RecordCoreCall("Debug_Per
 // DIA: idAI2::idVisibilityObscurity::Update
 idRecoveredValue idAI2::idVisibilityObscurity::Update(...) { return {}; }
 // DIA: idAI2::ShouldReloadWeapon
-idRecoveredValue idAI2::ShouldReloadWeapon(...) { return RecordCoreCall("ShouldReloadWeapon"); }
+bool idAI2::ShouldReloadWeapon(idWeapon* weapon, bool secondary) {
+  if (weapon == nullptr ||
+      weapon->fireState == idWeapon::FIRESTATE_RELOADING) {
+    return false;
+  }
+  const float loadedFraction = weapon->GetLoadedFraction(secondary);
+  if (loadedFraction >= 1.0F) return false;
+  if (loadedFraction <= 0.0F) return true;
+
+  const idEntity* enemy = currentEnemy;
+  if (enemy != nullptr) {
+    if (safeReloadFraction < loadedFraction) return false;
+    const int currentTime = gameLocal->GetGameTimeMs();
+    if (GetSpottedDuration(enemy, currentTime) >= 0) return false;
+    if (IsRecentlySpotted(worldState->StateForEntity(enemy), 3.0F)) {
+      return false;
+    }
+  }
+  return true;
+}
 // DIA: idAI2::CheckForSuspectedToTrailUpdate
 idRecoveredValue idAI2::CheckForSuspectedToTrailUpdate(...) { return RecordCoreCall("CheckForSuspectedToTrailUpdate"); }
 // DIA: idAI2::CalcMovementTurnRate
@@ -2494,9 +3296,59 @@ idRecoveredValue idAI2::FindAutoFocusEntity(...) { return RecordCoreCall("FindAu
 // DIA: idAI2::FindAutoFocus
 idRecoveredValue idAI2::FindAutoFocus(...) { return RecordCoreCall("FindAutoFocus"); }
 // DIA: idAI2::StartActionScript
-idRecoveredValue idAI2::StartActionScript(...) { return RecordCoreCall("StartActionScript"); }
+void idAI2::StartActionScript(int currentTime) {
+  scriptedActionStartTime = currentTime;
+  ++scriptedActionStartCount;
+  if (IsDead()) return;
+
+  if (!mutantActorClass) {
+    if (speakingMoodCapability) {
+      faceManager->SetEnableMoodAnimation(this, true);
+    }
+    if (speakingLipSyncCapability) {
+      faceManager->SetEnableLipSyncAnimation(this, true);
+      faceManager->StartLipsync();
+    }
+    if (speakingGestureCapability) {
+      faceManager->SetEnableGestureAnimation(this, true);
+    }
+    if (speakingEyeTrackingCapability) {
+      faceManager->SetEnableEyeTracking(this, true);
+    }
+    if (speakingBlinkingCapability) {
+      faceManager->SetEnableBlinking(this, true);
+    }
+    if (speakingLidDeformationCapability) {
+      faceManager->SetEnableLidDeformation(this, true);
+    }
+  }
+
+  idFSMManager::idFSMStack stack;
+  stack.Add(GetAlertCycleFSM(), "ActionScript");
+  fsmManager->SetFSMStack(stack);
+  SetAlertCycle(ALERTCYCLE_RELAXED);
+  componentTimeLine->Start(this);
+}
 // DIA: idAI2::GiveAwarenessOfEntity
-idRecoveredValue idAI2::GiveAwarenessOfEntity(...) { return RecordCoreCall("GiveAwarenessOfEntity"); }
+void idAI2::GiveAwarenessOfEntity(const idEntity* entity,
+                                  alertCycle_t alertCycle) {
+  (void)alertCycle;
+  if (entity == nullptr) {
+    idLib::Warning("idAI2::GiveAwarenessOfEntity - entity is NULL");
+    return;
+  }
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  memory->ClearAllTrailPositions(currentTime);
+  memory->SetEnemy(const_cast<idEntity*>(entity));
+  currentEnemy = const_cast<idEntity*>(entity);
+
+  const idVec3& origin = entity->GetPhysics()->GetOrigin();
+  SetupFakePosition(entity, origin, false);
+  if (GetAAS()->PointAreaNumMaxheight(0, origin, 16.0F) > 0) {
+    memory->SetLastSafeEnemyPos(origin);
+  }
+}
 // DIA: idAI2::DoSpawnSettings
 idRecoveredValue idAI2::DoSpawnSettings(...) { return RecordCoreCall("DoSpawnSettings"); }
 // DIA: `idAI2::DoSpawnSettings'::`1'::dtor$5
@@ -2548,7 +3400,22 @@ idRecoveredValue idAI2::CheckForGore(...) { return RecordCoreCall("CheckForGore"
 // DIA: idAI2::UpdateDeaths
 idRecoveredValue idAI2::UpdateDeaths(...) { return RecordCoreCall("UpdateDeaths"); }
 // DIA: idAI2::AlarmNotification
-idRecoveredValue idAI2::AlarmNotification(...) { return RecordCoreCall("AlarmNotification"); }
+void idAI2::AlarmNotification() {
+  const idEntity* enemy = memory->GetEnemy();
+  if (enemy == nullptr) return;
+
+  idEncounterGroup* group = GetEncounterGroup();
+  if (group == nullptr) return;
+
+  idStaticList<idAI2*, 64> livingGroupMembers;
+  group->GetLivingMembers(&livingGroupMembers);
+  for (int index = 0; index < livingGroupMembers.Num(); ++index) {
+    idAI2* member = livingGroupMembers[index];
+    if (member != nullptr && member->memory->GetEnemy() == nullptr) {
+      member->SetupFakePosition(enemy, GetPhysics()->GetOrigin(), false);
+    }
+  }
+}
 // DIA: idAI2::RelinquishControl
 idRecoveredValue idAI2::RelinquishControl(...) { return RecordCoreCall("RelinquishControl"); }
 // DIA: `idAI2::RelinquishControl'::`1'::dtor$0
@@ -3052,7 +3919,8 @@ idCVar ai_enablePhysics("ai_enablePhysics", "0", 0, "recovered AI tuning variabl
 // DIA: `dynamic initializer for 'ai_enableMovement''
 idCVar ai_enableMovement("ai_enableMovement", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_enableDormancy''
-idCVar ai_enableDormancy("ai_enableDormancy", "0", 0, "recovered AI tuning variable");
+idCVar ai_enableDormancy("ai_enableDormancy", "1", 1,
+                         "1 = AI that is not rendered will stop thinking");
 // DIA: `dynamic initializer for 'ai_enableAutoFocus''
 idCVar ai_enableAutoFocus("ai_enableAutoFocus", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_enableInjuredRuns''
@@ -3060,9 +3928,12 @@ idCVar ai_enableInjuredRuns("ai_enableInjuredRuns", "0", 0, "recovered AI tuning
 // DIA: `dynamic initializer for 'ai_debugGore''
 idCVar ai_debugGore("ai_debugGore", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_enableScrambles''
-idCVar ai_enableScrambles("ai_enableScrambles", "0", 0, "recovered AI tuning variable");
+idCVar ai_enableScrambles(
+    "ai_enableScrambles", "1", 1,
+    "true to enable AI scramble runs and transitions");
 // DIA: `dynamic initializer for 'ai_scrambleTime''
-idCVar ai_scrambleTime("ai_scrambleTime", "0", 0, "recovered AI tuning variable");
+idCVar ai_scrambleTime("ai_scrambleTime", "2000", 2,
+                       "ms for AI to scramble after being shot at");
 // DIA: `dynamic initializer for 'ai_searchToStimDist''
 idCVar ai_searchToStimDist("ai_searchToStimDist", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'ai_mood''

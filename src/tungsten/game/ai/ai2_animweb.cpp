@@ -7,7 +7,12 @@
 namespace {
 
 constexpr const char* kSubWebNames[] = {
-    "relaxed", "alert", "combat", "traversal"};
+    "relaxed",       "combat", "hostile", "search",  "pain",
+    "pain_stagger",  "pain_moving", "pain_shock", "dying",
+    "actionscript",  "fcover", "melee", "surprise", "dive",
+    "dodge",         "grenade", "throw", "override", "turret",
+    "rccontrol",     "traversal", "zipline", "dropship_fall",
+    "react"};
 
 std::int16_t NameIndex(const char* text) {
   if (text == nullptr || *text == '\0') return -1;
@@ -56,14 +61,18 @@ void idAI2::GetWeaponPrefix(idStr* output) {
 // DIA: idAI2::GetSubWebPrefix
 void idAI2::GetSubWebPrefix(const idWeapon* weapon, int subWeb,
                             idStr* output) {
-  if (output == nullptr || subWeb < 0 || subWeb >= 4) return;
+  if (output == nullptr || subWeb < 0 ||
+      subWeb >= static_cast<int>(aiSubWeb_t::max)) {
+    return;
+  }
   GetWeaponPrefix(weapon, output);
   *output += kSubWebNames[subWeb];
 }
 
 // DIA: idAI2::GetSubWebPrefix
-void idAI2::GetSubWebPrefix(aiSubWeb_t subWeb, idStr* output) {
-  GetSubWebPrefix(meleeWeapon, SubWebNumber(subWeb), output);
+void idAI2::GetSubWebPrefix(aiSubWeb_t subWeb, idStr* output) const {
+  const_cast<idAI2*>(this)->GetSubWebPrefix(meleeWeapon, SubWebNumber(subWeb),
+                                           output);
 }
 
 // DIA: idAI2::GetSubWebPrefix

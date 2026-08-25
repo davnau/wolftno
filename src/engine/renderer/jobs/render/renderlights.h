@@ -10,10 +10,10 @@ class idDeclRenderParm;
 class idDeclRenderProg;
 class idRenderView;
 class idTriangles;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderLightCommitted;
 struct idRenderModelCommitted;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 struct renderSettings_t;
 
 enum renderLightsMode_t : int {

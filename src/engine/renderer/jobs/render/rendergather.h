@@ -9,7 +9,7 @@ class idLookupTable;
 class idRenderView;
 struct idRenderLightCommitted;
 struct idRenderModelCommitted;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 struct occlusionState_t;
 struct renderSettings_t;
 struct worldArea_t;

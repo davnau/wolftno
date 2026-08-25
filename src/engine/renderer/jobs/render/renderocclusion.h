@@ -6,7 +6,7 @@
 class idDeclRenderProg;
 class idTriangles;
 struct idBounds;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderLightCommitted;
 struct idRenderModelCommitted;
 class idRenderView;

@@ -7,7 +7,7 @@
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-struct idRenderDestination;
+class idRenderDestination;
 class idTriangles;
 
 struct renderDynamicEnvParms_t {

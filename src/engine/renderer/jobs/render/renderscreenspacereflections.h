@@ -7,7 +7,7 @@
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-struct idRenderDestination;
+class idRenderDestination;
 class idTriangles;
 
 struct renderScreenSpaceReflectionsParms_t {

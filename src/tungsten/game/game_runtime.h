@@ -10,6 +10,7 @@
 class idAAS2;
 class idAASVisCache;
 class idAIGameState;
+class idEncounterGroupManager;
 struct idEventDef;
 class idEntity;
 class idPlayer;
@@ -91,6 +92,7 @@ public:
     (void)point;
     (void)force;
   }
+  virtual bool ShouldEnterDormancyImmediately() const { return false; }
 };
 
 class idEntity {
@@ -128,6 +130,7 @@ public:
       *axis = {};
     }
   }
+  virtual bool ShouldEnterDormancy() const { return hidden; }
 
   idMat3* GetPresentableAxis();
   const idMat3* GetPresentableAxis() const { return &presentableAxis; }
@@ -152,6 +155,7 @@ public:
   void SetEntityNumber(int value) { entityNumber = value; }
 
   bool IsHidden() const { return hidden; }
+  void SetHiddenForTest(bool value) { hidden = value; }
   bool IsRemoved() const { return removed; }
   void SetShouldLeaveDormancy(bool value) { leaveDormancy = value; }
   int GetPostedEventCount() const { return postedEvents.Num(); }
@@ -209,6 +213,23 @@ public:
     return nullptr;
   }
   virtual float GetAIIncomingDamageScale() const { return 1.0F; }
+  virtual std::uint64_t SubmitTranslationQuery(
+      const idVec3& start, const idVec3& end, int clipSize,
+      const idMat3& axis, int contentsMask, int passEntityNumber,
+      bool asynchronous, const char* debugName) {
+    (void)start;
+    (void)end;
+    (void)clipSize;
+    (void)axis;
+    (void)contentsMask;
+    (void)passEntityNumber;
+    (void)asynchronous;
+    (void)debugName;
+    return 0;
+  }
+  virtual idEncounterGroupManager* GetEncounterGroupManager() {
+    return nullptr;
+  }
   void AddDyingAI(idEntity* entity) {
     if (entity == nullptr) return;
     for (int i = 0; i < dyingAI.Num(); ++i)

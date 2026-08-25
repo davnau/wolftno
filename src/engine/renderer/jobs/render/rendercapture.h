@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shared/idlib/containers/heaparray.h"
+
 #include <cstddef>
 
 enum renderCapture_t : int {
@@ -14,13 +16,11 @@ enum renderCapture_t : int {
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-class idPixelPackBuffer;
-struct idRenderDestination;
+struct idPixelPackBuffer;
+class idRenderDestination;
 class idTextureSampler;
 class idTriangles;
 struct renderSettings_t;
-template <typename T> struct idHeapArray;
-
 struct captureParms_t {
   renderCapture_t capture;
   const renderSettings_t* settings;

@@ -187,6 +187,7 @@ idAIEntityState* idAIWorldState::InternalAddEntityState(
     result = &entityStates[static_cast<std::size_t>(slot)];
     result->Init(gameState, owner, entityId, state);
   }
+  lastAddedStimulus = stimulusType;
   result->AddStimulus(gameState, owner, stimulusType, stimulusAmount,
                       sourceId, sourceEventHandle, state);
   return result;

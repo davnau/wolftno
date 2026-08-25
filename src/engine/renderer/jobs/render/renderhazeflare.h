@@ -7,7 +7,7 @@
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-struct idRenderDestination;
+class idRenderDestination;
 class idTriangles;
 
 struct renderHazeFlareParms_t {
@@ -33,4 +33,3 @@ static_assert(offsetof(renderHazeFlareParms_t, renderDestHazeFlare) == 0x68,
               "haze-flare intermediate destinations offset drift");
 static_assert(sizeof(renderHazeFlareParms_t) == 0x80,
               "haze-flare parameters ABI drift");
-

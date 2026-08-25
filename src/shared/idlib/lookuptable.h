@@ -15,7 +15,7 @@ public:
   float times[64]{};
   float values[64]{};
   int numKnots = 0;
-  int currentIndex = -1;
+  mutable int currentIndex = -1;
   bool changed = true;
   boundary_t boundaryType = FREE;
   float closeTime = 0.0f;
@@ -23,11 +23,11 @@ public:
   void Sort();
   void Normalize(float totalTime);
   float ClampedTime(float t) const;
-  int IndexForTime(float time, bool fastSearch);
+  int IndexForTime(float time, bool fastSearch) const;
   float TimeForIndex(int index) const;
   float ValueForIndex(int index) const;
   void Basis(int index, float t, float* basisValues) const;
-  float GetCurrentValue(float time, bool fastSearch = false);
+  float GetCurrentValue(float time, bool fastSearch = false) const;
 };
 
 class idLookupTable {
@@ -40,8 +40,8 @@ public:
   void SetClamp(bool enabled);
   void AddValue(float time, float value);
   void Clear();
-  float TableLookupNormalized(float time, bool fastSearch = false);
-  float TableLookup(float time, bool fastSearch = false);
+  float TableLookupNormalized(float time, bool fastSearch = false) const;
+  float TableLookup(float time, bool fastSearch = false) const;
 
   void SetRange(float minimum, float maximum) {
     _min = minimum;

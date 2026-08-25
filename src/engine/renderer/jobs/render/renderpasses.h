@@ -7,7 +7,7 @@
 
 class idDeclRenderParm;
 class idRenderView;
-struct idRenderDestination;
+class idRenderDestination;
 struct renderSettings_t;
 
 enum renderPass_t : int {

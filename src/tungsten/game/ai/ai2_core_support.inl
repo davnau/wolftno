@@ -70,12 +70,6 @@ template <int JointCount>
 idRecoveredValue idAnimator_TurretNxN<JointCount>::SetParameters(...) { return {}; }
 template class idAnimator_TurretNxN<3>;
 
-template <typename T, int Count>
-idArray<T, Count>::~idArray() = default;
-template class idArray<idAnimWebAI, 1>;
-template class idArray<idFocusInfo, 2>;
-template class idArray<idTrajectory_Parabolic, 4>;
-
 template <typename Key, typename Value>
 idHashTableT<Key, Value>::~idHashTableT() = default;
 template <typename Key, typename Value>

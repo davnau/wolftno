@@ -6,7 +6,8 @@
 
 #include <cstdint>
 
-struct idVertexScaleAndBias {
+class idVertexScaleAndBias {
+public:
   idVec3 xyzScale;
   idVec3 xyzBias;
   idVec2 stScale;

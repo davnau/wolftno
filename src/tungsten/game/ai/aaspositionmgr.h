@@ -24,6 +24,11 @@ public:
     return nullptr;
   }
   virtual idVec3 GetGravityDirection() const { return {0.0F, 0.0F, -1.0F}; }
+  virtual int PointAreaNumMaxheight(int tree, const idVec3& origin,
+                                    float maxHeight) const {
+    (void)maxHeight;
+    return PointAreaNum(tree, origin);
+  }
 };
 
 class idAASPosition {

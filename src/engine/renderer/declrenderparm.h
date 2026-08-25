@@ -20,10 +20,12 @@ enum parmType_t : int {
   PT_TEXTURE_SHADOW_CUBE = 6,
   PT_TEXTURE_DIM_SHADOW_2D = 7,
   PT_TEXTURE_MULTISAMPLE_2D = 8,
-  PT_SAMPLER = 9,
-  PT_PROGRAM = 10,
-  PT_STRING = 11,
-  PT_MAX = 12
+  PT_IMAGE_2D_READ = 9,
+  PT_IMAGE_2D_WRITE = 10,
+  PT_SAMPLER = 11,
+  PT_PROGRAM = 12,
+  PT_STRING = 13,
+  PT_MAX = 14
 };
 
 enum parmCreator_t : int {

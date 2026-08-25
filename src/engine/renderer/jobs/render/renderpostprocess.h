@@ -7,7 +7,7 @@ class idDeclRenderProg;
 class idImage;
 class idRenderView;
 class idTriangles;
-struct idRenderDestination;
+class idRenderDestination;
 struct renderSettings_t;
 
 struct renderPostProcessParms_t {

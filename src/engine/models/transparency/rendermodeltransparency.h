@@ -9,6 +9,12 @@
 
 class idParallelJobList;
 
+struct updateInViewStats_t {
+  bool showStats{};
+  std::uint8_t recoveredPadding[3]{};
+  int c_numParticleVertices{};
+};
+
 class idRenderModelTransparency : public idRenderModel {
 public:
   static bool AllocateQuadSegment(int numQuads,
@@ -30,10 +36,12 @@ public:
 
   idParallelJobList* renderModelJobList{};
   idRenderModelTransparency* transparencyModel{};
-  void* globalShadowMap{};
-  void* pc{};
+  const void* globalShadowMap{};
+  updateInViewStats_t pc{};
 };
 
+static_assert(sizeof(updateInViewStats_t) == 8,
+              "update-in-view stats ABI drift");
 static_assert(offsetof(idRenderModelTransparency, visibleInfluenceSpheres) ==
                   2224,
               "idRenderModelTransparency visible spheres offset drift");

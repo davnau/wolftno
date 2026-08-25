@@ -7,9 +7,9 @@
 #include <cstdint>
 
 class idDeclRenderProg;
-struct idRenderDestination;
+class idRenderDestination;
 struct idRenderModelCommitted;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 class idRenderView;
 struct renderSettings_t;
 

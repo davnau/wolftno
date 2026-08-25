@@ -8,6 +8,9 @@
 #include <cstdint>
 
 struct worldArea_t {
+  worldArea_t();
+  ~worldArea_t();
+
   idList<idRenderIndex, 62> modelRefs;
   idList<idRenderIndex, 62> drawLightRefs;
   idList<idRenderIndex, 62> approximatedLightRefs;

@@ -35,7 +35,8 @@ struct samplerOptions_t {
   std::uint16_t structPad{};
 };
 
-struct idImageOpts {
+class idImageOpts {
+public:
   textureType_t textureType{};
   textureFormat_t format{};
   textureColor_t colorFormat{};
@@ -67,7 +68,17 @@ enum imageState_t : int {
 
 class idImage : public idResource {
 public:
+  idImage();
+  ~idImage() override;
+
   static void ParseImageOpts(class idParser& parser, idImageOpts& options);
+  static void MakeGeneratedName(char* binaryFileName, int maxLength,
+                                const char* imageName);
+  static void WriteBinaryImage(const char* imageName, idImageOpts options,
+                               const std::uint8_t* imageData,
+                               std::uint32_t sourceFileTime);
+  void LoadFromBinaryImage(const class idBinaryImage& binaryImage);
+  struct idImageData* GetImageData(int mipLevel, int z) const;
   imageState_t ImageState() const;
   void PurgeImage();
   void BackgroundRead(class idFile* file, std::uint64_t offset);
@@ -97,6 +108,8 @@ public:
 
   static idTypedResourceList<idImage> resourceList;
 };
+
+void ComputeNumLevels(idImageOpts* options, const char* imageName);
 
 static_assert(sizeof(samplerOptions_t) == 44, "samplerOptions_t ABI drift");
 static_assert(sizeof(idImageOpts) == 100, "idImageOpts ABI drift");

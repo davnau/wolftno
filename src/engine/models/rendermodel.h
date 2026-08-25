@@ -107,7 +107,8 @@ enum renderModelType_t : int {
   RENDERMODEL_TYPE_MAX = 33,
 };
 
-struct idRenderModelSurface {
+class idRenderModelSurface {
+public:
   const idMaterial* material = nullptr;
   int materialNum = 0;
   std::uint64_t extraGLState = 0;

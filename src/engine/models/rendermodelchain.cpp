@@ -287,7 +287,9 @@ void idRenderModelChain::RemoveSmoothSkinning(int id) {
 bool idRenderModelChain::CommitSubclass() {
   if ((dirtyFlags & kTransformsDirty) != 0U) {
     currentJointBuffer = 0;
-    jointBuffers[0].Update(transforms.list, transforms.Num());
+    jointBuffers[0].Update(
+        transforms.list != nullptr ? transforms.list->mat : nullptr,
+        transforms.Num());
     for (int surfaceIndex = 0; surfaceIndex < surfaces.Num(); ++surfaceIndex) {
       if (surfaces[surfaceIndex].joints != nullptr) {
         surfaces[surfaceIndex].joints->Reference(

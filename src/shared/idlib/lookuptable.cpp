@@ -59,7 +59,8 @@ float idCatmullRomSpline<float>::ClampedTime(float t) const {
   return t;
 }
 
-int idCatmullRomSpline<float>::IndexForTime(float time, bool fastSearch) {
+int idCatmullRomSpline<float>::IndexForTime(float time,
+                                            bool fastSearch) const {
   if (numKnots <= 0) {
     currentIndex = 0;
     return 0;
@@ -204,7 +205,8 @@ void idLookupTable::Clear() {
   values.closeTime = 0.0f;
 }
 
-float idCatmullRomSpline<float>::GetCurrentValue(float time, bool fastSearch) {
+float idCatmullRomSpline<float>::GetCurrentValue(float time,
+                                                  bool fastSearch) const {
   if (numKnots <= 0) {
     return 0.0f;
   }
@@ -222,7 +224,8 @@ float idCatmullRomSpline<float>::GetCurrentValue(float time, bool fastSearch) {
   return result;
 }
 
-float idLookupTable::TableLookupNormalized(float time, bool fastSearch) {
+float idLookupTable::TableLookupNormalized(float time,
+                                           bool fastSearch) const {
   if (values.numKnots <= 0) {
     return 0.0f;
   }
@@ -256,6 +259,6 @@ float idLookupTable::TableLookupNormalized(float time, bool fastSearch) {
   return startValue + (endValue - startValue) * ((clamped - start) / (end - start));
 }
 
-float idLookupTable::TableLookup(float time, bool fastSearch) {
+float idLookupTable::TableLookup(float time, bool fastSearch) const {
   return _min + (_max - _min) * TableLookupNormalized(time, fastSearch);
 }

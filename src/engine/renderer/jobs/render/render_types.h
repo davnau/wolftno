@@ -6,7 +6,7 @@
 class idDeclRenderProg;
 class idMaterial;
 struct idRenderModelCommitted;
-struct idRenderModelSurface;
+class idRenderModelSurface;
 
 struct drawSurf_t {
   float sort;

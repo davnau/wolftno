@@ -2,15 +2,26 @@
 
 #include "engine/decls/decl.h"
 #include "engine/renderer/parmblock.h"
+#include "shared/idlib/containers/staticlist.h"
 
 #include <cstddef>
 #include <cstdint>
 
+class idImage;
+class idTextureSampler;
+
 struct renderProgData_t {
-  std::uint8_t opaqueBeforeGLState[0x60];
+  idStr inheritsFrom;
+  unsigned int compoundCheckSum;
+  unsigned int parentCheckSum;
+  idList<idStr> dependencies;
+  idList<unsigned int> dependencyTimestamps;
   std::uint64_t glState;
   idParmBlock parmBlock;
-  std::uint8_t opaqueBeforeFlags[0x150];
+  idStaticList<short, 42> vertexParms;
+  idStaticList<short, 42> fragmentParms;
+  idStaticList<short, 16> textureParms;
+  idStaticList<short, 16> samplerParms;
   int flags;
   float stageSort;
   bool hasInteractions;
@@ -21,7 +32,12 @@ struct renderProgData_t {
   bool hasClip;
   bool hasDepthOutput;
   bool hasBranchStripping;
-  std::uint8_t opaqueTail[0x58];
+  unsigned int vertexMask;
+  std::uint16_t fragmentOutputs;
+  std::uint8_t registerCountPS3;
+  std::uint8_t registerCount360;
+  idStr vertexCode;
+  idStr fragmentCode;
 };
 
 template <typename T, std::size_t Count> struct idDeclFixedArray {
@@ -30,6 +46,9 @@ template <typename T, std::size_t Count> struct idDeclFixedArray {
 
 class idDeclRenderProg : public idDecl {
 public:
+  static void BindTexture(int textureUnit, const idImage* image,
+                          const idTextureSampler* sampler);
+
   const idDeclRenderProg* renamed;
   renderProgData_t data;
   const idDeclRenderProg* inheritsFromDecl;
@@ -49,6 +68,10 @@ static_assert(offsetof(renderProgData_t, glState) == 0x60,
               "render-program GL-state offset drift");
 static_assert(offsetof(renderProgData_t, parmBlock) == 0x68,
               "render-program parm-block offset drift");
+static_assert(offsetof(renderProgData_t, vertexParms) == 0x98,
+              "render-program vertex-parm offset drift");
+static_assert(offsetof(renderProgData_t, samplerParms) == 0x1B0,
+              "render-program sampler-parm offset drift");
 static_assert(offsetof(renderProgData_t, flags) == 0x1E8,
               "render-program flags offset drift");
 static_assert(offsetof(renderProgData_t, stageSort) == 0x1EC,

@@ -2,184 +2,223 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
+
+class idCVar;
+
+enum bufferMapType_t : int {
+  BM_READ = 0,
+  BM_READ_NOSYNC = 1,
+  BM_WRITE = 2,
+  BM_WRITE_NOSYNC = 3,
+};
 
 enum bufferUsageType_t : int {
-  BU_STATIC = 0,
-  BU_DYNAMIC = 1,
-  BU_STREAM = 2,
+  BU_DEFAULT = 0,
+  BU_STATIC = 1,
+  BU_DYNAMIC = 2,
+  BU_STAGING = 3,
 };
 
-struct idVertexBuffer {
-  idVertexBuffer() {}
-  idVertexBuffer(int size_, int offset_, void* object_, bufferUsageType_t usage_)
-      : size(size_), offsetInOtherBuffer(offset_), apiObject(object_), usage(usage_) {}
-  ~idVertexBuffer() { FreeBufferObject(); }
+void UnbindBufferObjects();
 
-  int size{};
-  int offsetInOtherBuffer{};
-  void* apiObject{};
-  bufferUsageType_t usage{};
+class idVertexBuffer {
+public:
+  idVertexBuffer();
+  ~idVertexBuffer();
+
+  bool AllocBufferObject(const void* data, int allocSize, int vertexMask,
+                         bufferUsageType_t allocUsage);
+  void FreeBufferObject();
+  void Reference(const idVertexBuffer& other);
+  void Reference(const idVertexBuffer& other, int refOffset, int refSize);
+  void Update(const void* data, int updateSize, int vertexMask) const;
+  void* TryMapBuffer(bufferMapType_t mapType) const;
+  void* MapBuffer(bufferMapType_t mapType) const;
+  void UnmapBuffer() const;
 
   void Reference(const idVertexBuffer* other) {
-    if (other == nullptr)
-      return;
-    size = other->size & 0x7fffffff;
-    offsetInOtherBuffer = other->offsetInOtherBuffer & 0x7fffffff;
-    apiObject = other->apiObject;
-    usage = other->usage;
+    if (other != nullptr) Reference(*other);
   }
-  void AllocBufferObject(const void* data, int size_, unsigned,
-                         bufferUsageType_t usage_) {
-    FreeBufferObject();
-    size = size_ | static_cast<int>(0x80000000U);
-    offsetInOtherBuffer = 0;
-    apiObject = size_ > 0 ? static_cast<void*>(new std::byte[size_]) : nullptr;
-    usage = usage_;
-    if (data != nullptr && apiObject != nullptr)
-      std::memcpy(apiObject, data, static_cast<std::size_t>(size_));
-  }
-  void Update(const void* data, int size_, unsigned) {
-    if (size_ > (size & 0x7fffffff)) {
-      AllocBufferObject(data, size_, 0, usage);
-      return;
-    }
-    if (data != nullptr && apiObject != nullptr && size_ > 0)
-      std::memcpy(apiObject, data, static_cast<std::size_t>(size_));
-  }
-  void FreeBufferObject() {
-    if ((static_cast<unsigned>(size) & 0x80000000U) != 0)
-      delete[] static_cast<std::byte*>(apiObject);
-    size = 0;
-    offsetInOtherBuffer = 0;
-    apiObject = nullptr;
-  }
-  void* MapBuffer(int) { return apiObject; }
-  void UnmapBuffer() {}
   void Reference(const idVertexBuffer* other, int refOffset, int refSize) {
-    if (other == nullptr)
-      return;
-    size = refSize;
-    offsetInOtherBuffer = refOffset + (other->offsetInOtherBuffer & 0x7fffffff);
-    apiObject = other->apiObject;
-    usage = other->usage;
+    if (other != nullptr) Reference(*other, refOffset, refSize);
   }
+  void* MapBuffer(int mapType) const {
+    return MapBuffer(static_cast<bufferMapType_t>(mapType));
+  }
+
+  int GetSize() const { return size & 0x7FFFFFFF; }
+  int GetAllocedSize() const { return (GetSize() + 15) & ~15; }
+  void* GetAPIObject() const { return apiObject; }
+  int GetOffset() const { return offsetInOtherBuffer & 0x7FFFFFFF; }
+  bool IsMapped() const { return size < 0; }
+  bool OwnsBuffer() const { return offsetInOtherBuffer < 0; }
+
+  mutable int size;
+  int offsetInOtherBuffer;
+  void* apiObject;
+  bufferUsageType_t usage;
 };
 
-struct idIndexBuffer {
-  idIndexBuffer() {}
-  idIndexBuffer(int size_, int offset_, void* object_, bufferUsageType_t usage_)
-      : size(size_), offsetInOtherBuffer(offset_), apiObject(object_), usage(usage_) {}
-  ~idIndexBuffer() { FreeBufferObject(); }
+class idIndexBuffer {
+public:
+  idIndexBuffer();
+  ~idIndexBuffer();
 
-  int size{};
-  int offsetInOtherBuffer{};
-  void* apiObject{};
-  bufferUsageType_t usage{};
+  bool AllocBufferObject(const void* data, int allocSize,
+                         bufferUsageType_t allocUsage);
+  void FreeBufferObject();
+  void Reference(const idIndexBuffer& other);
+  void Reference(const idIndexBuffer& other, int refOffset, int refSize);
+  void Update(const void* data, int updateSize) const;
+  void* TryMapBuffer(bufferMapType_t mapType) const;
+  void* MapBuffer(bufferMapType_t mapType) const;
+  void UnmapBuffer() const;
 
   void Reference(const idIndexBuffer* other) {
-    if (other == nullptr)
-      return;
-    size = other->size & 0x7fffffff;
-    offsetInOtherBuffer = other->offsetInOtherBuffer & 0x7fffffff;
-    apiObject = other->apiObject;
-    usage = other->usage;
+    if (other != nullptr) Reference(*other);
   }
-  void AllocBufferObject(const void* data, int size_, bufferUsageType_t usage_) {
-    FreeBufferObject();
-    size = size_ | static_cast<int>(0x80000000U);
-    offsetInOtherBuffer = 0;
-    apiObject = size_ > 0 ? static_cast<void*>(new std::byte[size_]) : nullptr;
-    usage = usage_;
-    if (data != nullptr && apiObject != nullptr)
-      std::memcpy(apiObject, data, static_cast<std::size_t>(size_));
-  }
-  void FreeBufferObject() {
-    if ((static_cast<unsigned>(size) & 0x80000000U) != 0)
-      delete[] static_cast<std::byte*>(apiObject);
-    size = 0;
-    offsetInOtherBuffer = 0;
-    apiObject = nullptr;
-  }
-  void* MapBuffer(int) { return apiObject; }
-  void UnmapBuffer() {}
   void Reference(const idIndexBuffer* other, int refOffset, int refSize) {
-    if (other == nullptr)
-      return;
-    size = refSize;
-    offsetInOtherBuffer = refOffset + (other->offsetInOtherBuffer & 0x7fffffff);
-    apiObject = other->apiObject;
-    usage = other->usage;
+    if (other != nullptr) Reference(*other, refOffset, refSize);
   }
+  void* MapBuffer(int mapType) const {
+    return MapBuffer(static_cast<bufferMapType_t>(mapType));
+  }
+
+  int GetSize() const { return size & 0x7FFFFFFF; }
+  int GetAllocedSize() const { return (GetSize() + 15) & ~15; }
+  void* GetAPIObject() const { return apiObject; }
+  int GetOffset() const { return offsetInOtherBuffer & 0x7FFFFFFF; }
+  bool IsMapped() const { return size < 0; }
+  bool OwnsBuffer() const { return offsetInOtherBuffer < 0; }
+
+  mutable int size;
+  int offsetInOtherBuffer;
+  void* apiObject;
+  bufferUsageType_t usage;
 };
 
-// Joint buffers use the same recovered 24-byte handle layout as the other
-// renderer buffer objects.  Their public counts are joints rather than bytes.
-struct idJointBuffer {
-  idJointBuffer() = default;
-  ~idJointBuffer() { FreeBufferObject(); }
+class idJointBuffer {
+public:
+  idJointBuffer();
+  ~idJointBuffer();
 
-  int size{};
-  int offsetInOtherBuffer{};
-  void* apiObject{};
-  bufferUsageType_t usage{};
+  bool AllocBufferObject(const float* joints, int numAllocJoints);
+  void FreeBufferObject();
+  void Reference(const idJointBuffer& other, int jointRefOffset,
+                 int numRefJoints);
+  void Update(const float* joints, int numUpdateJoints) const;
+  float* TryMapBuffer(bufferMapType_t mapType) const;
+  float* MapBuffer(bufferMapType_t mapType) const;
+  void UnmapBuffer() const;
+  void Swap(idJointBuffer& other);
 
-  void AllocBufferObject(const void* data, int jointCount) {
-    FreeBufferObject();
-    size = jointCount | static_cast<int>(0x80000000U);
-    offsetInOtherBuffer = 0;
-    const std::size_t byteCount =
-        static_cast<std::size_t>(jointCount) * 12U * sizeof(float);
-    apiObject = byteCount != 0 ? static_cast<void*>(new std::byte[byteCount])
-                               : nullptr;
-    usage = BU_DYNAMIC;
-    if (data != nullptr && apiObject != nullptr)
-      std::memcpy(apiObject, data, byteCount);
+  void Reference(const idJointBuffer* other, int jointRefOffset,
+                 int numRefJoints) {
+    if (other != nullptr) Reference(*other, jointRefOffset, numRefJoints);
   }
-  void Update(const void* data, int jointCount) {
-    if (jointCount > (size & 0x7fffffff)) {
-      AllocBufferObject(data, jointCount);
-      return;
-    }
-    if (data != nullptr && apiObject != nullptr && jointCount > 0) {
-      std::memcpy(apiObject, data,
-                  static_cast<std::size_t>(jointCount) * 12U * sizeof(float));
-    }
+  float* MapBuffer(int mapType) const {
+    return MapBuffer(static_cast<bufferMapType_t>(mapType));
   }
-  void Reference(const idJointBuffer* other, int firstJoint, int jointCount) {
-    if (other == nullptr)
-      return;
-    size = jointCount;
-    offsetInOtherBuffer = firstJoint + (other->offsetInOtherBuffer & 0x7fffffff);
-    apiObject = other->apiObject;
-    usage = other->usage;
+
+  int GetNumJoints() const { return numJoints & 0x7FFFFFFF; }
+  int GetAllocedSize() const {
+    return GetNumJoints() * 16 * (((~flags) & 1) | 2);
   }
-  void FreeBufferObject() {
-    if ((static_cast<unsigned>(size) & 0x80000000U) != 0U)
-      delete[] static_cast<std::byte*>(apiObject);
-    size = 0;
-    offsetInOtherBuffer = 0;
-    apiObject = nullptr;
-  }
+  void* GetAPIObject() const { return apiObject; }
+  int GetOffset() const { return offsetInOtherBuffer & 0x7FFFFFFF; }
+  bool IsMapped() const { return numJoints < 0; }
+  bool OwnsBuffer() const { return offsetInOtherBuffer < 0; }
+
+  mutable int numJoints;
+  int offsetInOtherBuffer;
+  void* apiObject;
+  int flags;
 };
 
-struct idConstantBuffer {
-  idConstantBuffer() = default;
-  ~idConstantBuffer() { FreeBufferObject(); }
-  int size{};
-  int offsetInOtherBuffer{};
-  void* apiObject{};
-  bufferUsageType_t usage{};
-  void FreeBufferObject() {
-    if ((static_cast<unsigned>(size) & 0x80000000U) != 0U)
-      delete[] static_cast<std::byte*>(apiObject);
-    size = 0;
-    offsetInOtherBuffer = 0;
-    apiObject = nullptr;
-  }
+class idConstantBuffer {
+public:
+  idConstantBuffer()
+      : size(0), offsetInOtherBuffer(static_cast<int>(0x80000000U)),
+        apiObject(nullptr) {}
+  ~idConstantBuffer();
+  void FreeBufferObject();
+
+  int size;
+  int offsetInOtherBuffer;
+  void* apiObject;
 };
 
-static_assert(sizeof(idVertexBuffer) == 24, "idVertexBuffer ABI drift");
-static_assert(sizeof(idIndexBuffer) == 24, "idIndexBuffer ABI drift");
-static_assert(sizeof(idJointBuffer) == 24, "idJointBuffer ABI drift");
-static_assert(sizeof(idConstantBuffer) == 24, "idConstantBuffer ABI drift");
+class idPixelPackBuffer {
+public:
+  idPixelPackBuffer();
+
+  bool AllocBufferObject(const void* data, int allocSize);
+  void Update(const void* data, int updateSize) const;
+  void* TryMapBuffer(bufferMapType_t mapType) const;
+  void* MapBuffer(bufferMapType_t mapType) const;
+  void UnmapBuffer() const;
+
+  void* MapBuffer(int mapType) const {
+    return MapBuffer(static_cast<bufferMapType_t>(mapType));
+  }
+  int GetSize() const { return size & 0x7FFFFFFF; }
+  int GetAllocedSize() const { return (GetSize() + 15) & ~15; }
+  int GetOffset() const { return offsetInOtherBuffer & 0x7FFFFFFF; }
+  bool IsMapped() const { return size < 0; }
+
+  mutable int size;
+  int offsetInOtherBuffer;
+  void* apiObject;
+};
+
+class idPixelUnpackBuffer {
+public:
+  idPixelUnpackBuffer();
+  ~idPixelUnpackBuffer();
+
+  bool AllocBufferObject(const void* data, int allocSize);
+  void FreeBufferObject();
+  void Update(const void* data, int updateSize) const;
+  void* TryMapBuffer(bufferMapType_t mapType) const;
+  void* MapBuffer(bufferMapType_t mapType) const;
+  void UnmapBuffer() const;
+
+  void* MapBuffer(int mapType) const {
+    return MapBuffer(static_cast<bufferMapType_t>(mapType));
+  }
+  int GetSize() const { return size & 0x7FFFFFFF; }
+  int GetAllocedSize() const { return (GetSize() + 15) & ~15; }
+  int GetOffset() const { return offsetInOtherBuffer & 0x7FFFFFFF; }
+  bool IsMapped() const { return size < 0; }
+  bool OwnsBuffer() const { return offsetInOtherBuffer < 0; }
+
+  mutable int size;
+  int offsetInOtherBuffer;
+  void* apiObject;
+};
+
+extern idCVar r_showBuffers;
+extern idCVar r_amdWorkaroundMapBuffersOnCreate;
+extern idCVar r_useUnsyncBufferObjects;
+extern idCVar bo_useUnsynchronizedPBO;
+extern idCVar bo_useInvalidateRangePBO;
+
+static_assert(BM_READ == 0 && BM_READ_NOSYNC == 1 && BM_WRITE == 2 &&
+                  BM_WRITE_NOSYNC == 3,
+              "buffer map enum drift");
+static_assert(BU_DEFAULT == 0 && BU_STATIC == 1 && BU_DYNAMIC == 2 &&
+                  BU_STAGING == 3,
+              "buffer usage enum drift");
+static_assert(offsetof(idVertexBuffer, usage) == 0x10,
+              "vertex-buffer usage offset drift");
+static_assert(sizeof(idVertexBuffer) == 0x18, "vertex-buffer ABI drift");
+static_assert(sizeof(idIndexBuffer) == 0x18, "index-buffer ABI drift");
+static_assert(offsetof(idJointBuffer, flags) == 0x10,
+              "joint-buffer flags offset drift");
+static_assert(sizeof(idJointBuffer) == 0x18, "joint-buffer ABI drift");
+static_assert(sizeof(idConstantBuffer) == 0x10,
+              "constant-buffer ABI drift");
+static_assert(sizeof(idPixelPackBuffer) == 0x10,
+              "pixel-pack-buffer ABI drift");
+static_assert(sizeof(idPixelUnpackBuffer) == 0x10,
+              "pixel-unpack-buffer ABI drift");

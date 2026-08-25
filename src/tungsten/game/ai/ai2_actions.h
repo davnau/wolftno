@@ -37,12 +37,20 @@ class idAIEvent;
 class idAIEventSphere;
 class idFiniteStateMachine;
 class idFSMManager;
+class idAIActionManager;
+class idAIFSMCallback;
 class idFile_String;
 class idLegsFSM;
 class idDeclFacialAnimationSet;
 class idVolume_CustomDeath;
 struct idAIVoiceProfile;
 struct idDeclAIBehavior;
+enum aiMelee_t : int;
+enum invalidAliasHandle_t : int;
+template <typename T, typename InvalidEnum, T InvalidValue>
+struct idHandle;
+using aiAnimationHandle_t =
+    idHandle<unsigned short, invalidAliasHandle_t, 65535>;
 class idInteractionCamera;
 class idAIEntityState;
 class aiSenseState_t;
@@ -59,6 +67,7 @@ class idGoreComponent;
 class idAnimator_AnimWeb;
 class idFXManager;
 class idTreeAnimator;
+class idAnimator_Channel;
 struct idSoundShader;
 class idAnimatedEntity;
 extern idCVar g_showTrajectories;
@@ -125,7 +134,7 @@ struct idStrId {
 };
 struct idJointIndex;
 template <typename T>
-struct idCodeResource;
+class idCodeResource;
 enum voiceMsg_t : int;
 enum voiceController_t : int;
 enum aiSense_t : int;
@@ -241,6 +250,20 @@ enum posture_t {
   POSTURE_CROUCH = POSTURE_CROUCHED,
   POSTURE_SITTING = 3,
 };
+enum alertCycle_t {
+  ALERTCYCLE_NONE = 0,
+  ALERTCYCLE_RELAXED = 1,
+  ALERTCYCLE_SEARCH = 2,
+  ALERTCYCLE_COMBAT = 3,
+  ALERTCYCLE_INCAPACITATED = 4,
+  ALERTCYCLE_DYING = 5,
+  ALERTCYCLE_DEAD = 6,
+  ALERTCYCLE_RESERVED_7 = 7,
+  ALERTCYCLE_RESERVED_8 = 8,
+  ALERTCYCLE_RESERVED_9 = 9,
+  ALERTCYCLE_RESERVED_10 = 10,
+  ALERTCYCLE_MAX = 11,
+};
 enum actorClass_t {
   ACTORCLASS_PLAYER = 0,
   ACTORCLASS_HUMAN = 1,
@@ -277,6 +300,11 @@ enum coverAction_t {
   COVERACTION_BLINDFIRE_LEFT = 7,
   COVERACTION_BLINDFIRE_RIGHT = 8,
   COVERACTION_HIDE = 12,
+  COVERACTION_FLINCH = 17,
+};
+enum coverOrientation_t {
+  COVERORIENT_NONE = 0,
+  COVERORIENT_BACKWARD = 3,
 };
 enum painType_t { PAINTYPE_NONE = 0 };
 enum aiAnimWait_t { AIANIMWAIT_DONT_WAIT = 0, AIANIMWAIT_WAIT = 1 };
@@ -293,6 +321,7 @@ enum usableState_t {
   USABLE_AI_TOWN = 2,
   USABLE_LOOT = 3,
   USABLE_DISASSEMBLE = 13,
+  USABLE_INFO = 15,
 };
 enum runIndexType_t {
   ANIMWEBAI_RUNINDEXTYPE_NORMAL = 0,
@@ -576,6 +605,14 @@ public:
   void SetTotalCurHealth(float value) { totalCurHealth = value; }
   bool IsSpectating() const { return spectating; }
   void SetSpectating(bool value) { spectating = value; }
+  void ConfigureTakedownFocusState(int focusState, bool inTakedown) {
+    takedownFocusState = focusState;
+    takedownInProgress = inTakedown;
+  }
+  int GetTakedownFocusState() const { return takedownFocusState; }
+  bool PlayerBehavior_Takedown_IsInTakedown() const {
+    return takedownInProgress;
+  }
 
 private:
   idFirstPersonEvent* currentFirstPersonEvent{nullptr};
@@ -586,6 +623,8 @@ private:
   float aiAimDistance{4096.0F};
   float totalCurHealth{100.0F};
   bool spectating{false};
+  int takedownFocusState{0};
+  bool takedownInProgress{false};
 };
 
 class idTreeAnimator {
@@ -731,6 +770,7 @@ public:
   idList<int, 5> rechargeNodes;
   idList<int, 5> suppressionFireNodes;
   idList<encounterGroupRole_t, 5> rolePriorityList;
+  combatStage_t stageType{COMBAT_STAGE_DEFAULT};
 };
 
 class idEncounterGroup;
@@ -915,6 +955,7 @@ public:
   int pendingCombatStageTime{-1};
   int initialCombatStage{0};
   int recentlyKilledMembers{0};
+  int stageChangeTime{0};
   int randomSeed{0x12345};
   bool anyMemberHasSeenDeadBody{false};
   bool shouldAmbush{false};
@@ -962,8 +1003,10 @@ static_assert(sizeof(idEventArg) == 24, "idEventArg ABI drift");
 extern const idEventDef EV_DisintigrateHide;
 extern const idEventDef EV_Hide;
 extern const idEventDef EV_Activate;
+extern const idEventDef EV_AnimWeb_Wait;
 extern const idEventDef ACTION_CrouchToStandEnter;
 extern const idEventDef ACTION_StandToCrouchEnter;
+extern const idEventDef ACTION_PlayOverrideAnimEnter;
 
 class idThread {
 public:
@@ -975,12 +1018,15 @@ public:
   void SetDying(bool value) { dying = value; }
   void Execute() { ++executeCount; }
   int GetExecuteCount() const { return executeCount; }
+  void ManualDelete() { manualDelete = true; }
+  bool IsManualDeleteForTest() const { return manualDelete; }
   static idThread* Find(int handleValue);
 
 private:
   idThreadHandle handle;
   bool dying{false};
   int executeCount{0};
+  bool manualDelete{false};
 };
 
 struct idAIScriptState {
@@ -1112,6 +1158,13 @@ public:
     return reloadAllowed && ammo != nullptr;
   }
   void SetReloadAllowed(bool value) { reloadAllowed = value; }
+  float GetLoadedFraction(bool secondary) const {
+    return secondary ? secondaryLoadedFraction : primaryLoadedFraction;
+  }
+  void SetLoadedFraction(float primary, float secondary = 1.0F) {
+    primaryLoadedFraction = primary;
+    secondaryLoadedFraction = secondary;
+  }
   void PullTrigger(idAI2* owner, bool secondary) {
     (void)owner;
     triggerState = TRIGGERSTATE_PULLED;
@@ -1200,6 +1253,8 @@ private:
   float aimConvergeRate{0.01F};
   int aimDivergeInterval{250};
   unsigned int holsterSlot{0};
+  float primaryLoadedFraction{1.0F};
+  float secondaryLoadedFraction{1.0F};
   idInventoryCollection* lastReloadInventory{nullptr};
   idFXManager* lastReloadEffects{nullptr};
   std::array<bool, 3> lastReloadFlags{{false, false, false}};
@@ -1211,9 +1266,37 @@ private:
 
 enum class aiSubWeb_t : int {
   relaxed = 0,
-  alert = 1,
-  combat = 2,
-  traversal = 3,
+  combat = 1,
+  hostile = 2,
+  search = 3,
+  pain = 4,
+  painStagger = 5,
+  painMoving = 6,
+  painShock = 7,
+  dying = 8,
+  actionScript = 9,
+  fullCover = 10,
+  melee = 11,
+  surprise = 12,
+  dive = 13,
+  dodge = 14,
+  grenade = 15,
+  throwAttack = 16,
+  overrideAnimation = 17,
+  turret = 18,
+  remoteControl = 19,
+  traversal = 20,
+  zipline = 21,
+  dropshipFall = 22,
+  react = 23,
+  max = 24,
+
+  // Compatibility spelling used by the early manual validation harness.
+  alert = search,
+};
+
+enum overrideAnim_t : int {
+  ANIMOVERRIDE_NONE = 0,
 };
 
 struct idAnimWebIndex {
@@ -1389,6 +1472,7 @@ public:
   bool IsEnabled() const { return enabled; }
   int GetActivationCount() const { return activationCount; }
   int GetReleaseCount() const { return releaseCount; }
+  int GetLastReleaseTime() const { return lastReleaseTime; }
   int GetRequestTime() const { return requestTime; }
   void SetCurrentUser(idAI2* value) { currentUser = value; }
   idAI2* GetCurrentUser() const { return currentUser; }
@@ -1873,7 +1957,7 @@ public:
   void GetWeaponPrefix(const idWeapon* weapon, idStr* output);
   void GetWeaponPrefix(idStr* output);
   void GetSubWebPrefix(const idWeapon* weapon, int subWeb, idStr* output);
-  void GetSubWebPrefix(aiSubWeb_t subWeb, idStr* output);
+  void GetSubWebPrefix(aiSubWeb_t subWeb, idStr* output) const;
   void GetSubWebPrefix(idStr* output);
   void GetIdleStateName(idStr* output);
   void GetIdleTurnStateName(int turnDirection, float turnDeltaDot,
@@ -2073,7 +2157,7 @@ public:
   idRecoveredValue ActivateExtendedClipModel(...);
   void ActivateStealthKillTrigger();
   idRecoveredValue AimDebug(...);
-  idRecoveredValue AlarmNotification(...);
+  void AlarmNotification();
   int AlertCycleToSubWeb(int alertCycle);
   idRecoveredValue AllocPresentable(...);
   bool AnimEventReceived(idAnimWebEvent::priority_t priority) const;
@@ -2125,7 +2209,7 @@ public:
   void DisableAnimatorsOnDeath();
   void DisableInfluenceTrail();
   void DoBlockedMeleeReaction();
-  idRecoveredValue DoEmergencyCoverExit(...);
+  bool DoEmergencyCoverExit();
   idRecoveredValue DoMeleeDamage(...);
   idRecoveredValue DoMeleeDamage(idRecoveredOverloadTag<1>);
   idRecoveredValue DormantBegin(...);
@@ -2144,7 +2228,8 @@ public:
   const idWeapon* FindWeaponToDraw() const;
   idRecoveredValue FinishFireWeapon(...);
   idRecoveredValue FirstThink(...);
-  idRecoveredValue ForceStopOverrideAnim(...);
+  void ForceStopOverrideAnim(idAnimWebEvent::priority_t priority,
+                             int blendDurationMs);
   const idAAS2* GetAAS() const;
   idAASPositionMgr* GetAASPositionMgr();
   idLegsFSM* GetActionFSM();
@@ -2157,7 +2242,8 @@ public:
   idRecoveredValue GetAnimationDelta(idRecoveredOverloadTag<2>);
   idRecoveredValue GetAnimationDeltaAndRot(...);
   idRecoveredValue GetAnimationDuration(...);
-  idRecoveredValue GetAnimationPathReachability(...);
+  bool GetAnimationPathReachability(idAnimWebIndex subWeb,
+                                    idAnimWebIndex state) const;
   idRecoveredValue GetAnimationPathReachability(idRecoveredOverloadTag<1>);
   idRecoveredValue GetAnimationRot(...);
   idRecoveredValue GetAnimationRot(idRecoveredOverloadTag<1>);
@@ -2195,7 +2281,7 @@ public:
                                     idPlayer* player);
   idJointIndex GetJointIndexFromTrace(const trace_t* trace) const;
   idRecoveredValue GetMeleeDirection(...);
-  idRecoveredValue GetMeleeInterval(...);
+  int GetMeleeInterval(aiMelee_t meleeType);
   idRecoveredValue GetMeleeTypeForTarget(...);
   idRecoveredValue GetMissTimeAimPosition(...);
   void GetModelTransform(idVec3* modelOrigin, idMat3* modelAxis) const;
@@ -2216,13 +2302,14 @@ public:
   bool GetTakedownName(const idList<idStr, 5>* takedownList,
                        idStr* takedownName);
   int GetTauntInterval();
-  idRecoveredValue GetUsableState(...);
+  int GetUsableState(const idEntity* activator, const idFocusTrace* focusTrace);
   idRecoveredValue GetViewTransform(...);
   idAIVoiceController* GetVoiceController(voiceController_t controller);
   walkState_t GetWalkState() const;
   int GetWeaponSlot() const;
   const idBounds* GetWorldCollisionBounds();
-  idRecoveredValue GiveAwarenessOfEntity(...);
+  void GiveAwarenessOfEntity(const idEntity* entity,
+                             alertCycle_t alertCycle);
   idRecoveredValue HandleAffirmativeResponse(...);
   idRecoveredValue HandleLoot(...);
   idRecoveredValue HandlePendingAIEvents(...);
@@ -2232,14 +2319,14 @@ public:
   void InhibitRunning(bool inhibit);
   idRecoveredValue InitAAS(...);
   idRecoveredValue InitAnimation(...);
-  idRecoveredValue InitEncounterGroup(...);
+  void InitEncounterGroup();
   void InitFireControl();
-  idRecoveredValue InitFSMs(...);
+  void InitFSMs();
   idRecoveredValue InitHeadTracking(...);
   void InitMovement();
-  idRecoveredValue InitPerception(...);
+  void InitPerception(alertCycle_t cycle);
   idRecoveredValue InitPhysics(...);
-  idRecoveredValue InitScriptObjects(...);
+  void InitScriptObjects();
   void InteractionCameraDeactivateCallback(idPlayer* player);
   idEventArg* InternalCallEvent(idEventArg* result,
                                 const idEventDef* event,
@@ -2254,7 +2341,7 @@ public:
   bool IsDead() const;
   bool IsDowned(float delay) const;
   bool IsDying() const;
-  idRecoveredValue IsFacingMe(...);
+  bool IsFacingMe(const idEntity* entity, float dotThreshold);
   bool IsIncapacitated() const;
   bool IsInCover() const;
   bool IsInsideTrailUpdateRange(const idVec3* suspiciousPosition) const;
@@ -2262,14 +2349,15 @@ public:
   bool IsModesRestricted(aiModeRestricFlag_t flags) const;
   bool IsMoveDone(std::int64_t checkAlignment = 0) const;
   idRecoveredValue IsOnElevator(...);
-  idRecoveredValue IsOverrideAnimSupported(...);
+  bool IsOverrideAnimSupported(overrideAnim_t anim) const;
   bool IsPlayerControlled() const;
   bool IsRecentlyGroupSpotted(const idEntity* enemy, float time) const;
   bool IsRecentlyHeard(const idAIEntityState* entityState, float time) const;
   bool IsRecentlySpawned(float seconds) const;
   bool IsRecentlySpotted(const idAIEntityState* entityState, float time) const;
   bool IsRecentlySpotted(const idEntity* enemy, float time) const;
-  idRecoveredValue IsTargetInMeleeRange(...);
+  bool IsTargetInMeleeRange(const idVec3* targetPosition,
+                            aiMelee_t meleeType);
   bool IsTeslaDangerous(idVec3* position, float* radius) const;
   bool IsThrowingGrenade() const;
   bool IsWeaponEquipped() const;
@@ -2295,7 +2383,7 @@ public:
   idRecoveredValue OnAIEvent_Gunfire(...);
   idRecoveredValue OnAIEvent_Investigate(...);
   idRecoveredValue OnAIEvent_PlayerAim(...);
-  idRecoveredValue OnAIEvent_PlayerInteraction(...);
+  void OnAIEvent_PlayerInteraction(idAIEventSphere* event);
   idRecoveredValue OnAIEvent_Projectile(...);
   idRecoveredValue OnAIEvent_ProjectileImpact(...);
   idRecoveredValue OnAIEvent_Vehicle(...);
@@ -2306,12 +2394,12 @@ public:
   idRecoveredValue OnShow(...);
   bool PerceptionFlagIsSet(int flags);
   void PerformCrouchAction();
-  idRecoveredValue PerformOverrideAnimAction(...);
+  void PerformOverrideAnimAction(int overrideAnim, bool holdFireUntilDone);
   void PerformStandUpAction();
-  idRecoveredValue PlayAdditiveAlarmAnimation(...);
-  idRecoveredValue PlayAdditiveFireAnim(...);
+  void PlayAdditiveAlarmAnimation();
+  void PlayAdditiveFireAnim();
   idRecoveredValue PlayAdditivePain(...);
-  idRecoveredValue PlayAdditivePainAnim(...);
+  bool PlayAdditivePainAnim(const aiAnimationHandle_t* painAlias);
   idRecoveredValue PlayAnimWebPath(...);
   idRecoveredValue PlayAnimWebPathPerfect(...);
   void PlayDeathSound();
@@ -2325,7 +2413,7 @@ public:
   void SaveFSM(idFile_String* file, const char* fsmName,
                const char* indent);
   void SendDeathTrigger();
-  idRecoveredValue SendGrappleActivationTest(...);
+  void SendGrappleActivationTest(idEntity* target);
   void SetAccuracy(aiAccuracy_t accuracy);
   void SetActionNodeGroupName(const char* groupName);
   void SetActionScript(const idList<idScriptAction, 5>* actions,
@@ -2335,7 +2423,7 @@ public:
   void SetAimFocusAimPoint(aimPoint_t point);
   void SetAimFocusEntity(idAnimatedEntity* entity, bool keepFocusInView,
                          aimPoint_t aimPoint, int timeout);
-  idRecoveredValue SetAlertCycle(...);
+  void SetAlertCycle(alertCycle_t alertCycle);
   void SetAnimWebEvent(aiAnimWeb_t web,
                        idAnimWebEvent::priority_t priority,
                        idAnimWebIndex subWebIndex,
@@ -2370,22 +2458,22 @@ public:
   void SetSpeakingVO();
   bool SetSubWeb(aiSubWeb_t subWeb);
   void SetTakeDownWindow(bool open);
-  idRecoveredValue SetupFakePosition(...);
+  void SetupFakePosition(const idEntity* instigator,
+                         const idVec3& fakePosition, bool detected);
   idRecoveredValue SetupRobotDead(...);
   void SetWalkState(walkState_t state);
   void SetWorldCollision(bool collideWithWorld);
   bool ShouldDeadThink();
-  idRecoveredValue ShouldEnterDormancy(...);
+  bool ShouldEnterDormancy() const override;
   idRecoveredValue ShouldHoldFire(...);
   bool ShouldLeaveDormancy() const override;
-  idRecoveredValue ShouldReloadWeapon(...);
-  idRecoveredValue ShouldScramble(...);
+  bool ShouldReloadWeapon(idWeapon* weapon, bool secondary);
+  bool ShouldScramble();
   idRecoveredValue ShowFlareEffect(...);
   idRecoveredValue Spawn(...);
   idRecoveredValue SpawnCorpse(...);
   idRecoveredValue SpawnFlareEffect(...);
   idRecoveredValue SpawnTeslaBomb(...);
-  idRecoveredValue StartActionScript(...);
   void StartActionScript(int gameTime);
   void StartBodyDeathFade();
   idRecoveredValue StartDeathSystem(...);
@@ -2433,7 +2521,7 @@ public:
   idRecoveredValue UpdateGrappleActivation(...);
   idRecoveredValue UpdateGroupStatusConditions(...);
   idRecoveredValue UpdateLookFocus(...);
-  idRecoveredValue UpdateMeleeCapabilities(...);
+  void UpdateMeleeCapabilities();
   void UpdateMovement();
   idRecoveredValue UpdatePathToEnemy(...);
   idRecoveredValue UpdateRenderParamBlends(...);
@@ -2445,10 +2533,26 @@ public:
   idRecoveredValue Use(...);
   bool UsesSmoothAnimations() const;
   bool UsesTurrets() const;
-  idRecoveredValue WaitForAnimToEnd(...);
-  idRecoveredValue WaitForAnimToStart(...);
-  idRecoveredValue WaitForAnimToStartVia(...);
-  idRecoveredValue WaitForAnimToStartVia(idRecoveredOverloadTag<1>);
+  bool WaitForAnimToEnd(idAnimWebEvent::priority_t priority,
+                        const char* subWebName, const char* stateName,
+                        animWebEvent_t eventType);
+  bool WaitForAnimToStart(aiAnimWeb_t lookupWeb,
+                          idAnimWebEvent::priority_t priority,
+                          const char* subWebName, const char* stateName,
+                          animWebEvent_t eventType);
+  bool WaitForAnimToStartVia(aiAnimWeb_t web,
+                             idAnimWebEvent::priority_t priority,
+                             idAnimWebIndex destinationSubWeb,
+                             idAnimWebIndex destinationState,
+                             idAnimWebIndex viaSubWeb,
+                             idAnimWebIndex viaState,
+                             animWebEvent_t eventType);
+  bool WaitForAnimToStartVia(aiAnimWeb_t web,
+                             idAnimWebEvent::priority_t priority,
+                             const char* destinationSubWebName,
+                             const char* destinationStateName,
+                             const char* viaSubWebName,
+                             const char* viaStateName);
   idRecoveredValue WaitForOverrideAnim(...);
   idRecoveredValue WaitForTraversal(...);
 
@@ -2486,6 +2590,10 @@ public:
   }
   idAIScriptState& GetScriptState() { return scriptState; }
   const idAIScriptState& GetScriptState() const { return scriptState; }
+  void SetHasScriptObjectForTest(bool value) { hasScriptObject = value; }
+  idThread* GetPrimaryScriptThreadForTest() const {
+    return primaryScriptThread;
+  }
   idAIUtilityState& GetUtilityState() { return utilityState; }
   const idAIUtilityState& GetUtilityState() const { return utilityState; }
   int GetAnimatedEntityJobSyncCount() const {
@@ -2495,6 +2603,15 @@ public:
     return trajectories[static_cast<std::size_t>(index)];
   }
   idFSMManager* GetFSMManagerForTest() const { return fsmManager.get(); }
+  idAIActionManager* GetActionManagerForTest() const {
+    return actionManager.get();
+  }
+  idAIFSMCallback* GetFSMCallbackForTest() const {
+    return fsmCallback.get();
+  }
+  idFaceMgr* GetFaceManagerForTest() const { return faceManager.get(); }
+  int GetLastSignalForTest() const { return lastSignal; }
+  int GetSignalCountForTest() const { return signalCount; }
   const idAICoreState& GetCoreState() const { return coreState; }
   idAIRobotRuntimeState& GetRobotState() { return robotState; }
   const idAIRobotRuntimeState& GetRobotState() const { return robotState; }
@@ -2545,6 +2662,14 @@ public:
     articulatedFigureLoaded = loaded;
     articulatedFigureActive = active;
     articulatedFigureClientActive = clientAuthoritativeActive;
+  }
+  void SetArticulatedFigureAtRestForTest(bool value) {
+    articulatedFigureAtRest = value;
+  }
+  void ConfigureDormancyGatesForTest(bool immediatePhysicsGate,
+                                     bool activeAnimWebTransition) {
+    immediatePhysicsDormancyGate = immediatePhysicsGate;
+    animWebTransitionActive = activeAnimWebTransition;
   }
   void SetArticulatedFigureTransform(const idVec3& origin,
                                      const idMat3& axis) {
@@ -2685,8 +2810,19 @@ public:
   void SetAIEventEncounterGroup(idEncounterGroup* value) {
     aiEventEncounterGroup = value;
   }
+  void SetEncounterGroupNameForTest(const char* value) {
+    encounterGroupName = value != nullptr ? value : "";
+  }
+  void SetEncounterGroupHandleForTest(std::int16_t value) {
+    encounterGroupHandle = value;
+  }
+  std::int16_t GetEncounterGroupHandleForTest() const {
+    return encounterGroupHandle;
+  }
   idAIWorldState& GetWorldState() { return *worldState; }
   const idAIWorldState& GetWorldState() const { return *worldState; }
+  idAIMemory& GetMemory() { return *memory; }
+  const idAIMemory& GetMemory() const { return *memory; }
   void SetAAS(const idAAS2* value) { aas = value; }
   const void* GetAIGroupIdentity() const override {
     return aiEventEncounterGroup;
@@ -2744,6 +2880,16 @@ public:
     goNutsRange = goNutsRangeValue;
     currentEnemyRange = currentEnemyRangeValue;
   }
+  void ConfigurePerception(float idleRadius, float searchRadius,
+                           float actorRadius, float fieldOfView,
+                           float targetingRange) {
+    actorIdlePerceptionRadius = idleRadius;
+    actorSearchPerceptionRadius = searchRadius;
+    actorPerceptionRadius = actorRadius;
+    configuredFieldOfView = fieldOfView;
+    maxFireRange = targetingRange;
+  }
+  float GetMaximumFireRangeForTest() const { return maxFireRange; }
   float GetFieldOfViewDot() const { return fieldOfViewDot; }
   bool IsAutoFocusEnabled() const { return autoFocusEnabled; }
   bool IsHeadTrackingLocked() const { return headTrackingLocked; }
@@ -2810,6 +2956,9 @@ public:
   }
   void SetControllingPlayer(idPlayer* value) { controllingPlayer = value; }
   void SetCurrentEnemy(idEntity* value) { currentEnemy = value; }
+  void SetSafeReloadFractionForTest(float value) {
+    safeReloadFraction = value;
+  }
   idEntity* GetCurrentEnemy() const { return currentEnemy; }
   const idDeclInventory* GetInventoryDeclarationForTest() const {
     return inventoryDecl;
@@ -2846,6 +2995,26 @@ public:
   void ConfigureAlertCycleState(int cycle, int timestamp) {
     aiEventState.alertCycle = cycle;
     alertCycleTimestamp = timestamp;
+  }
+  void ConfigureAlertCycleDetailsForTest(int currentCycle,
+                                         int previousCycle,
+                                         int timestamp,
+                                         int highestCycle,
+                                         int surprisedTime,
+                                         bool forceCombat) {
+    aiEventState.alertCycle = currentCycle;
+    previousAlertCycle = previousCycle;
+    alertCycleTimestamp = timestamp;
+    highestAlertCycle = highestCycle;
+    lastSurprisedTime = surprisedTime;
+    alwaysInCombat = forceCombat;
+  }
+  int GetPreviousAlertCycleForTest() const { return previousAlertCycle; }
+  int GetHighestAlertCycleForTest() const { return highestAlertCycle; }
+  int GetLastSurprisedTimeForTest() const { return lastSurprisedTime; }
+  aiSubWeb_t GetCurrentSubWebForTest() const { return animWebState.subWeb; }
+  aiModeRestricFlag_t GetMovementRestrictionFlagsForTest() const {
+    return movementModeRestrictionFlags;
   }
   void ConfigureSmoothAnimations(bool relaxed, bool search, bool combat) {
     usesSmoothAnimRelaxed = relaxed;
@@ -2903,6 +3072,9 @@ public:
   }
   int GetSyncedOverrideAnimation() const { return syncedOverrideAnimation; }
   int GetSyncedTargetSpawnId() const { return syncedTargetSpawnId; }
+  unsigned int GetMeleeAnimationFlagsForTest() const {
+    return meleeAnimationFlags;
+  }
   void SetActionScriptCount(int value) { actionScriptCount = value; }
   int GetActionScriptCount() const { return actionScriptCount; }
   bool IsActionScriptRunning() const { return actionScriptRunning; }
@@ -2921,8 +3093,20 @@ public:
                                      animWebEvent_t eventType);
   bool IsAnimWebEventPendingForTest(aiAnimWeb_t web,
                                     animWebEvent_t eventType) const;
+  idAnimator_AnimWeb* GetAnimWebAnimatorForTest(aiAnimWeb_t web);
   const idAnimator_AnimWeb* GetAnimWebAnimatorForTest(
       aiAnimWeb_t web) const;
+  void SetAnimWebDeclarationForTest(const idDeclAnimWeb* value);
+  void SetAnimWebDeclarationForTest(aiAnimWeb_t web,
+                                    const idDeclAnimWeb* value);
+  void ConfigureEmergencyCoverExitForTest(bool usesEmergencyExit,
+                                          bool alreadyUsed,
+                                          coverAction_t action,
+                                          bool hostileStance);
+  bool HasUsedEmergencyCoverExitForTest() const;
+  coverOrientation_t GetCoverOrientationForTest() const {
+    return coverOrientation;
+  }
   void ConfigureExtendedClipModelForTest(bool active, int status,
                                          int auxiliaryStatus) {
     extendedClipModelActive = active;
@@ -2949,6 +3133,48 @@ public:
     looted = lootedValue;
     deathStartTime = deathStartTimeValue;
   }
+  void ConfigureUsableDeathFlags(bool forceDeathState,
+                                 bool suppressLootWhenDead) {
+    usableDeathState = forceDeathState;
+    usableDeathLootSuppressed = suppressLootWhenDead;
+  }
+  void SetAdditiveAlarmAnimationForTest(unsigned short aliasHandle) {
+    additiveAlarmAnimation = aliasHandle;
+  }
+  void ClearAdditiveFireAnimationsForTest() {
+    additiveFireAnimations.Clear();
+    additiveCrouchFireAnimations.Clear();
+  }
+  void AddAdditiveFireAnimationForTest(unsigned short aliasHandle,
+                                       bool crouching) {
+    if (crouching) {
+      additiveCrouchFireAnimations.Append(aliasHandle);
+    } else {
+      additiveFireAnimations.Append(aliasHandle);
+    }
+  }
+  void SetAdditiveFireAnimationBlendTimeForTest(float seconds) {
+    additiveFireAnimationBlendTime = seconds;
+  }
+  idAnimator_Channel* GetPainAnimatorForTest() const {
+    return painAnimator.get();
+  }
+  idAnimator_Channel* GetShootAnimatorForTest() const {
+    return shootAnimator.get();
+  }
+  void ConfigureGrappleQueryStateForTest(std::uint64_t queryIndex,
+                                         int meleeCount, int lastCheck) {
+    grappleQueryIndex = queryIndex;
+    meleeCountBetweenGrappleChecks = meleeCount;
+    lastGrappleCheck = lastCheck;
+  }
+  std::uint64_t GetGrappleQueryIndexForTest() const {
+    return grappleQueryIndex;
+  }
+  int GetMeleeCountBetweenGrappleChecksForTest() const {
+    return meleeCountBetweenGrappleChecks;
+  }
+  int GetLastGrappleCheckForTest() const { return lastGrappleCheck; }
   void ConfigureHurtSoundForTest(const idSoundShader* sound,
                                  bool damageChannelIsPlaying) {
     hurtSound = sound;
@@ -2986,6 +3212,16 @@ public:
   }
   void SetBehaviorDeclaration(const idDeclAIBehavior* value) {
     behaviorDeclaration = value;
+  }
+  void ConfigureMeleeIntervals(int minimumClose, int maximumClose,
+                               int minimumMedium, int maximumMedium,
+                               int minimumLong, int maximumLong) {
+    minimumCloseMeleeInterval = minimumClose;
+    maximumCloseMeleeInterval = maximumClose;
+    minimumMediumMeleeInterval = minimumMedium;
+    maximumMediumMeleeInterval = maximumMedium;
+    minimumLongMeleeInterval = minimumLong;
+    maximumLongMeleeInterval = maximumLong;
   }
 
 private:
@@ -3227,6 +3463,47 @@ private:
   std::uint32_t defaultPhysicsContents{0};
   bool solidState{false};
   bool takedownRestrictedToBehind{false};
+  std::unique_ptr<idAIActionManager> actionManager;
+  std::unique_ptr<idAIFSMCallback> fsmCallback;
+  float actorIdlePerceptionRadius{-1.0F};
+  float actorSearchPerceptionRadius{-1.0F};
+  float actorPerceptionRadius{0.0F};
+  float configuredFieldOfView{90.0F};
+  bool hasScriptObject{false};
+  idThread* primaryScriptThread{nullptr};
+  int lastSignal{-1};
+  int signalCount{0};
+  float safeReloadFraction{0.0F};
+  int minimumCloseMeleeInterval{-1};
+  int maximumCloseMeleeInterval{-1};
+  int minimumMediumMeleeInterval{-1};
+  int maximumMediumMeleeInterval{-1};
+  int minimumLongMeleeInterval{-1};
+  int maximumLongMeleeInterval{-1};
+  bool usableDeathState{false};
+  bool usableDeathLootSuppressed{false};
+  unsigned short additiveAlarmAnimation{0xFFFFU};
+  std::unique_ptr<idAnimator_Channel> painAnimator;
+  std::uint64_t grappleQueryIndex{0};
+  int meleeCountBetweenGrappleChecks{0};
+  int lastGrappleCheck{0};
+  bool immediatePhysicsDormancyGate{false};
+  bool animWebTransitionActive{false};
+  bool articulatedFigureAtRest{true};
+  int previousAlertCycle{ALERTCYCLE_MAX};
+  int highestAlertCycle{ALERTCYCLE_NONE};
+  int lastSurprisedTime{-1};
+  bool alwaysInCombat{false};
+  std::unique_ptr<idAIMemory> memory;
+  idStr encounterGroupName;
+  std::int16_t encounterGroupHandle{-1};
+  idList<unsigned short, 5> additiveFireAnimations;
+  idList<unsigned short, 5> additiveCrouchFireAnimations;
+  float additiveFireAnimationBlendTime{0.0F};
+  std::unique_ptr<idAnimator_Channel> shootAnimator;
+  bool usesEmergencyCoverExit{false};
+  bool allowHostileStance{false};
+  coverOrientation_t coverOrientation{COVERORIENT_NONE};
 };
 
 extern idCVar ai_forceWalk;

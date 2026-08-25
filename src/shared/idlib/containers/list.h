@@ -132,7 +132,9 @@ public:
   }
   __forceinline bool ResizeForPort(int newSize) { return Resize(newSize); }
 
-private:
+public:
+  // Public in the retail template surface; recovered compilands explicitly
+  // instantiate Resize for selected element/tag combinations.
   bool Resize(int newSize) {
     if (newSize <= 0) {
       ClearFree();

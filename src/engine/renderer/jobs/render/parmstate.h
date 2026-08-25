@@ -6,7 +6,9 @@
 #include <cstdint>
 
 class idDeclRenderParm;
+class idDeclRenderProg;
 class idDeclTable;
+class idImage;
 class idLookupTable;
 class idTextureSampler;
 class idParmBlock;
@@ -15,9 +17,13 @@ class idVec3;
 struct idBounds;
 struct idVec4;
 struct idRenderMatrix;
+struct expOp_t;
+class idVertexScaleAndBias;
 
 class alignas(16) idParmState {
 public:
+  idParmState();
+
   struct parmBlockStack_t {
     unsigned int lastOpLevel;
     const idParmBlock* parmBlock;
@@ -32,8 +38,27 @@ public:
     parmValue_t opStack[1024];
   };
 
+  int AllocParmState(const idDeclRenderParm* parm);
+  void FreeParmState(const idDeclRenderParm* parm);
+  int GetTableIndex(const idDeclTable* table);
+  const idDeclTable* GetTable(int tableIndex) const;
+  void RemoveTable(const idDeclTable* table);
+  const char* GetParmNameForIndex(int parmIndex) const;
+  const idDeclRenderParm* GetRenderParmForIndex(int parmIndex) const;
+  void DefaultRenderParms();
+  void Init();
+  void UpdateParmUsageMasks(const idDeclRenderProg* program);
+
   const idVec4& GetParmVec4(const idDeclRenderParm* parameter) const;
   float GetParmFloat(const idDeclRenderParm* parameter) const;
+  const idImage* GetParmImage(const idDeclRenderParm* parameter) const;
+  void EvaluateParmBlock(const idParmBlock& localParmBlock,
+                         const idParmBlock& parmBlock);
+  void RollbackParmBlock(const idParmBlock& localParmBlock,
+                         const idParmBlock& parmBlock);
+  void RollbackOpsToZero();
+  void SetParmValue(const idDeclRenderParm* parameter,
+                    const parmValue_t& value);
   void SetModelMatrix(const idRenderMatrix& matrix);
   void SetInverseModelMatrix(const idRenderMatrix& matrix);
   void SetMVPMatrix(const idRenderMatrix& matrix);
@@ -55,15 +80,19 @@ public:
   void SetHighlightColor(const idVec4& color);
   void SetFragmentPositionToFeedback(int renderWidth, int renderHeight,
                                      int feedbackWidth, int feedbackHeight);
+  void SetFragmentPositionToWindow(int renderWidth, int renderHeight,
+                                   int windowWidth);
   void SetFragmentPositionToViewTexture(int renderWidth, int renderHeight,
                                         int windowWidth, int windowHeight);
   void SetSrcTexClamp(int validWidth, int validHeight, int textureWidth,
                       int textureHeight);
   void ResetSrcTexClamp();
+  void Set16BitVertexScaleBias(const idVertexScaleAndBias& scaleAndBias);
   void VirtualEvaluateParmBlock(const idParmBlock& localParmBlock,
                                 const idParmBlock& parmBlock);
   void VirtualRollbackParmBlock(const idParmBlock& localParmBlock,
                                 const idParmBlock& parmBlock);
+  void RollbackVirtualStack(bool renderParmChange);
 
   unsigned long long renderParmVersion;
   unsigned long long vertexParmVersion;
@@ -112,10 +141,17 @@ public:
   int parmIndexPolygonOffset;
 
 private:
-  void RollbackVirtualStack(bool renderParmChange);
+  static void CopyParmUnaligned(parmValue_t& destination,
+                                const parmValue_t& source);
+  static void ApplyOp(const expOp_t& operation,
+                      const parmValue_t& constant,
+                      const parmValue_t& parmA,
+                      const parmValue_t& parmB,
+                      parmValue_t& result);
 };
 
 extern idParmState* renderThreadParmState;
+extern idParmState renderThreadParmStateObject;
 
 static_assert(sizeof(idParmState::parmBlockStack_t) == 0x10,
               "parm-state block-stack entry ABI drift");

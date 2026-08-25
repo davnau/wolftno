@@ -69,6 +69,10 @@ public:
         : nullptr;
   }
   void SetRadius(float value) { radius = value; }
+  float GetRadiusForTest() const { return radius; }
+  aiStimulus_t GetLastAddedStimulusForTest() const {
+    return lastAddedStimulus;
+  }
 
 private:
   std::array<idAIEntityState, MAX_ENTITY_STATES> entityStates{};
@@ -87,6 +91,7 @@ private:
   bool updateFriendly{true};
   bool refreshFriendly{true};
   bool ownerInCover{false};
+  aiStimulus_t lastAddedStimulus{AISTIM_NONE};
   idAIGameState* lastGameState{nullptr};
   idAILogic* lastOwner{nullptr};
 };

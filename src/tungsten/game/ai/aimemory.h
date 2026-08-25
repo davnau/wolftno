@@ -5,7 +5,12 @@
 #include <array>
 
 enum aiVarOp_t { AIVAR_SET, AIVAR_ADD, AIVAR_SUBTRACT };
-enum aiMelee_t { AIMELEE_CLOSE, AIMELEE_MEDIUM, AIMELEE_LONG };
+enum aiMelee_t : int {
+  AIMELEE_CLOSE = 0,
+  AIMELEE_MEDIUM = 0x80,
+  AIMELEE_LONG = 0x100,
+  AIMELEE_MOVING_FORWARD = 0x2000,
+};
 
 struct idDeclAIBehavior {
   struct runTypeBehaviors_t {
@@ -25,6 +30,18 @@ struct idDeclAIBehavior {
   int minAimDodgeInterval{0};
   int maxAimDodgeInterval{0};
   bool disablePainAfterActionScript{false};
+  int minCloseMeleeInterval{0};
+  int maxCloseMeleeInterval{0};
+  int minMediumMeleeInterval{0};
+  int maxMediumMeleeInterval{0};
+  int minLongMeleeInterval{0};
+  int maxLongMeleeInterval{0};
+  bool meleeEnabled{false};
+  float closeMeleeDist{0.0F};
+  float mediumMeleeDist{0.0F};
+  float longMeleeDist{0.0F};
+  float movingMeleeDist{0.0F};
+  float meleeHeight{0.0F};
 };
 
 class idInfoPath : public idEntity {
@@ -200,6 +217,16 @@ public:
     numShotsThisPullBlocked = total;
     numShotsThisPullBlockedConsecutive = consecutive;
   }
+  const idAIPos& GetLastSafeEnemyPos() const { return lastSafeEnemyPos; }
+  void SetLastSafeEnemyPos(const idVec3& value) {
+    lastSafeEnemyPos.pos = value;
+    lastSafeEnemyPos.valid = true;
+  }
+  int GetEnemyTrailFingerForTest() const { return enemyTrailFinger; }
+  int GetNextEnemyTrailTimeForTest() const { return nextEnemyTrailTime; }
+  idScenePoint* GetCurScenePointForTest() const { return curScenePoint; }
+  void SetEmergencyCoverExit(bool value) { emergencyCoverExit = value; }
+  bool HasEmergencyCoverExit() const { return emergencyCoverExit; }
 
   const idEntity* scriptedAggroEntity{nullptr};
   float scriptedAggression{0.0F};
@@ -261,4 +288,6 @@ private:
   bool curLookScenePointDirty{false};
   int currentTime{0};
   idEntity* actionEntity{nullptr};
+  idAIPos lastSafeEnemyPos{};
+  bool emergencyCoverExit{false};
 };

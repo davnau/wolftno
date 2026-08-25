@@ -7,6 +7,7 @@
 const idColor idColor::colorRed{1, 0, 0, 1};
 const idColor idColor::colorGreen{0, 1, 0, 1};
 const idColor idColor::colorBlue{0, 0, 1, 1};
+const idColor idColor::colorCyan{0, 1, 1, 1};
 const idColor idColor::colorXAxis = idColor::colorBlue;
 const idColor idColor::colorYAxis = idColor::colorRed;
 const idColor idColor::colorZAxis = idColor::colorGreen;

@@ -7,5 +7,6 @@ public:
   virtual int GetWidth() = 0;
   virtual int GetHeight() = 0;
   virtual float GetPixelAspect() = 0;
+  virtual void SyncRenderThread(bool) {}
 };
 extern idRenderSystem* renderSystem;

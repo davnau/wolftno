@@ -7,7 +7,8 @@
 class idResource;
 class idResourceList;
 
-struct idBaseCodeResource {
+class idBaseCodeResource {
+public:
   const char* name = nullptr;
   idBaseCodeResource* next = nullptr;
   idResource* r = nullptr;
@@ -16,7 +17,8 @@ struct idBaseCodeResource {
   inline static idBaseCodeResource* codeResourceList = nullptr;
 };
 
-template <typename T> struct idCodeResource : idBaseCodeResource {
+template <typename T> class idCodeResource : public idBaseCodeResource {
+public:
   explicit idCodeResource(const char* resourceName = nullptr) {
     name = resourceName;
     next = codeResourceList;

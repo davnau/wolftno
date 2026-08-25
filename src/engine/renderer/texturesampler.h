@@ -2,7 +2,10 @@
 
 #include <cstddef>
 
-class idTextureSampler;
+class idTextureSampler {
+public:
+  unsigned int oglSamplerState;
+};
 
 struct idTextureSamplerManager {
   void* vtable;
@@ -17,4 +20,5 @@ static_assert(offsetof(idTextureSamplerManager, mipMapSamplers) == 0x18,
               "texture-sampler manager mip table offset drift");
 static_assert(sizeof(idTextureSamplerManager) == 0x98,
               "texture-sampler manager ABI drift");
-
+static_assert(sizeof(idTextureSampler) == 4,
+              "texture-sampler ABI drift");
