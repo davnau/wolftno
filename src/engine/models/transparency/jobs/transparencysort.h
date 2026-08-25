@@ -13,8 +13,8 @@ struct transSortSegmentInfo_t {
   int segmentOffset;
   int quadsAllocated;
   int quadsUsed;
-  std::uint8_t emissivePass;
-  std::uint8_t opaquePass;
+  bool emissivePass;
+  bool opaquePass;
   std::uint8_t pad[2];
 };
 
@@ -81,4 +81,3 @@ static_assert(offsetof(transSortParms_t, maxIndices2) == 72,
               "transSortParms_t::maxIndices2 ABI drift");
 static_assert(offsetof(transSortParms_t, indices2) == 80,
               "transSortParms_t::indices2 ABI drift");
-

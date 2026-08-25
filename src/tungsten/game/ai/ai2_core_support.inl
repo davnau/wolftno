@@ -19,7 +19,6 @@ idAIEditable::idAIDeath::~idAIDeath() = default;
 idAIEditable::idAIActionSettings::idAICustomRobot::idAICustomRobot() = default;
 idAIEditable::idAIActionSettings::idAIFireSettings::idAIFireSettings() = default;
 idAIEditable::idAIActionSettings::~idAIActionSettings() = default;
-RECOVERED_METHOD(idAIEditable::idAIActionSettings, Clear)
 RECOVERED_METHOD(idAIEditable::idAIActionSettings, Init)
 idAIEditable::idAIEditable() = default;
 idAIEditable::~idAIEditable() = default;
@@ -39,7 +38,25 @@ RECOVERED_METHOD(idAIScriptProxy, PauseFiberTillActionCompletes)
 RECOVERED_METHOD(idAIScriptProxy, PauseThreadTillActionCompletes)
 RECOVERED_METHOD(idAnimatedEntity, SetModelByName)
 idAnimator_Drone::~idAnimator_Drone() = default;
-idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb() = default;
+idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb(
+    idAnimStack* animStack_, const char* name_,
+    const idMD6Blend::blendOp_t blendOp_,
+    const idMD6Blend::originBlend_t originBlend_,
+    const md6WeightGroup_t weightGroup_,
+    const md6WeightGroup_t filterGroup_, const float alpha_,
+    const idDeclAnimWeb* webDecl_, const char* initialSubWebName_,
+    const char* initialStateName_, const int curTime_)
+    : animStack(animStack_),
+      name(name_),
+      blendOp(blendOp_),
+      originBlend(originBlend_),
+      weightGroup(weightGroup_),
+      filterGroup(filterGroup_),
+      alpha(alpha_),
+      webDecl(webDecl_),
+      initialStateName(initialStateName_),
+      initialSubWebName(initialSubWebName_),
+      curTime(curTime_) {}
 idAnimatorParms_AnimWeb::~idAnimatorParms_AnimWeb() = default;
 RECOVERED_METHOD(idCheckSurroundingsState, CanUse)
 RECOVERED_METHOD(idCheckSurroundingsState, FindBestLookInterestPoint)
@@ -56,7 +73,6 @@ idFSMManager::~idFSMManager() = default;
 idLegsFSM::~idLegsFSM() = default;
 std::intptr_t idPresentable::SetModelFade(...) { return 0; }
 idScriptFunction::~idScriptFunction() = default;
-idSpawnFocusWithRequirement::idSpawnFocusWithRequirement() = default;
 RECOVERED_METHOD(idSpawnFocusWithRequirement, RequirementFilled)
 
 std::intptr_t idBounds::Compare(...) const { return 0; }

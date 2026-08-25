@@ -187,13 +187,14 @@ public:
   const idEntity* GetFriendlyBlocker() const;
   const idEntity* GetCurrentNeutral() const { return currentNeutral; }
   idEntity* GetLastAttacker() const;
-  idRecoveredValue ShouldAvoid(...);
-  idRecoveredValue SetAvoidEntity(...);
-  idRecoveredValue SetSpottedEnemyTrigger(...);
-  idRecoveredValue GetSpottedEnemyTrigger(...);
-  idRecoveredValue SetDetectedEnemyTrigger(...);
-  idRecoveredValue GetDetectedEnemyTrigger(...);
-  idRecoveredValue SetTriggeredInteraction(...);
+  bool ShouldAvoid(int currentTime);
+  void SetAvoidEntity(int currentTime, const idEntity* entity, float radius,
+                      float durationSeconds);
+  void SetSpottedEnemyTrigger(const idEntity* entity);
+  const idEntity* GetSpottedEnemyTrigger() const;
+  void SetDetectedEnemyTrigger(const idEntity* entity);
+  const idEntity* GetDetectedEnemyTrigger() const;
+  void SetTriggeredInteraction(idPlayer* entity);
 
   void SetCurrentTime(int value) { currentTime = value; }
   void SetEnemy(idEntity* value) { currentEnemy = value; }
@@ -247,6 +248,10 @@ public:
   }
   void SetGangstaPoseEnabled(bool value) { enableGangstaPose = value; }
   bool IsGangstaPoseEnabled() const { return enableGangstaPose; }
+  const idEntity* GetAvoidEntityForTest() const { return avoidEntity; }
+  float GetAvoidRadiusForTest() const { return avoidRadius; }
+  int GetAvoidFinishedTimeForTest() const { return avoidFinishedTime; }
+  idPlayer* GetTriggeredInteractionForTest() const;
 
   const idEntity* scriptedAggroEntity{nullptr};
   float scriptedAggression{0.0F};
@@ -314,4 +319,13 @@ private:
   aiMemoryAnimAfterOverride animAfterOverride{
       AIMEMORY_ANIMAFTER_OVERRIDE_DEFAULT};
   bool enableGangstaPose{false};
+  const idEntity* avoidEntity{nullptr};
+  float avoidRadius{0.0F};
+  int avoidFinishedTime{0};
+  const idEntity* spottedEnemyTrigger{nullptr};
+  int spottedEnemyTriggerNumber{-1};
+  const idEntity* detectedEnemyTrigger{nullptr};
+  int detectedEnemyTriggerNumber{-1};
+  idPlayer* triggeredInteraction{nullptr};
+  int triggeredInteractionNumber{-1};
 };

@@ -19,7 +19,7 @@ void idHudDangerInfo::UpdateCommander(int index,int currentTime){(void)currentTi
 // DIA: idList<idHudDangerInfo::commanderInfo_t,5>::Resize
 // DIA: idList<idHudDangerInfo::commanderInfo_t,5>::Append
 // DIA: idHudDangerInfo::idHudDangerInfo
-idHudDangerInfo::idHudDangerInfo(){commanders.Resize(3);Clear();}
+idHudDangerInfo::idHudDangerInfo(){commanders.ResizeForPort(3);Clear();}
 // DIA: `idHudDangerInfo::idHudDangerInfo'::`1'::dtor$0
 // DIA: `idHudDangerInfo::idHudDangerInfo'::`1'::dtor$1
 // DIA: `idHudDangerInfo::idHudDangerInfo'::`1'::dtor$2

@@ -16,7 +16,7 @@ const idFSMLogEntry* idFSMLog::FromLast(int index) const {
 // DIA: idFSMLog::idFSMLog
 idFSMLog::idFSMLog(int requestedMaxSize)
     : maxSize(requestedMaxSize > 0 ? requestedMaxSize : 1) {
-  list.Resize(maxSize);
+  list.ResizeForPort(maxSize);
 }
 
 // DIA: idFSMLog::~idFSMLog

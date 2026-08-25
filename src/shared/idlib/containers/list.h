@@ -24,8 +24,14 @@ public:
     return *this;
   }
   ~idList() {
-    if (listStatic == 0 || listStatic == 2)
+    if (listStatic == 0 || listStatic == 2) {
       delete[] list;
+      list = nullptr;
+      num = 0;
+      size = 0;
+    } else {
+      num = 0;
+    }
   }
 
   int Num() const { return num; }
@@ -142,7 +148,7 @@ public:
   }
   __forceinline bool ResizeForPort(int newSize) { return Resize(newSize); }
 
-public:
+private:
   // Public in the retail template surface; recovered compilands explicitly
   // instantiate Resize for selected element/tag combinations.
   bool Resize(int newSize) {

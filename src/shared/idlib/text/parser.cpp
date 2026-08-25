@@ -851,6 +851,12 @@ bool idParser::ReadDollarDirective() {
   idToken directive;
   if (!ReadSourceToken(directive))
     return false;
+  if (directive.linesCrossed > 0) {
+    UnreadSourceToken(directive);
+    return false;
+  }
+  if (directive == "if")
+    return Directive_if();
   if (directive == "ifdef")
     return DollarDirective_if_def(1);
   if (directive == "ifndef")
@@ -861,6 +867,15 @@ bool idParser::ReadDollarDirective() {
     return DollarDirective_elif();
   if (directive == "endif")
     return DollarDirective_endif();
+  if (directive == "break" || skip > 0)
+    return true;
+  if (directive == "evalint")
+    return Directive_evalint();
+  if (directive == "evalfloat")
+    return Directive_evalfloat();
+  if (directive == "template")
+    return Directive_define(true);
+  UnreadSourceToken(directive);
   return false;
 }
 
@@ -947,11 +962,14 @@ bool idParser::ReadDirective() {
 bool idParser::ReadToken(idToken& token) {
   while (ReadSourceToken(token)) {
     if (token == "#") {
-      ReadDirective();
+      if (!ReadDirective())
+        return false;
       continue;
     }
     if (token == "$") {
-      ReadDollarDirective();
+      if ((flags & LEXFL_NODOLLARPRECOMPILE) != 0 ||
+          !ReadDollarDirective())
+        return true;
       continue;
     }
     if (skip != 0)

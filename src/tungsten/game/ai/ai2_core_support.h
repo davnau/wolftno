@@ -12,6 +12,7 @@
 #include "shared/idlib/filesystem/file.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 
 enum invalidAliasHandle_t : int { INVALID_ALIAS_HANDLE = -1 };
@@ -452,6 +453,12 @@ private:
   idEntityPtr<idEntity> focusOverrideEnt;
 };
 
+class idDeclMD6;
+class idDeclEntityDef;
+class idSoundShader;
+class idDamageGroup;
+class idDeclElectricBolt;
+
 class idAIEditable {
 public:
   struct idAIPerception { ~idAIPerception(); };
@@ -489,10 +496,78 @@ public:
     ~idAIDeath();
   };
   struct idAIActionSettings {
-    struct idAICustomRobot { idAICustomRobot(); };
+    struct idSpawnEntityReference {
+      int value{0x1FFF};
+    };
+
+    struct idAICoverSettings {
+      bool usesCombatScenePoints{true};
+      bool usesClose{true};
+      bool usesIdle{true};
+      bool usesEmergencyExit{false};
+      bool dodgeMovingToScenepoint{false};
+      int scenePointSelectionFlags{3};
+      int coverFlags{0x36};
+      float coverMinRange{50.0F};
+      float coverMaxRange{1000.0F};
+      float coverTargetMinRange{200.0F};
+      float coverRandomWeight{0.1F};
+      float coverHistoryWeight{1.0F};
+      float coverVerticalWeight{1.0F};
+      float coverTacticalWeight{0.25F};
+      float coverTargetTimeout{-1.0F};
+      float returnToCoverDelay{1.0F};
+    };
+
+    struct idAIMeleeSettings {
+      float meleeMaxRange{75.0F};
+      float meleeLongMaxRange{0.0F};
+      float playerTakedownRange{0.0F};
+      float playerTakedownMaxHealth{0.0F};
+      const idDeclEntityDef* playerTakedownDecl{nullptr};
+      bool instantHitExcludeFromTrace{false};
+    };
+
+    struct idAISearchSettings {
+      bool usesSearchScenePoints{true};
+      float searchMinRange{50.0F};
+      float searchMaxRange{-1.0F};
+    };
+
+    struct idAIRoamSettings {
+      bool usesRoamScenePoints{true};
+      float roamMinRange{50.0F};
+      float roamMaxRange{-1.0F};
+      float idleTalkPeriod{-1.0F};
+    };
+
+    struct idAILookSettings {
+      bool usesLookScenePoints{true};
+      float lookMinRange{50.0F};
+      float lookMaxRange{-1.0F};
+      float minLookSPPeriod{5.0F};
+      float combatTargetDelayLook{-1.0F};
+    };
+
     struct idAIFireSettings {
       using animationHandle_t =
           idHandle<unsigned short, invalidAliasHandle_t, 65535>;
+
+      struct idAIFireTiming {
+        bool bUseFireTiming{false};
+        float minBurstDuration{1.0F};
+        float maxBurstDuration{3.0F};
+        float minBurstPause{0.2F};
+        float maxBurstPause{1.0F};
+        float missTime{0.0F};
+        float missTimeMinRange{300.0F};
+        bool missTrackAlongGround{false};
+        float spotLostFire{2.0F};
+        float spotGainedFire{0.0F};
+        float minSpotLostRange{75.0F};
+        bool predictTargetMovement{false};
+        float focusCompensationTime{-1.0F};
+      };
 
       idAIFireSettings();
       const idList<animationHandle_t, 5>& GetAdditiveFireAnimations() const {
@@ -503,18 +578,223 @@ public:
         return additiveFireAnimsCrouch;
       }
 
-    private:
+      float aimAngle{15.0F};
+      float gangstaPoseFraction{0.0F};
+      float gangstaDuration{3.0F};
+      float maxFireRange{-1.0F};
+      bool usesGrenades{false};
+      const idDeclMD6* fakeGrenadeMD6{nullptr};
+      const idDeclEntityDef* fakeGrenadeExplosion{nullptr};
+      float secondaryFireRange{-1.0F};
+      bool useReloadAnimWhenMoving{false};
       idList<animationHandle_t, 5> additiveFireAnims;
       idList<animationHandle_t, 5> additiveFireAnimsCrouch;
+      float additiveFireAnimBlendTime{0.0F};
+      float freeAmmoDistance{-1.0F};
+      float goNutsRange{0.0F};
+      float safeReloadFraction{0.0F};
+      float aimDot{0.0F};
+      float aimDotUpsideDown{0.0F};
+      float gangstaAimDot{0.0F};
+      idAIFireTiming fireTiming;
     };
+
+    struct idAICloseSettings {
+      struct idPeriodicVoice {
+        bool use{false};
+        int minTime{1000};
+        int maxTime{1000};
+      };
+
+      int closeFlags{1};
+      float closeMinRange{0.0F};
+      float closeMaxRange{-1.0F};
+      float stopOnSpotRange{500.0F};
+      float noSpotTimeBeforeWalking{3.0F};
+      float maxRunRange{-1.0F};
+      bool useEvasiveManeuvers{false};
+      bool noStopOnSpotWhenBoreBlocked{false};
+      int evadeInterval{1000};
+      int evadeMinDistance{300};
+      bool useOutOfReach{false};
+      float outOfReachGentlemanRange{0.0F};
+      idPeriodicVoice periodicVoice;
+    };
+
+    struct idAIDodgeSettings {
+      int dodgeFlags{0xF6};
+      float dodgeMinRange{100.0F};
+      float dodgeMaxRange{-1.0F};
+      float tauntMinRange{100.0F};
+      float dodgePeriod{2.0F};
+      float dodgeAnimPeriod{4.0F};
+      bool detectGrenadesInAir{false};
+    };
+
+    struct idAITauntSettings {
+      float tauntMinInterval{4.0F};
+      float tauntMaxInterval{7.0F};
+    };
+
+    struct idAISquadSettings {
+      idSpawnEntityReference squadLeader;
+      bool playerIsLeader{false};
+      float leaderRange{200.0F};
+      float scenePointRange{500.0F};
+      bool squadActive{true};
+    };
+
+    struct idAIOutOfReachSettings {
+      float distance{32.0F};
+    };
+
+    struct idAICustomRobot {
+      idAICustomRobot();
+      bool usesRobot{false};
+      bool isBoss{true};
+      idAtomicString stageGroup;
+      float stageHealth{300.0F};
+      float curStageHealth{300.0F};
+      float bossHealth{1.0F};
+      float chargeHealthFract{0.15000001F};
+      float chargeTime{5.0F};
+      float shootHealthDrain{0.0F};
+      bool autoRecharge{false};
+      bool useRechargeAnim{false};
+      bool isCharging{false};
+      int chargeStartTime{-1};
+      int chargeDoneTime{-1};
+      int numStages{1};
+      idSpawnEntityReference triggerOnPowerOut;
+      idSpawnEntityReference triggerOnChargingDone;
+      idList<idSpawnEntityReference, 5> stageTriggers;
+      int curStage{0};
+      int noFireTime{-1};
+      int immuneDoneTime{-1};
+      const idSoundShader* turnfastSound{nullptr};
+      idVec3 lastBodyDir{1.0F, 0.0F, 0.0F};
+      int nextTurnfastTime{-1};
+      int lastShootTime{-1};
+      int nextMTSPCheck{-1};
+    };
+
+    struct idAIRobotBlind {
+      bool bUsesBlindness{false};
+      float blindedDuration{-1.0F};
+      float reblindCooldown{0.0F};
+      int endBlindedTime{0};
+      int endReblindCooldown{0};
+      idDamageGroup* blindedDamageGroup{nullptr};
+    };
+
+    struct idAIEMPStun {
+      bool bUsesEMPStun{false};
+      float stunDuration{-1.0F};
+      bool isEMPMagnetic{false};
+      bool isNeverEMPMagnetic{false};
+      int endStunnedTime{0};
+    };
+
+    struct idAISleeping {
+      bool bUsesSleeping{false};
+      float sleepRadius{100.0F};
+      bool isSleeping{false};
+    };
+
+    struct idRobotDeath {
+      float timeToCritical{-1.0F};
+      float timeCriticalToExplode{-1.0F};
+      const idDeclDamage* explodeDamage{nullptr};
+      float stopEffectsDelay{1.0F};
+      int criticalTimestamp{-1};
+      int explodeTimestamp{-1};
+      int deadTimeStamp{-1};
+      bool deathSetup{false};
+    };
+
+    struct idAITesla {
+      bool usesTesla{false};
+      bool useTeslaAnim{true};
+      bool isHeavyGuardGun{false};
+      float teslaMeleeRange{0.0F};
+      float teslaAASRange{0.0F};
+      float teslaMinRange{0.0F};
+      float teslaRange{500.0F};
+      float teslaChargeTime{5.0F};
+      float teslaCoolDownTime{5.0F};
+      float teslaExplodeDelay{0.25F};
+      float teslaMaxRangeDamageScale{1.0F};
+      bool useTeslaWhileBlinded{false};
+      bool useTeslaBombGroundEffects{false};
+      bool spawnTeslaBombInFOV{false};
+      float teslaTargetOffset{64.0F};
+      float inhibitFireTime{0.0F};
+      const idDeclDamage* teslaDamageDecl{nullptr};
+      const idDeclDamage* teslaBombDamageDecl{nullptr};
+      float teslaBombDangerZone{0.0F};
+      const idDeclElectricBolt* teslaBoltDecl{nullptr};
+      float teslaBoltFlickerInterval{0.5F};
+      float teslaBlindFireDuration{0.0F};
+      const idDeclEntityDef* teslaBombFxDecl{nullptr};
+    };
+
     ~idAIActionSettings();
-    idRecoveredValue Clear(...);
+    void Clear();
     idRecoveredValue Init(...);
+
+    bool usesTurrets{false};
+    bool stationaryMode{false};
+    bool noLowerBodyTurns{false};
+    float enemyTrailUpdatePeriod{4.0F};
+    bool isElite{false};
+    bool isDualWielder{false};
+    bool isCommander{false};
+    bool isHeavy{false};
+    bool isKampHund{false};
+    bool isSuperSoldat{false};
+    idAICoverSettings cover;
+    idAIMeleeSettings melee;
+    idAISearchSettings search;
+    idAIRoamSettings roam;
+    idAILookSettings look;
+    idAIFireSettings fire;
+    idAICloseSettings close;
+    idAIDodgeSettings dodge;
+    idAITauntSettings taunt;
+    idAISquadSettings squad;
+    idAIOutOfReachSettings outOfReach;
+    idAICustomRobot customRobot;
+    idAIRobotBlind robotBlinding;
+    idAIEMPStun EMPStun;
+    idAISleeping sleeping;
+    idRobotDeath robotDeath;
+    idAITesla tesla;
   };
 
   idAIEditable();
   ~idAIEditable();
 };
+
+static_assert(sizeof(idAIEditable::idAIActionSettings) == 0x310,
+              "idAIActionSettings ABI size drift");
+static_assert(offsetof(idAIEditable::idAIActionSettings, cover) == 0x10);
+static_assert(offsetof(idAIEditable::idAIActionSettings, melee) == 0x48);
+static_assert(offsetof(idAIEditable::idAIActionSettings, search) == 0x68);
+static_assert(offsetof(idAIEditable::idAIActionSettings, roam) == 0x74);
+static_assert(offsetof(idAIEditable::idAIActionSettings, look) == 0x84);
+static_assert(offsetof(idAIEditable::idAIActionSettings, fire) == 0x98);
+static_assert(offsetof(idAIEditable::idAIActionSettings, close) == 0x148);
+static_assert(offsetof(idAIEditable::idAIActionSettings, dodge) == 0x180);
+static_assert(offsetof(idAIEditable::idAIActionSettings, taunt) == 0x19C);
+static_assert(offsetof(idAIEditable::idAIActionSettings, squad) == 0x1A4);
+static_assert(offsetof(idAIEditable::idAIActionSettings, outOfReach) == 0x1B8);
+static_assert(offsetof(idAIEditable::idAIActionSettings, customRobot) == 0x1C0);
+static_assert(offsetof(idAIEditable::idAIActionSettings, robotBlinding) ==
+              0x248);
+static_assert(offsetof(idAIEditable::idAIActionSettings, EMPStun) == 0x268);
+static_assert(offsetof(idAIEditable::idAIActionSettings, sleeping) == 0x278);
+static_assert(offsetof(idAIEditable::idAIActionSettings, robotDeath) == 0x288);
+static_assert(offsetof(idAIEditable::idAIActionSettings, tesla) == 0x2B0);
 
 class idAIEvent {
 public:
@@ -581,10 +861,45 @@ private:
   int updateCount{0};
 };
 
+class idAnimStack;
+
+class idMD6Blend {
+public:
+  enum blendOp_t : int {
+    BLENDOP_REPLACE = 0,
+    BLENDOP_ADD = 1,
+  };
+  enum originBlend_t : int {
+    ORIGINBLEND_DEFAULT = 0,
+    ORIGINBLEND_SOURCE = 1,
+    ORIGINBLEND_DEST = 2,
+  };
+};
+
 class idAnimatorParms_AnimWeb {
 public:
-  idAnimatorParms_AnimWeb();
+  idAnimatorParms_AnimWeb(idAnimStack* animStack, const char* name,
+                          idMD6Blend::blendOp_t blendOp,
+                          idMD6Blend::originBlend_t originBlend,
+                          md6WeightGroup_t weightGroup,
+                          md6WeightGroup_t filterGroup, float alpha,
+                          const idDeclAnimWeb* webDecl,
+                          const char* initialSubWebName,
+                          const char* initialStateName, int curTime);
   ~idAnimatorParms_AnimWeb();
+
+  idAnimStack* animStack{nullptr};
+  idStr name;
+  idMD6Blend::blendOp_t blendOp{idMD6Blend::BLENDOP_REPLACE};
+  idMD6Blend::originBlend_t originBlend{idMD6Blend::ORIGINBLEND_DEFAULT};
+  md6WeightGroup_t weightGroup{MD6_WEIGHTGROUP_ALL};
+  md6WeightGroup_t filterGroup{MD6_WEIGHTGROUP_ALL};
+  float alpha{0.0F};
+  const idDeclAnimWeb* webDecl{nullptr};
+  idStr initialStateName;
+  idStr initialSubWebName;
+  int curTime{0};
+  idList<idAtomicString, 5> activeLayers;
 };
 
 class idBaseHealth {
@@ -1079,19 +1394,36 @@ public:
   ~idScriptFunction();
 };
 
+class idDeclEntityDef;
 class idSpawnFocusWithRequirement {
 public:
   idSpawnFocusWithRequirement();
   idRecoveredValue RequirementFilled(...);
+  const idList<idAtomicString, 5>& GetRequirementsForTest() const {
+    return requirements;
+  }
+  const idDeclEntityDef* GetGiveEntityDefinitionForTest() const {
+    return giveEnt;
+  }
+
+private:
+  idList<idAtomicString, 5> requirements;
+  const idDeclEntityDef* giveEnt{nullptr};
 };
 
 struct eboltControlNode_t { int value{0}; };
-struct idCrosshairCustomIcon { int value{0}; };
-struct idPonytail { int value{0}; };
+class idCrosshairCustomIcon {
+public:
+  int value{0};
+};
+class idPonytail {
+public:
+  int value{0};
+};
 class idAnimWebAI;
 class idAIAction {};
 class idEntitySpriteAnimator {};
-class idProxyMove {};
+class idProxyMove : public idEntity {};
 class idTarget_AlarmSystem {};
 class idTarget_FakeEnemy : public idEntity {
 public:

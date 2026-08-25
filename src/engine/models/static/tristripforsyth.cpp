@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <vector>
 
 namespace {
 
@@ -26,9 +25,15 @@ std::uint16_t VertexScore(std::uint8_t liveTriangles,
   return score;
 }
 
-bool TriangleWasAdded(const std::vector<std::uint8_t>& added, int triangle) {
+bool TriangleWasAdded(const std::uint8_t* added, int triangle) {
   return (added[static_cast<std::size_t>(triangle) >> 3] &
           (1U << (triangle & 7))) != 0;
+}
+
+void* AllocateForsyth(std::size_t size) {
+  return idMem::Singleton()->AllocWithLocation(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(76) : TAG_NEW", size,
+      TAG_NEW, false, ALIGN_16, HEAP_DEFAULTHEAP);
 }
 
 } // namespace
@@ -54,24 +59,39 @@ void initForsyth() {
 int* reorderForsyth(const int* indices, int nTriangles, int nVertices) {
   initForsyth();
 
-  std::vector<std::uint8_t> liveTriangleCount(
-      static_cast<std::size_t>(nVertices), 0);
+  auto* liveTriangleCount = static_cast<std::uint8_t*>(
+      AllocateForsyth(static_cast<std::size_t>(nVertices)));
+  std::memset(liveTriangleCount, 0, static_cast<std::size_t>(nVertices));
   const int indexCount = nTriangles * 3;
   for (int index = 0; index < indexCount; ++index) {
     std::uint8_t& count = liveTriangleCount[indices[index]];
-    if (count == 255)
+    if (count == 255) {
+      idMem::Singleton()->Free(liveTriangleCount, ALIGN_16);
       return nullptr;
+    }
     ++count;
   }
 
-  std::vector<int> activeTriangleOffset(static_cast<std::size_t>(nVertices));
-  std::vector<std::uint16_t> vertexScore(static_cast<std::size_t>(nVertices));
-  std::vector<std::int8_t> cachePosition(static_cast<std::size_t>(nVertices), -1);
-  std::vector<std::uint8_t> triangleAdded(
-      static_cast<std::size_t>((nTriangles + 7) / 8), 0);
-  std::vector<std::uint16_t> triangleScore(
-      static_cast<std::size_t>(nTriangles), 0);
-  std::vector<int> activeTriangles(static_cast<std::size_t>(indexCount), 0);
+  auto* activeTriangleOffset = static_cast<int*>(AllocateForsyth(
+      sizeof(int) * static_cast<std::size_t>(nVertices)));
+  auto* vertexScore = static_cast<std::uint16_t*>(AllocateForsyth(
+      sizeof(std::uint16_t) * static_cast<std::size_t>(nVertices)));
+  auto* cachePosition = static_cast<std::int8_t*>(
+      AllocateForsyth(static_cast<std::size_t>(nVertices)));
+  const std::size_t addedSize =
+      static_cast<std::size_t>((nTriangles + 7) / 8);
+  auto* triangleAdded =
+      static_cast<std::uint8_t*>(AllocateForsyth(addedSize));
+  auto* triangleScore = static_cast<std::uint16_t*>(AllocateForsyth(
+      sizeof(std::uint16_t) * static_cast<std::size_t>(nTriangles)));
+  auto* activeTriangles = static_cast<int*>(AllocateForsyth(
+      sizeof(int) * static_cast<std::size_t>(indexCount)));
+  std::memset(cachePosition, 0xff, static_cast<std::size_t>(nVertices));
+  std::memset(triangleAdded, 0, addedSize);
+  std::memset(triangleScore, 0,
+              sizeof(std::uint16_t) * static_cast<std::size_t>(nTriangles));
+  std::memset(activeTriangles, 0,
+              sizeof(int) * static_cast<std::size_t>(indexCount));
 
   int activeOffset = 0;
   for (int vertex = 0; vertex < nVertices; ++vertex) {
@@ -107,9 +127,10 @@ int* reorderForsyth(const int* indices, int nTriangles, int nVertices) {
     }
   }
 
-  std::vector<int> triangleOrder(static_cast<std::size_t>(nTriangles));
+  auto* triangleOrder = static_cast<int*>(AllocateForsyth(
+      sizeof(int) * static_cast<std::size_t>(nTriangles)));
   std::array<int, 12> cache;
-  cache.fill(-1);
+  std::memset(cache.data(), 0xff, 11 * sizeof(int));
   int outputPosition = 0;
   int scanTriangle = 0;
   while (bestTriangle >= 0) {
@@ -190,15 +211,22 @@ int* reorderForsyth(const int* indices, int nTriangles, int nVertices) {
     }
   }
 
-  auto* reordered = static_cast<int*>(idMem::Singleton()->AllocWithLocation(
-      "TriStripForsyth reordered indices", sizeof(int) *
-          static_cast<std::size_t>(indexCount),
-      TAG_NEW, false, ALIGN_16, HEAP_DEFAULTHEAP));
+  idMem::Singleton()->Free(activeTriangles, ALIGN_16);
+  idMem::Singleton()->Free(activeTriangleOffset, ALIGN_16);
+  idMem::Singleton()->Free(vertexScore, ALIGN_16);
+  idMem::Singleton()->Free(liveTriangleCount, ALIGN_16);
+  idMem::Singleton()->Free(cachePosition, ALIGN_16);
+  idMem::Singleton()->Free(triangleAdded, ALIGN_16);
+  idMem::Singleton()->Free(triangleScore, ALIGN_16);
+
+  auto* reordered = static_cast<int*>(AllocateForsyth(
+      sizeof(int) * static_cast<std::size_t>(indexCount)));
   for (int triangle = 0; triangle < nTriangles; ++triangle) {
     const int sourceTriangle = triangleOrder[triangle];
     reordered[triangle * 3] = indices[sourceTriangle * 3];
     reordered[triangle * 3 + 1] = indices[sourceTriangle * 3 + 1];
     reordered[triangle * 3 + 2] = indices[sourceTriangle * 3 + 2];
   }
+  idMem::Singleton()->Free(triangleOrder, ALIGN_16);
   return reordered;
 }

@@ -1,6 +1,7 @@
 #include "engine/models/transparency/jobs/transparencybin.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <immintrin.h>
@@ -34,6 +35,53 @@ float PlaneDistance(const idPlane& plane, const idVec3& point) {
          plane.c * point.z + plane.d;
 }
 
+void FixDegenerateNormal(idPlane& plane) {
+  const float absoluteA = std::fabs(plane.a);
+  const float absoluteB = std::fabs(plane.b);
+  if (absoluteA >= FLT_MIN) {
+    if (absoluteB < FLT_MIN && std::fabs(plane.c) < FLT_MIN) {
+      const float oldA = plane.a;
+      plane.a = oldA <= 0.0f ? -1.0f : 1.0f;
+      plane.b = 0.0f;
+      plane.c = 0.0f;
+      return;
+    }
+  } else {
+    if (absoluteB < FLT_MIN) {
+      const float oldC = plane.c;
+      plane.a = 0.0f;
+      plane.b = 0.0f;
+      plane.c = oldC <= 0.0f ? -1.0f : 1.0f;
+      return;
+    }
+    if (std::fabs(plane.c) < FLT_MIN) {
+      const float oldB = plane.b;
+      plane.a = 0.0f;
+      plane.b = oldB <= 0.0f ? -1.0f : 1.0f;
+      plane.c = 0.0f;
+      return;
+    }
+  }
+
+  const float almostOne = 1.0f - FLT_EPSILON;
+  if (absoluteA > almostOne) {
+    const float oldA = plane.a;
+    plane.a = oldA <= 0.0f ? -1.0f : 1.0f;
+    plane.b = 0.0f;
+    plane.c = 0.0f;
+  } else if (absoluteB > almostOne) {
+    const float oldB = plane.b;
+    plane.a = 0.0f;
+    plane.b = oldB <= 0.0f ? -1.0f : 1.0f;
+    plane.c = 0.0f;
+  } else if (std::fabs(plane.c) > almostOne) {
+    const float oldC = plane.c;
+    plane.a = 0.0f;
+    plane.b = 0.0f;
+    plane.c = oldC <= 0.0f ? -1.0f : 1.0f;
+  }
+}
+
 bool PlaneFromPoints(idPlane& plane, const idVec3& p1, const idVec3& p2,
                      const idVec3& p3) {
   const float y1 = p1.y - p2.y;
@@ -53,16 +101,23 @@ bool PlaneFromPoints(idPlane& plane, const idVec3& p1, const idVec3& p2,
   plane.a *= inverseLength;
   plane.b *= inverseLength;
   plane.c *= inverseLength;
+  FixDegenerateNormal(plane);
   plane.d = -((p2.x * plane.a + p2.y * plane.b) + p2.z * plane.c);
   return true;
 }
 
 polygonSide_t Classify(float distance, float epsilon) {
-  if (distance > epsilon)
-    return SIDE_FRONT;
-  if (distance < -epsilon)
-    return SIDE_BACK;
-  return SIDE_ON;
+  std::int32_t lowerBits = 0;
+  std::int32_t upperBits = 0;
+  const float lower = -epsilon - distance;
+  const float upper = epsilon - distance;
+  std::memcpy(&lowerBits, &lower, sizeof(lowerBits));
+  std::memcpy(&upperBits, &upper, sizeof(upperBits));
+  const int lowerNonNegative = lowerBits >= 0 ? 1 : 0;
+  const int upperNonNegative = upperBits >= 0 ? 1 : 0;
+  return static_cast<polygonSide_t>(
+      lowerNonNegative |
+      (2 * (lowerNonNegative ^ upperNonNegative)));
 }
 
 void CopyVertex(idTransparencyVert& destination,
@@ -107,6 +162,7 @@ int SplitPolygon(const polygon_t& polygon, const idPlane& plane,
     if (side == SIDE_ON) {
       front.points[front.numPoints++] = point;
       back.points[back.numPoints++] = point;
+      continue;
     } else if (side == SIDE_FRONT) {
       front.points[front.numPoints++] = point;
     } else {
@@ -256,19 +312,37 @@ int BuildBinTree_r(deferredTransparencyBinParms_t* parms,
 }
 
 void BinQuads(deferredTransparencyBinParms_t* parms) {
+  const float originY = parms->viewOrigin.y;
+  const float rightZ = parms->viewAxis.mat[1].z;
+  const float originX = parms->viewOrigin.x;
   const float scaledFovY = parms->fovY * 128.0f;
   const float scaledFovX = parms->fovX * 128.0f;
-  const idVec3 forward = parms->viewAxis.mat[0] * 128.0f;
-  const idVec3 right = parms->viewAxis.mat[1] * scaledFovX;
-  const idVec3 up = parms->viewAxis.mat[2] * scaledFovY;
+  const float forwardZ = parms->viewAxis.mat[0].z * 128.0f;
+  const float forwardX = parms->viewAxis.mat[0].x * 128.0f;
+  const float forwardY = parms->viewAxis.mat[0].y * 128.0f;
+  const float originZ = parms->viewOrigin.z;
+  const float upZ = parms->viewAxis.mat[2].z * scaledFovY;
+  const float upX = parms->viewAxis.mat[2].x * scaledFovY;
+  const float upY = parms->viewAxis.mat[2].y * scaledFovY;
+  const float rightY = parms->viewAxis.mat[1].y * scaledFovX;
+  const float rightX = parms->viewAxis.mat[1].x * scaledFovX;
   idVec3 screenVerts[3];
-  screenVerts[0] = parms->viewOrigin + forward - right - up;
-  screenVerts[1] = parms->viewOrigin + forward + right - up;
-  screenVerts[2] = parms->viewOrigin + forward - right + up;
+  screenVerts[0].x = ((originX + forwardX) - rightX) - upX;
+  screenVerts[0].y = ((originY + forwardY) - rightY) - upY;
+  screenVerts[0].z = ((originZ + forwardZ) - rightZ * scaledFovX) - upZ;
+  screenVerts[1].x = ((originX + forwardX) + rightX) - upX;
+  screenVerts[1].y = ((forwardY + originY) + rightY) - upY;
+  screenVerts[1].z = ((forwardZ + originZ) + rightZ * scaledFovX) - upZ;
+  screenVerts[2].x = ((originX + forwardX) - rightX) + upX;
+  screenVerts[2].y = ((forwardY + originY) - rightY) + upY;
+  screenVerts[2].z = ((forwardZ + originZ) - rightZ * scaledFovX) + upZ;
   const idVec3& lowerLeft = screenVerts[0];
   const idVec3& lowerRight = screenVerts[1];
   const idVec3& upperLeft = screenVerts[2];
-  const idVec3 upperRight = lowerRight + upperLeft - lowerLeft;
+  idVec3 upperRight;
+  upperRight.x = (lowerRight.x + upperLeft.x) - lowerLeft.x;
+  upperRight.y = (upperLeft.y + lowerRight.y) - lowerLeft.y;
+  upperRight.z = (upperLeft.z + lowerRight.z) - lowerLeft.z;
 
   node_t& first = parms->nodes[parms->numNodes++];
   PlaneFromPoints(first.plane, parms->viewOrigin, lowerRight, lowerLeft);

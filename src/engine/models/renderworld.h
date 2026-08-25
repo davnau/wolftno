@@ -3,6 +3,7 @@
 #include "engine/renderer/approximatelighting.h"
 #include "engine/renderer/ambientlighting.h"
 #include "engine/renderer/bufferobject.h"
+#include "engine/renderer/globalshadows.h"
 #include "engine/renderer/parmblock.h"
 #include "engine/renderer/rendermodelparms.h"
 #include "shared/idlib/bv/bounds.h"
@@ -176,8 +177,6 @@ struct renderView_t {
   idMat3 viewaxis{};
   std::uint8_t recoveredTail[6384]{};
 };
-
-struct idGlobalShadows { void* shadowMap{}; };
 
 class idRenderWorldCommitted {
 public:

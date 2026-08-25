@@ -22,6 +22,10 @@ struct attribInfo_t {
 };
 
 extern attribInfo_t attribsPC[];
+extern attribInfo_t attribsPCD3D[];
+extern attribInfo_t attribs360[];
+extern attribInfo_t attribsPS3[];
+extern attribInfo_t attribsOrbis[];
 
 struct shaderConstructInfo_t {
   shaderConstructInfo_t();

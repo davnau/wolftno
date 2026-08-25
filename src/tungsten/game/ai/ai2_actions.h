@@ -34,6 +34,7 @@ class idAnimWebPath;
 class idMD6Anim;
 class idWeapon;
 class idInventoryItem;
+class idProxyMove;
 class idAIFireControl;
 class idAIMoveState;
 class idFocusInfo;
@@ -46,6 +47,7 @@ class idAIFSMCallback;
 class idFile_String;
 class idLegsFSM;
 class idDeclFacialAnimationSet;
+class idDeclDamage;
 class idVolume_CustomDeath;
 struct idAIVoiceProfile;
 struct idDeclAIBehavior;
@@ -465,7 +467,14 @@ public:
   walkState_t GetWalkState() const;
   void SetWalkState(walkState_t state);
   idRecoveredValue SaveDamageGroup(...);
-  idRecoveredValue SetLastDamageInfo(...);
+  void SetLastDamageInfo(const idEntity* inflictor,
+                         const idDeclDamage* damageDefinition);
+  const idEntity* GetLastDamageInflictorForTest() const {
+    return lastDamageInflictor;
+  }
+  const idDeclDamage* GetLastDamageDefinitionForTest() const {
+    return lastDamageDefinition;
+  }
   const idAnimator_AF* GetAF() const;
   idAnimator_AF* GetAFMutable() { return &articulatedFigureProperties; }
   void GetLastEyePos(idVec3* eyePosition) const;
@@ -606,6 +615,8 @@ protected:
   const idAAS2* lastAASPositionSource{nullptr};
   int aasPositionUpdateCount{0};
   idFaction* faction{nullptr};
+  const idEntity* lastDamageInflictor{nullptr};
+  const idDeclDamage* lastDamageDefinition{nullptr};
 };
 
 class idPlayer : public idActor {
@@ -619,7 +630,8 @@ public:
   idRecoveredValue GetIsSprinting(...);
   idRecoveredValue GetFocusTracker(...);
   idRecoveredValue IsZoomedIn(...);
-  idRecoveredValue GetProxyMove(...);
+  idProxyMove* GetProxyMove() const;
+  void SetProxyMoveForTest(idEntity* value) { proxyMoveEntity = value; }
   void SetNoclip(bool value);
   bool IsNoclip() const { return noclip; }
   void SetAIAimState(const idVec3& originValue, const idVec3& directionValue,
@@ -672,6 +684,7 @@ private:
   float weaponFieldOfView{90.0F};
   idEntity* vehicle{nullptr};
   idEntity* control{nullptr};
+  idEntity* proxyMoveEntity{nullptr};
 };
 
 class idTreeAnimator {
@@ -1158,7 +1171,8 @@ struct idAmmoItem {
   idStr animationPrefix;
 };
 
-struct idDeclDamage {
+class idDeclDamage {
+public:
   int index{0};
   float radius{0.0F};
 };
@@ -1676,7 +1690,11 @@ struct idAIRobotRuntimeState {
 
 class idProp_Moveable : public idEntity {
 public:
-  idRecoveredValue SetOwner(...);
+  void SetOwner(idEntity* owner);
+  idEntity* GetOwnerForTest() const { return owner; }
+
+private:
+  idEntity* owner{nullptr};
 };
 
 enum scenePointType_t {
@@ -2490,8 +2508,12 @@ public:
       idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
       idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state) const;
   bool GetAnimationPathReachability(const idAnimWebPath& animPath) const;
-  idRecoveredValue GetAnimationRot(...);
-  idRecoveredValue GetAnimationRot(idRecoveredOverloadTag<1>);
+  bool GetAnimationRot(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state,
+      idAngles& outRotation, bool verifyAWPath) const;
+  bool GetAnimationRot(const idAnimWebPath& animPath,
+                       idAngles& outRotation, bool verifyAWPath) const;
   idAIVolatile::idAIAnimationInfo* GetAnimatorAnimWeb();
   idAIOrientation* GetBodyOrientation();
   void GetBurstDuration(const idWeapon* weapon, int* minimum,

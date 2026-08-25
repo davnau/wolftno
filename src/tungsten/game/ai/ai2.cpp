@@ -229,7 +229,52 @@ void OrthoNormalizeFireAxis(idMat3& axis) {
   axis[1].Normalize();
 }
 
+idAngles QuaternionToAngles(const idQuat& rotation) {
+  const float x2 = rotation.x + rotation.x;
+  const float y2 = rotation.y + rotation.y;
+  const float z2 = rotation.z + rotation.z;
+  const float xx = rotation.x * x2;
+  const float xy = rotation.x * y2;
+  const float xz = rotation.x * z2;
+  const float yy = rotation.y * y2;
+  const float yz = rotation.y * z2;
+  const float zz = rotation.z * z2;
+  const float wx = rotation.w * x2;
+  const float wy = rotation.w * y2;
+  const float wz = rotation.w * z2;
+
+  const float matrix00 = 1.0F - (yy + zz);
+  const float matrix01 = xy - wz;
+  const float matrix02 = xz + wy;
+  const float matrix10 = xy + wz;
+  const float matrix11 = 1.0F - (xx + zz);
+  const float matrix12 = yz - wx;
+  const float matrix22 = 1.0F - (xx + yy);
+
+  const float sinePitch = std::clamp(matrix02, -1.0F, 1.0F);
+  const float theta = -std::asin(sinePitch);
+  const float cosinePitch = std::cos(theta);
+  constexpr float radiansToDegrees = 57.29577951308232F;
+  if (cosinePitch > 1.0e-6F) {
+    return idAngles{theta * radiansToDegrees,
+                    std::atan2(matrix01, matrix00) * radiansToDegrees,
+                    std::atan2(matrix12, matrix22) * radiansToDegrees};
+  }
+  return idAngles{sinePitch > 0.0F ? -90.0F : 90.0F,
+                  std::atan2(-matrix10, matrix11) * radiansToDegrees, 0.0F};
+}
+
 constexpr float kDegreesToRadians = 0.017453292F;
+
+float CosineDegrees(const float degrees) {
+  constexpr float fullCircle = 6.2831855F;
+  constexpr float inverseFullCircle = 0.15915494F;
+  float radians = degrees * kDegreesToRadians;
+  if (radians < 0.0F || radians >= fullCircle) {
+    radians -= std::floor(radians * inverseFullCircle) * fullCircle;
+  }
+  return std::cos(radians);
+}
 
 }  // namespace
 
@@ -2755,7 +2800,26 @@ bool idAI2::GetAnimationDelta(
   return animation != nullptr && GetAnimationDelta(animation, outDelta);
 }
 // DIA: idAI2::GetAnimationRot
-idRecoveredValue idAI2::GetAnimationRot(...) { return RecordCoreCall("GetAnimationRot"); }
+bool idAI2::GetAnimationRot(
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state,
+    idAngles& outRotation, const bool verifyAWPath) const {
+  if (verifyAWPath && !GetAnimationPathReachability(subWeb, state)) {
+    return false;
+  }
+  const idMD6Anim* animation = GetAnimForAnimWebNode(subWeb, state);
+  if (animation == nullptr) return false;
+
+  idQuat endRotation{0.0F, 0.0F, 0.0F, 1.0F};
+  if (animation->animData != nullptr) {
+    endRotation = idQuat{animation->animData->endDelta[0],
+                         animation->animData->endDelta[1],
+                         animation->animData->endDelta[2],
+                         animation->animData->endDelta[3]};
+  }
+  outRotation = QuaternionToAngles(endRotation);
+  return true;
+}
 // DIA: idAI2::PlayAnimWebPath
 idRecoveredValue idAI2::PlayAnimWebPath(...) { return RecordCoreCall("PlayAnimWebPath"); }
 // DIA: idAI2::GetCoverTransitionRadius
@@ -3818,33 +3882,301 @@ bool idAI2::GetAnimationDelta(const idAnimWebPath& animPath,
       outDelta, verifyAWPath);
 }
 // DIA: idAI2::GetAnimationRot
-idRecoveredValue idAI2::GetAnimationRot(idRecoveredOverloadTag<1>) { return RecordCoreCall("GetAnimationRot"); }
+bool idAI2::GetAnimationRot(const idAnimWebPath& animPath,
+                            idAngles& outRotation,
+                            const bool verifyAWPath) const {
+  if (animPath.IsEmpty()) return false;
+
+  idStr subWebName;
+  idStr stateName;
+  GetSubWebAndStateFromAnimWebPath(animPath.data, subWebName, stateName);
+
+  const idDeclAnimWeb* declaration =
+      animWebAnimators[AIANIMWEB_BODY]->GetDeclaration();
+  const animWebSubWebIndex_t subWebIndex =
+      declaration->GetSubWebIndexForName(subWebName.data);
+  const animWebStateIndex_t stateIndex =
+      declaration->GetStateIndexForName(stateName.data);
+  if (subWebIndex.value < 0 || stateIndex.value < 0) return false;
+
+  return GetAnimationRot(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>{subWebIndex.value},
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t>{stateIndex.value},
+      outRotation, verifyAWPath);
+}
 // DIA: idList<idPonytail,5>::~idList<idPonytail,5>
 // DIA: idList<idCrosshairCustomIcon,5>::Resize
 // DIA: idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb
 // DIA: idFSMManager::idFSMStack::idFSMStack
 // DIA: idActor::SetLastDamageInfo
-idRecoveredValue idActor::SetLastDamageInfo(...) { return {}; }
+void idActor::SetLastDamageInfo(const idEntity* inflictor,
+                                const idDeclDamage* damageDefinition) {
+  lastDamageInflictor = inflictor;
+  lastDamageDefinition = damageDefinition;
+}
 // DIA: idPlayer::GetProxyMove
-idRecoveredValue idPlayer::GetProxyMove(...) { return {}; }
+idProxyMove* idPlayer::GetProxyMove() const {
+  return dynamic_cast<idProxyMove*>(proxyMoveEntity);
+}
 // DIA: idProp_Moveable::SetOwner
-idRecoveredValue idProp_Moveable::SetOwner(...) { return {}; }
+void idProp_Moveable::SetOwner(idEntity* ownerEntity) {
+  owner = ownerEntity;
+}
 // DIA: idAIMemory::ShouldAvoid
-idRecoveredValue idAIMemory::ShouldAvoid(...) { return {}; }
+bool idAIMemory::ShouldAvoid(const int currentTime) {
+  return avoidEntity != nullptr && currentTime < avoidFinishedTime &&
+         avoidRadius != 0.0F;
+}
 // DIA: idAIMemory::SetAvoidEntity
-idRecoveredValue idAIMemory::SetAvoidEntity(...) { return {}; }
+void idAIMemory::SetAvoidEntity(const int currentTime,
+                                const idEntity* entity, const float radius,
+                                const float durationSeconds) {
+  avoidEntity = entity;
+  avoidRadius = radius;
+  avoidFinishedTime =
+      currentTime - static_cast<int>(durationSeconds * -1000.0F);
+}
 // DIA: idAIMemory::SetSpottedEnemyTrigger
-idRecoveredValue idAIMemory::SetSpottedEnemyTrigger(...) { return {}; }
+void idAIMemory::SetSpottedEnemyTrigger(const idEntity* entity) {
+  spottedEnemyTrigger = entity;
+  spottedEnemyTriggerNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
 // DIA: idAIMemory::GetSpottedEnemyTrigger
-idRecoveredValue idAIMemory::GetSpottedEnemyTrigger(...) { return {}; }
+const idEntity* idAIMemory::GetSpottedEnemyTrigger() const {
+  if (spottedEnemyTrigger == nullptr) return nullptr;
+  if (gameLocal == nullptr || spottedEnemyTriggerNumber < 0) {
+    return spottedEnemyTrigger;
+  }
+  return gameLocal->GetEntityByNumber(spottedEnemyTriggerNumber) ==
+                 spottedEnemyTrigger
+             ? spottedEnemyTrigger
+             : nullptr;
+}
 // DIA: idAIMemory::SetDetectedEnemyTrigger
-idRecoveredValue idAIMemory::SetDetectedEnemyTrigger(...) { return {}; }
+void idAIMemory::SetDetectedEnemyTrigger(const idEntity* entity) {
+  detectedEnemyTrigger = entity;
+  detectedEnemyTriggerNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
 // DIA: idAIMemory::GetDetectedEnemyTrigger
-idRecoveredValue idAIMemory::GetDetectedEnemyTrigger(...) { return {}; }
+const idEntity* idAIMemory::GetDetectedEnemyTrigger() const {
+  if (detectedEnemyTrigger == nullptr) return nullptr;
+  if (gameLocal == nullptr || detectedEnemyTriggerNumber < 0) {
+    return detectedEnemyTrigger;
+  }
+  return gameLocal->GetEntityByNumber(detectedEnemyTriggerNumber) ==
+                 detectedEnemyTrigger
+             ? detectedEnemyTrigger
+             : nullptr;
+}
 // DIA: idAIMemory::SetTriggeredInteraction
-idRecoveredValue idAIMemory::SetTriggeredInteraction(...) { return {}; }
+void idAIMemory::SetTriggeredInteraction(idPlayer* entity) {
+  triggeredInteraction = entity;
+  triggeredInteractionNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
+idPlayer* idAIMemory::GetTriggeredInteractionForTest() const {
+  if (triggeredInteraction == nullptr) return nullptr;
+  if (gameLocal == nullptr || triggeredInteractionNumber < 0) {
+    return triggeredInteraction;
+  }
+  return gameLocal->GetEntityByNumber(triggeredInteractionNumber) ==
+                 triggeredInteraction
+             ? triggeredInteraction
+             : nullptr;
+}
 // DIA: idSpawnFocusWithRequirement::idSpawnFocusWithRequirement
+idSpawnFocusWithRequirement::idSpawnFocusWithRequirement() = default;
 // DIA: idAIEditable::idAIActionSettings::Clear
+void idAIEditable::idAIActionSettings::Clear() {
+  usesTurrets = false;
+  stationaryMode = false;
+  noLowerBodyTurns = false;
+  enemyTrailUpdatePeriod = 4.0F;
+  isElite = false;
+  isDualWielder = false;
+  isCommander = false;
+  isHeavy = false;
+  isKampHund = false;
+  isSuperSoldat = false;
+
+  cover.usesCombatScenePoints = true;
+  cover.usesClose = true;
+  cover.usesIdle = true;
+  cover.usesEmergencyExit = false;
+  cover.dodgeMovingToScenepoint = false;
+  cover.scenePointSelectionFlags = 3;
+  cover.coverFlags = 0x36;
+  cover.coverTargetMinRange = 200.0F;
+  cover.coverMinRange = 50.0F;
+  cover.coverMaxRange = 1000.0F;
+  cover.coverRandomWeight = 0.1F;
+  cover.coverHistoryWeight = 1.0F;
+  cover.coverVerticalWeight = 1.0F;
+  cover.coverTacticalWeight = 0.25F;
+  cover.coverTargetTimeout = -1.0F;
+  cover.returnToCoverDelay = 1.0F;
+
+  melee.meleeMaxRange = 75.0F;
+  melee.meleeLongMaxRange = 0.0F;
+  melee.playerTakedownRange = 0.0F;
+  melee.playerTakedownMaxHealth = 0.0F;
+  melee.playerTakedownDecl = nullptr;
+  melee.instantHitExcludeFromTrace = false;
+
+  search.usesSearchScenePoints = true;
+  search.searchMinRange = 50.0F;
+  search.searchMaxRange = -1.0F;
+  roam.usesRoamScenePoints = true;
+  roam.roamMinRange = 50.0F;
+  roam.roamMaxRange = -1.0F;
+  roam.idleTalkPeriod = -1.0F;
+  look.usesLookScenePoints = true;
+  look.lookMinRange = 50.0F;
+  look.lookMaxRange = -1.0F;
+  look.minLookSPPeriod = 5.0F;
+  look.combatTargetDelayLook = -1.0F;
+
+  fire.aimAngle = 15.0F;
+  fire.gangstaPoseFraction = 0.0F;
+  fire.gangstaDuration = 3.0F;
+  fire.maxFireRange = -1.0F;
+  fire.usesGrenades = false;
+  fire.fakeGrenadeMD6 = nullptr;
+  fire.fakeGrenadeExplosion = nullptr;
+  fire.secondaryFireRange = -1.0F;
+  fire.useReloadAnimWhenMoving = false;
+  fire.additiveFireAnims.ClearFree();
+  fire.additiveFireAnimsCrouch.ClearFree();
+  fire.additiveFireAnimBlendTime = 0.0F;
+  fire.freeAmmoDistance = -1.0F;
+  fire.goNutsRange = 0.0F;
+  fire.safeReloadFraction = 0.0F;
+  fire.aimDot = CosineDegrees(fire.aimAngle);
+  fire.gangstaAimDot = CosineDegrees(fire.aimAngle + 10.0F);
+  fire.aimDotUpsideDown = CosineDegrees(fire.aimAngle + 20.0F);
+  fire.fireTiming.bUseFireTiming = false;
+  fire.fireTiming.minBurstDuration = 1.0F;
+  fire.fireTiming.maxBurstDuration = 3.0F;
+  fire.fireTiming.minBurstPause = 0.2F;
+  fire.fireTiming.maxBurstPause = 1.0F;
+  fire.fireTiming.missTime = 0.0F;
+  fire.fireTiming.missTimeMinRange = 300.0F;
+  fire.fireTiming.missTrackAlongGround = false;
+  fire.fireTiming.spotLostFire = 2.0F;
+  fire.fireTiming.spotGainedFire = 0.0F;
+  fire.fireTiming.minSpotLostRange = 75.0F;
+  fire.fireTiming.predictTargetMovement = false;
+  fire.fireTiming.focusCompensationTime = -1.0F;
+
+  close.closeFlags = 1;
+  close.closeMinRange = 0.0F;
+  close.closeMaxRange = -1.0F;
+  close.stopOnSpotRange = 500.0F;
+  close.noSpotTimeBeforeWalking = 3.0F;
+  close.maxRunRange = -1.0F;
+  close.useEvasiveManeuvers = false;
+  close.noStopOnSpotWhenBoreBlocked = false;
+  close.evadeInterval = 1000;
+  close.evadeMinDistance = 300;
+  close.useOutOfReach = false;
+  close.outOfReachGentlemanRange = 0.0F;
+  close.periodicVoice.use = false;
+  close.periodicVoice.minTime = 1000;
+  close.periodicVoice.maxTime = 1000;
+
+  dodge.dodgeFlags = 0xF6;
+  dodge.dodgeMinRange = 100.0F;
+  dodge.dodgeMaxRange = -1.0F;
+  dodge.tauntMinRange = 100.0F;
+  dodge.dodgePeriod = 2.0F;
+  dodge.dodgeAnimPeriod = 4.0F;
+  dodge.detectGrenadesInAir = false;
+  taunt.tauntMinInterval = 4.0F;
+  taunt.tauntMaxInterval = 7.0F;
+
+  squad.squadLeader.value = 0x1FFF;
+  squad.playerIsLeader = false;
+  squad.leaderRange = 200.0F;
+  squad.scenePointRange = 500.0F;
+  squad.squadActive = true;
+  outOfReach.distance = 32.0F;
+
+  customRobot.usesRobot = false;
+  customRobot.isBoss = true;
+  customRobot.stageGroup.Set("battery");
+  customRobot.stageHealth = 300.0F;
+  customRobot.curStageHealth = 300.0F;
+  customRobot.bossHealth = 1.0F;
+  customRobot.chargeHealthFract = 0.15000001F;
+  customRobot.chargeTime = 5.0F;
+  customRobot.shootHealthDrain = 0.0F;
+  customRobot.autoRecharge = false;
+  customRobot.useRechargeAnim = false;
+  customRobot.isCharging = false;
+  customRobot.chargeStartTime = -1;
+  customRobot.chargeDoneTime = -1;
+  customRobot.numStages = 1;
+  customRobot.triggerOnPowerOut.value = 0x1FFF;
+  customRobot.triggerOnChargingDone.value = 0x1FFF;
+  customRobot.curStage = 0;
+  customRobot.noFireTime = -1;
+  customRobot.immuneDoneTime = -1;
+  customRobot.turnfastSound = nullptr;
+  customRobot.lastBodyDir = idVec3{1.0F, 0.0F, 0.0F};
+  customRobot.nextTurnfastTime = -1;
+  customRobot.lastShootTime = -1;
+  customRobot.nextMTSPCheck = -1;
+
+  robotBlinding.bUsesBlindness = false;
+  robotBlinding.blindedDuration = -1.0F;
+  robotBlinding.reblindCooldown = 0.0F;
+  robotBlinding.endBlindedTime = 0;
+  robotBlinding.endReblindCooldown = 0;
+  robotBlinding.blindedDamageGroup = nullptr;
+  EMPStun.bUsesEMPStun = false;
+  EMPStun.stunDuration = -1.0F;
+  EMPStun.isEMPMagnetic = false;
+  EMPStun.isNeverEMPMagnetic = false;
+  EMPStun.endStunnedTime = 0;
+  sleeping.bUsesSleeping = false;
+  sleeping.sleepRadius = 100.0F;
+  sleeping.isSleeping = false;
+
+  robotDeath.timeToCritical = -1.0F;
+  robotDeath.timeCriticalToExplode = -1.0F;
+  robotDeath.explodeDamage = nullptr;
+  robotDeath.stopEffectsDelay = 1.0F;
+  robotDeath.criticalTimestamp = -1;
+  robotDeath.explodeTimestamp = -1;
+  robotDeath.deadTimeStamp = -1;
+  robotDeath.deathSetup = false;
+
+  tesla.usesTesla = false;
+  tesla.useTeslaAnim = true;
+  tesla.isHeavyGuardGun = false;
+  tesla.teslaMeleeRange = 0.0F;
+  tesla.teslaAASRange = 0.0F;
+  tesla.teslaMinRange = 0.0F;
+  tesla.teslaRange = 500.0F;
+  tesla.teslaChargeTime = 5.0F;
+  tesla.teslaCoolDownTime = 5.0F;
+  tesla.teslaExplodeDelay = 0.25F;
+  tesla.teslaMaxRangeDamageScale = 1.0F;
+  tesla.useTeslaWhileBlinded = false;
+  tesla.useTeslaBombGroundEffects = false;
+  tesla.spawnTeslaBombInFOV = false;
+  tesla.teslaTargetOffset = 64.0F;
+  tesla.inhibitFireTime = 0.0F;
+  tesla.teslaDamageDecl = nullptr;
+  tesla.teslaBombDamageDecl = nullptr;
+  tesla.teslaBombDangerZone = 0.0F;
+  tesla.teslaBoltDecl = nullptr;
+  tesla.teslaBoltFlickerInterval = 0.5F;
+  tesla.teslaBlindFireDuration = 0.0F;
+  tesla.teslaBombFxDecl = nullptr;
+}
 // DIA: idAI2::GetFakeEnemy
 const idEntity* idAI2::GetFakeEnemy() const { return fakeEnemy; }
 // DIA: idAIEditable::idAIActionSettings::~idAIActionSettings

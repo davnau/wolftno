@@ -34,7 +34,7 @@ public:
   bool fixDenormals{true};
 };
 
-struct idAnimStack {};
+class idAnimStack {};
 
 struct idAnimatorParms_Base {
   const idAnimStack* animStack{nullptr};

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdint>
 
-struct idAngles;
+class idAngles;
 struct idQuat;
 struct idMat3;
 struct idRotation;
@@ -107,7 +107,8 @@ struct idVec6 {
   float p[6];
 };
 
-struct idAngles {
+class idAngles {
+public:
   float pitch;
   float yaw;
   float roll;

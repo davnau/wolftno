@@ -101,7 +101,12 @@ public:
 // AnimWeb. Their runtime algorithms belong to the animation folder.
 struct idDeclAnimWebTagGroup;
 enum invalidUserChannelIndex_t { INVALID_USER_CHANNEL_INDEX };
-template<typename T,typename InvalidTag>struct idIndex{T value=static_cast<T>(-1);idIndex()=default;explicit idIndex(T v):value(v){}};
+template<typename T,typename InvalidTag>class idIndex {
+public:
+  T value=static_cast<T>(-1);
+  idIndex()=default;
+  explicit idIndex(T v):value(v){}
+};
 using idUserChannelIndex=idIndex<std::int16_t,invalidUserChannelIndex_t>;
 enum md6WeightGroup_t {
   MD6_WEIGHTGROUP_ALL=0,

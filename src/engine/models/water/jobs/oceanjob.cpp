@@ -47,26 +47,40 @@ idVec4 Lerp(const idVec4& from, const idVec4& to, float fraction) {
 idVec4 CubicSample(unsigned int sourceSide, const idVec4* source,
                    unsigned int sourceX, unsigned int sourceY,
                    const float* xWeights, const float* yWeights) {
-  idVec4 rows[4]{};
+  idVec4 rows[4];
   for (unsigned int y = 0; y != 4; ++y) {
-    for (unsigned int x = 0; x != 4; ++x) {
-      if (xWeights[x] == 0.0f)
-        continue;
-      const idVec4& sample = source[(sourceY + y) * sourceSide + sourceX + x];
-      rows[y].x += sample.x * xWeights[x];
-      rows[y].y += sample.y * xWeights[x];
-      rows[y].z += sample.z * xWeights[x];
-      rows[y].w += sample.w * xWeights[x];
-    }
+    const idVec4* samples =
+        source + (sourceY + y) * sourceSide + sourceX;
+    rows[y].x = ((samples[0].x * xWeights[0] +
+                  samples[1].x * xWeights[1]) +
+                 samples[2].x * xWeights[2]) +
+                samples[3].x * xWeights[3];
+    rows[y].y = ((samples[0].y * xWeights[0] +
+                  samples[1].y * xWeights[1]) +
+                 samples[2].y * xWeights[2]) +
+                samples[3].y * xWeights[3];
+    rows[y].z = ((samples[0].z * xWeights[0] +
+                  samples[1].z * xWeights[1]) +
+                 samples[2].z * xWeights[2]) +
+                samples[3].z * xWeights[3];
+    rows[y].w = ((samples[0].w * xWeights[0] +
+                  samples[1].w * xWeights[1]) +
+                 samples[2].w * xWeights[2]) +
+                samples[3].w * xWeights[3];
   }
-  idVec4 result{};
-  for (unsigned int y = 0; y != 4; ++y) {
-    result.x += rows[y].x * yWeights[y];
-    result.y += rows[y].y * yWeights[y];
-    result.z += rows[y].z * yWeights[y];
-    result.w += rows[y].w * yWeights[y];
-  }
-  return result;
+  return {
+      ((rows[0].x * yWeights[0] + rows[1].x * yWeights[1]) +
+       rows[2].x * yWeights[2]) +
+          rows[3].x * yWeights[3],
+      ((rows[0].y * yWeights[0] + rows[1].y * yWeights[1]) +
+       rows[2].y * yWeights[2]) +
+          rows[3].y * yWeights[3],
+      ((rows[0].z * yWeights[0] + rows[1].z * yWeights[1]) +
+       rows[2].z * yWeights[2]) +
+          rows[3].z * yWeights[3],
+      ((rows[0].w * yWeights[0] + rows[1].w * yWeights[1]) +
+       rows[2].w * yWeights[2]) +
+          rows[3].w * yWeights[3]};
 }
 
 float SinPolynomial(float value) {
@@ -106,22 +120,38 @@ void SinCos16(float angle, float* sine, float* cosine) {
                     square +
                 0.041666641f) *
                    square -
-               0.4999999963f) *
+               0.5f) *
                   square +
               1.0f);
 }
 
 unsigned char PackNormal(float value, bool truncate) {
   const float encoded = value * 127.5f + 127.5f;
-  const int rounded = truncate ? static_cast<int>(encoded)
-                               : static_cast<int>(std::lrintf(encoded));
+  const int rounded = truncate ? _mm_cvttss_si32(_mm_set_ss(encoded))
+                               : _mm_cvtss_si32(_mm_set_ss(encoded));
   return static_cast<unsigned char>(std::clamp(rounded, 0, 255));
 }
 
 float WaveFade(float distance, float nearOffset, float farOffset) {
-  return std::clamp(std::min(farOffset - distance,
-                             distance - nearOffset),
-                    0.0f, 1.0f);
+  return std::fmax(0.0f, std::fmin(std::fmin(farOffset - distance,
+                                             distance - nearOffset),
+                                  1.0f));
+}
+
+float MaxSmallestNonDenormal(float value) {
+  return _mm_cvtss_f32(_mm_max_ss(
+      _mm_set_ss(value), _mm_set_ss(idMath::FLT_SMALLEST_NON_DENORMAL)));
+}
+
+float RefinedReciprocalSqrt(float square, bool clampEstimate) {
+  const float estimateSquare =
+      clampEstimate ? MaxSmallestNonDenormal(square) : square;
+  const __m128 estimate = _mm_rsqrt_ss(_mm_set_ss(estimateSquare));
+  const __m128 correction = _mm_add_ss(
+      _mm_mul_ss(_mm_mul_ss(estimate, estimate), _mm_set_ss(square)),
+      _mm_set_ss(-3.0f));
+  return _mm_cvtss_f32(
+      _mm_mul_ss(correction, _mm_mul_ss(estimate, _mm_set_ss(-0.5f))));
 }
 
 } // namespace
@@ -216,6 +246,7 @@ void CreateNormals(unsigned int sourceSide, const idVec4* source,
     return;
   const bool truncate = (debugFlags & 8u) != 0;
   const unsigned int outputSide = sourceSide - 2;
+  const unsigned int vectorizedColumns = outputSide & ~3u;
   for (unsigned int y = 0; y != outputSide; ++y) {
     unsigned char* output = texels + y * pitch;
     for (unsigned int x = 0; x != outputSide; ++x) {
@@ -234,9 +265,15 @@ void CreateNormals(unsigned int sourceSide, const idVec4* source,
                       corner[1].y - center.y,
                       corner[1].z - center.z};
       idVec3 normal = right.Cross(down) + left.Cross(up);
-      const float length = std::sqrt(std::max(
-          normal.LengthSqr(), idMath::FLT_SMALLEST_NON_DENORMAL));
-      normal *= 1.0f / length;
+      const float squareLength =
+          (normal.y * normal.y + normal.x * normal.x) + normal.z * normal.z;
+      const float inverseLength = truncate
+                                      ? 1.0f / std::sqrt(
+                                            MaxSmallestNonDenormal(squareLength))
+                                      : RefinedReciprocalSqrt(
+                                            squareLength,
+                                            x >= vectorizedColumns);
+      normal *= inverseLength;
       output[4 * x + 0] = PackNormal(normal.x, truncate);
       output[4 * x + 1] = PackNormal(normal.y, truncate);
       output[4 * x + 2] = 0;
@@ -252,7 +289,7 @@ void ApplyWavesSOA(
     const idRenderModelOcean_WaveParams::CWaveSOA& waves,
     unsigned int waveCount, idVec4* destination, unsigned int debugFlags,
     const idVec4& lodCameraPosition, float lodFadeReciprocal) {
-  (void)debugFlags;
+  const unsigned int vectorizedColumns = vertexSide & ~3u;
   for (unsigned int y = 0; y != vertexSide; ++y) {
     for (unsigned int x = 0; x != vertexSide; ++x) {
       const idVec3 base{offset.x + static_cast<float>(x) * vertexStep,
@@ -267,9 +304,15 @@ void ApplyWavesSOA(
       const float dx = base.x - lodCameraPosition.x;
       const float dy = base.y - lodCameraPosition.y;
       const float dz = base.z - lodCameraPosition.z;
+      const float squareDistance =
+          (dy * dy + dx * dx) + dz * dz;
+      const bool scalarDebugPath =
+          (debugFlags & 4u) != 0 && x >= vectorizedColumns;
       const float distance =
-          std::sqrt(std::max(dx * dx + dy * dy + dz * dz,
-                             idMath::FLT_SMALLEST_NON_DENORMAL)) *
+          (scalarDebugPath
+               ? std::sqrt(MaxSmallestNonDenormal(squareDistance))
+               : RefinedReciprocalSqrt(squareDistance, true) *
+                     squareDistance) *
           lodFadeReciprocal;
       for (unsigned int wave = 0; wave != waveCount; ++wave) {
         const float fade = WaveFade(distance,
@@ -338,9 +381,11 @@ void OceanGenJob(idRenderModelOcean_TileJobParams* params) {
     detailWaveCount = maximumWaveCount;
   }
 
-  std::array<idVec4, 4858> work{};
+  std::array<idVec4, 4858> work;
   idVec4* coarseVertices = work.data();
   idVec4* fineVertices = coarseVertices + coarseSide * coarseSide;
+  reinterpret_cast<unsigned char*>(work.data())[
+      16 * (coarseSide * coarseSide + fineSide * fineSide) + 127] = 0xdd;
 
   const idRenderModelOcean_WaveParams::CWaveSOA coarseWaves{
       coarseWaveCount,
@@ -356,7 +401,7 @@ void OceanGenJob(idRenderModelOcean_TileJobParams* params) {
   const idVec3 coarseOffset{
       params->m_TileOfs.x - coarseStep + waveParams.m_TilesOrigin.x,
       params->m_TileOfs.y - coarseStep + waveParams.m_TilesOrigin.y,
-      waveParams.m_TilesOrigin.z};
+      waveParams.m_TilesOrigin.z + 0.0f};
 
   std::int64_t ticks = Sys_GetClockTicks();
   ApplyWavesSOA<0>(coarseOffset, waveParams.m_Time, coarseStep, coarseSide,
@@ -409,7 +454,7 @@ void OceanGenJob(idRenderModelOcean_TileJobParams* params) {
     const idVec3 fineOffset{
         params->m_TileOfs.x - fineStep + waveParams.m_TilesOrigin.x,
         params->m_TileOfs.y - fineStep + waveParams.m_TilesOrigin.y,
-        waveParams.m_TilesOrigin.z};
+        waveParams.m_TilesOrigin.z + 0.0f};
     ApplyWavesSOA<1>(fineOffset, waveParams.m_Time, fineStep, fineSide,
                      detailWaves, detailWaveCount, fineVertices,
                      waveParams.m_DebugFlags, waveParams.m_LODCamPos,

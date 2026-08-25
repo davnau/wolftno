@@ -76,6 +76,10 @@ public:
   int GetTokenSourceOffset(const idToken& token) const;
   int GetCurrentSourceOffset() const;
   int GetCurrentSourceLine() const;
+  int GetIncludeLevel() const { return includeLevel; }
+  const char* GetCurrentSourceName() const {
+    return scriptstack != nullptr ? scriptstack->filename.data : "";
+  }
 
 private:
   void AddDefineToHash(define_t* definition);
