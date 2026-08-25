@@ -10,6 +10,11 @@ struct idColor;
 class idParallelJobList;
 struct idConsole;
 
+struct idOverlayHandle {
+  int index{-1};
+  int time{};
+};
+
 enum rangeId_t : int {
   RANGE_MAIN = 0,
   RANGE_RENDER = 1,
@@ -69,8 +74,19 @@ struct idConsole {
     const auto slots = reinterpret_cast<const void* const*>(vtable);
     reinterpret_cast<Fn>(slots[13])(this, forceFullScreen, noNotifies);
   }
+
+  template <typename... Args>
+  void PrintOverlay(idOverlayHandle* handle, int justify, float x, float y,
+                    const char* format, Args... args) {
+    using Fn = void (*)(idConsole*, idOverlayHandle*, int, float, float,
+                        const char*, ...);
+    const auto slots = reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[16])(this, handle, justify, x, y, format,
+                                    args...);
+  }
 };
 
 extern idConsole* console;
 
 static_assert(sizeof(idConsole) == 8, "idConsole ABI drift");
+static_assert(sizeof(idOverlayHandle) == 8, "overlay handle ABI drift");

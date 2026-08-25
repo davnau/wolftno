@@ -58,14 +58,25 @@ public:
   idRenderSystemLocal()
       : drawsMetric(idStr(), idStr()), trisMetric(idStr(), idStr()),
         vertsMetric(idStr(), idStr()) {}
+  ~idRenderSystemLocal() override = default;
 #else
   idRenderSystemLocal();
-#endif
   ~idRenderSystemLocal() override;
+#endif
 
   void Init() override;
   void Init2() override;
   void Shutdown() override;
+  void RenderFrame(void* const hdc, const idRenderFrameInfo& renderFrameInfo,
+                   bool allowSMP, bool skipSwapBuffers,
+                   bool resolveDepth) override;
+  void EndFrame(void* hdc, int windowWidth, int windowHeight,
+                idRenderWorld* world, idRenderModel** guis, int numGuis,
+                bool allowSMP, bool skipSwapBuffers, bool resolveDepth,
+                int timeMsec) override;
+  void ToolEndFrame(void* hdc, int windowWidth, int windowHeight,
+                    idRenderWorld* world, const renderView_t& renderView,
+                    idRenderModel* gui, int timeMsec) override;
 
   int FrameNumber() override;
   bool SyncRenderThread(bool) override;

@@ -129,6 +129,8 @@ public:
   void PushFeedback(const unsigned char* feedback, int width, int height,
                     int pitch, bool usePBO);
   void FinishFeedback(bool force, int maxTimeMilliseconds);
+  void ClearFeedback();
+  void LogMetrics();
 
   idVirtualTexture vts[PAGESOURCE_TOTAL];
   idVirtualTexture* vtPtrs[PAGESOURCE_TOTAL]{};

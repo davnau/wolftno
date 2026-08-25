@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 class idAngles;
 struct idQuat;
@@ -69,7 +71,17 @@ public:
   }
   float LengthSqr() const { return *this * *this; }
   float Length() const { return std::sqrt(LengthSqr()); }
-  float DistanceFast(const idVec3& other) const;
+  float DistanceFast(const idVec3& other) const {
+    const float deltaX = other.x - x;
+    const float deltaY = other.y - y;
+    const float deltaZ = other.z - z;
+    const float squaredDistance =
+        deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+    const float inverseDistance =
+        1.0F / std::sqrt(std::max(squaredDistance,
+                                  std::numeric_limits<float>::min()));
+    return inverseDistance * squaredDistance;
+  }
   float Normalize() {
     const float length = Length();
     if (length > 0.0f) {

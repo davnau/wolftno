@@ -250,6 +250,9 @@ struct alignas(16) renderSettings_t {
 
 class alignas(16) idRenderView {
 public:
+  void CommitParameters(int windowWidth, int windowHeight, int renderWidth,
+                        int renderHeight);
+
   renderView_t g;
   const idDeclEnv* m_pModelEnvOverride;
   int viewIndex;
@@ -282,6 +285,11 @@ public:
   occlusionState_t* occlusionState;
   std::uint8_t alignmentTail[8];
 };
+
+static_assert(sizeof(renderView_t) == 6528, "render-view parms ABI drift");
+static_assert(offsetof(idRenderView, g) == 0,
+              "render-view parms offset drift");
+static_assert(sizeof(idRenderView) == 13920, "render-view ABI drift");
 
 class idRender {
 public:

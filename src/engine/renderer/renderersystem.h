@@ -51,12 +51,12 @@ public:
   virtual void DestroyThreadGraphicsContext(idThreadGraphicsContext*) {}
   virtual idRenderWorld* AllocRenderWorld(const char*, bool, bool) { return nullptr; }
   virtual void FreeRenderWorld(idRenderWorld*) {}
-  virtual void RenderFrame(void* const, const idRenderFrameInfo*, bool, bool,
+  virtual void RenderFrame(void* const, const idRenderFrameInfo&, bool, bool,
                            bool) {}
   virtual void EndFrame(void*, int, int, idRenderWorld*, idRenderModel**, int,
                         bool, bool, bool, int) {}
   virtual void ToolEndFrame(void*, int, int, idRenderWorld*,
-                            const renderView_t*, idRenderModel*, int) {}
+                            const renderView_t&, idRenderModel*, int) {}
   virtual int FrameNumber() { return 0; }
   virtual bool SyncRenderThread(bool) { return false; }
   virtual void BeginBinkVideo(void*, const idVideoDesc*, videoFlags_t, void*,

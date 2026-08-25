@@ -554,11 +554,8 @@ bool idAI2::HasUsedEmergencyCoverExitForTest() const {
 // DIA: idAnimator_Drone::~idAnimator_Drone
 // DIA: idArray<idFocusInfo,2>::~idArray<idFocusInfo,2>
 // DIA: idAI2::idAIVolatile::idAIWorldStateInfo::~idAIWorldStateInfo
-idAI2::idAIVolatile::idAIWorldStateInfo::~idAIWorldStateInfo() = default;
 // DIA: idAI2::idAIVolatile::idPlayerAIControl::~idPlayerAIControl
-idAI2::idAIVolatile::idPlayerAIControl::~idPlayerAIControl() = default;
 // DIA: idAI2::idAIVolatile::idAIDebugging::~idAIDebugging
-idAI2::idAIVolatile::idAIDebugging::~idAIDebugging() = default;
 // DIA: idArray<idTrajectory_Parabolic,4>::~idArray<idTrajectory_Parabolic,4>
 // DIA: idArray<idAnimWebAI,1>::~idArray<idAnimWebAI,1>
 // DIA: idAnimator_TurretNxN<3>::~idAnimator_TurretNxN<3>
@@ -763,71 +760,25 @@ idCodeResource<idDeclRenderParm>* idAI2::GetRenderParam(
   return nullptr;
 }
 // DIA: idRange<float>::GetRatio
-template <>
-float idRange<float>::GetRatio(float current) const {
-  const float range = maxRange - minRange;
-  const float clampedCurrent = std::max(0.0F, current - minRange);
-  return range != 0.0F ? std::min(1.0F, clampedCurrent / range) : 0.0F;
-}
 // DIA: idCmdSystem::ArgCompletion_String<&aiWalkModifierNames,7>
 // DIA: idList<idHandle<int,enum invalidAIEvent_t,-1>,5>::RemoveIndex
 // DIA: idList<idVec3,5>::RemoveIndexFast
 // DIA: idFXManager::SetExternalTransform
-void idFXManager::SetExternalTransform(const idVec3& position,
-                                       const idMat3& rotation) {
-  externalPosition = position;
-  externalRotation = rotation;
-  hasExternalPositionAndRotation = true;
-}
-
 // DIA: idBaseHealth::SetCurBaseHealth
-void idBaseHealth::SetCurBaseHealth(float health) {
-  if (health > 0.0F) {
-    ClearDeadFlag();
-    SetCurBaseHealth_Impl(health);
-  }
-}
 // DIA: idBaseHealth::DamageShield_Impl
-bool idBaseHealth::DamageShield_Impl(float damage, bool allowDeath,
-                                     bool overflow, float* remainingDamage,
-                                     bool ignoreArmor) {
-  (void)overflow;
-  return Damage_Impl(damage, allowDeath, remainingDamage, ignoreArmor);
-}
 // DIA: idCoverActions::Clear
-void idCoverActions::Clear() { actionMask &= 0xE0u; }
 // DIA: idFSMCallback::~idFSMCallback
 // DIA: idFSMCallback::`scalar deleting destructor'
 // DIA: idFSMManager::~idFSMManager
 // DIA: idFSMManager::`scalar deleting destructor'
 // DIA: idAnimatedEntity::GetTreeAnimatorFromPresentable
-idTreeAnimator* idAnimatedEntity::GetTreeAnimatorFromPresentable() const {
-  if (presentable == nullptr ||
-      presentable->GetAnimatedEntityInterface() == nullptr) {
-    return nullptr;
-  }
-  idPresentable* animatedPresentable =
-      presentable != nullptr ? presentable->GetAnimatedEntityInterface()
-                             : nullptr;
-  return static_cast<idTreeAnimator*>(
-      animatedPresentable->GetAnimatedTreeAnimator());
-}
 // DIA: idDamageGroup::HealthRatio
-float idDamageGroup::HealthRatio() const {
-  return maxHealth > 0.0F ? health / maxHealth : 0.0F;
-}
 // DIA: idActor::GetWalkState
-walkState_t idActor::GetWalkState() const { return walkState; }
 // DIA: idActor::SetWalkState
-void idActor::SetWalkState(walkState_t state) { walkState = state; }
 // DIA: idPlayer::GetUCmdTracker1
-idRecoveredValue idPlayer::GetUCmdTracker1(...) { return {}; }
 // DIA: idPlayer::GetIsSprinting
-idRecoveredValue idPlayer::GetIsSprinting(...) { return {}; }
 // DIA: idPlayer::GetFocusTracker
-idRecoveredValue idPlayer::GetFocusTracker(...) { return {}; }
 // DIA: idPlayer::IsZoomedIn
-idRecoveredValue idPlayer::IsZoomedIn(...) { return {}; }
 // DIA: idAIFSMCallback::~idAIFSMCallback
 // DIA: `idAIFSMCallback::~idAIFSMCallback'::`1'::dtor$0
 // DIA: idAIFSMCallback::`scalar deleting destructor'
@@ -870,17 +821,6 @@ bool idAI2::IsTeslaDangerous(idVec3* position, float* radius) const {
   return false;
 }
 // DIA: idVec3::DistanceFast
-float idVec3::DistanceFast(const idVec3& other) const {
-  const float deltaX = other.x - x;
-  const float deltaY = other.y - y;
-  const float deltaZ = other.z - z;
-  const float squaredDistance = deltaX * deltaX + deltaY * deltaY +
-                                deltaZ * deltaZ;
-  const float reciprocalLength =
-      1.0F /
-      std::sqrt(std::max(squaredDistance, std::numeric_limits<float>::min()));
-  return reciprocalLength * squaredDistance;
-}
 // DIA: idAI2::SetBlinded
 bool idAI2::SetBlinded(bool state, bool forceForever,
                        int blindedOverrideTimeMilliseconds) {
@@ -2217,8 +2157,11 @@ bool idSpawnFocusWithRequirement::RequirementFilled(
          (requirements.Num() == 0 || inventory != nullptr);
 }
 // DIA: idAIFSMCallback::OnTransition
+idRecoveredValue idAIFSMCallback::OnTransition(...) { return {}; }
 // DIA: idAIFSMCallback::OnRestart
+idRecoveredValue idAIFSMCallback::OnRestart(...) { return {}; }
 // DIA: idAIFSMCallback::OnError
+idRecoveredValue idAIFSMCallback::OnError(...) { return {}; }
 // DIA: idAI2::HideMeshNoAutoRestore
 bool idAI2::HideMeshNoAutoRestore(const char* meshName) {
   if (presentable == nullptr ||
@@ -2504,7 +2447,13 @@ idRecoveredValue idAI2::UpdateWetness(...) { return RecordCoreCall("UpdateWetnes
 // DIA: idAI2::UpdateRenderParamBlends
 idRecoveredValue idAI2::UpdateRenderParamBlends(...) { return RecordCoreCall("UpdateRenderParamBlends"); }
 // DIA: idAIScriptProxy::PauseFiberTillActionCompletes
+idRecoveredValue idAIScriptProxy::PauseFiberTillActionCompletes(...) {
+  return {};
+}
 // DIA: idAIScriptProxy::PauseThreadTillActionCompletes
+idRecoveredValue idAIScriptProxy::PauseThreadTillActionCompletes(...) {
+  return {};
+}
 // DIA: idAnimator_TurretNxN<3>::`scalar deleting destructor'
 // DIA: idAnimator_TurretNxN<3>::SetParameters
 // DIA: idEntityPtr<idEntitySpriteAnimator>::GetEntity
@@ -2513,37 +2462,11 @@ idRecoveredValue idAI2::UpdateRenderParamBlends(...) { return RecordCoreCall("Up
 // DIA: idHashTableT<int,idAIAction * __ptr64>::Clear
 // DIA: idPresentable::SetModelFade
 // DIA: idEntity::GetPresentableLeftDir
-const idVec3* idEntity::GetPresentableLeftDir() {
-  return &presentableAxis[1];
-}
 // DIA: idEntity::GetPresentableUpDir
-const idVec3* idEntity::GetPresentableUpDir() {
-  return &presentableAxis[2];
-}
 // DIA: idActor::SaveDamageGroup
-idRecoveredValue idActor::SaveDamageGroup(...) { return {}; }
 // DIA: idScenePoint::Disable
-void idScenePoint::Disable(int currentTime, float disableSeconds) {
-  currentUser = nullptr;
-  requestTime = disableSeconds < 0.0F
-                    ? -1
-                    : currentTime - static_cast<int>(disableSeconds * -1000.0F);
-}
 // DIA: idScenePoint_Combat::HasEnterAnimation
-bool idScenePoint_Combat::HasEnterAnimation() const {
-  return !enterAnimation.IsEmpty() || extraEnterAnimationCount > 0;
-}
 // DIA: idEncounterGroup::GetCurrentCombatStage
-idCombatStage* idEncounterGroup::GetCurrentCombatStage() {
-  return curCombatStage < 0 || curCombatStage >= combatStages.Num()
-             ? nullptr
-             : &combatStages[curCombatStage];
-}
-const idCombatStage* idEncounterGroup::GetCurrentCombatStage() const {
-  return curCombatStage < 0 || curCombatStage >= combatStages.Num()
-             ? nullptr
-             : &combatStages[curCombatStage];
-}
 // DIA: idAIEditable::idAIActionSettings::Init
 // DIA: idAI2::GetCurrentCombatStage
 const idCombatStage* idAI2::GetCurrentCombatStage() const {
@@ -3257,38 +3180,26 @@ idAnimator_AF::testSolidResult_t idAI2::StartRagdoll(
 // DIA: idAI2::UpdateGoreLevel
 idRecoveredValue idAI2::UpdateGoreLevel(...) { return RecordCoreCall("UpdateGoreLevel"); }
 // DIA: idAIScriptProxy::PauseCurrentThreadTillActionCompletes
+idRecoveredValue idAIScriptProxy::PauseCurrentThreadTillActionCompletes(...) {
+  return {};
+}
 // DIA: idAIScriptProxy::PauseCurrentFiberTillActionCompletes
+idRecoveredValue idAIScriptProxy::PauseCurrentFiberTillActionCompletes(...) {
+  return {};
+}
 // DIA: idEntityPtr<idTarget_FakeEnemy>::operator idTarget_FakeEnemy * __ptr64
 // DIA: idLeakyIntegrator<0,1>::Update
 // DIA: idEntityPtr<idVolume_CustomDeath>::operator->
 // DIA: idHashTableT<int,idAIAction * __ptr64>::~idHashTableT<int,idAIAction * __ptr64>
 // DIA: idAIEvent::GetOriginator
 // DIA: idEntity::GetTarget
-idEntity* idEntity::GetTarget(int index) {
-  return index >= 0 && index < targets.Num() ? targets[index] : nullptr;
-}
 // DIA: idAIDamageInfo::GetInflictor
-idEntity* idAIDamageInfo::GetInflictor() const {
-  return const_cast<idEntity*>(inflictor);
-}
 // DIA: idAIDamageInfo::GetAttacker
-idEntity* idAIDamageInfo::GetAttacker() const {
-  return const_cast<idEntity*>(attacker);
-}
 // DIA: idAIMemory::GetEnemy
-const idEntity* idAIMemory::GetEnemy() const { return currentEnemy; }
 // DIA: idAIMemory::GetFriendly
-const idEntity* idAIMemory::GetFriendly() const { return currentFriendly; }
 // DIA: idAIMemory::GetFriendlyBlocker
-const idEntity* idAIMemory::GetFriendlyBlocker() const {
-  return friendlyBlocker;
-}
 // DIA: idAIMemory::GetLastAttacker
-idEntity* idAIMemory::GetLastAttacker() const { return lastAttacker; }
 // DIA: idFocusInfo::HasFocus
-bool idFocusInfo::HasFocus() {
-  return focusEntity != nullptr || hasExplicitFocusPoint;
-}
 // DIA: idAIDeathInfo::idAIDeathInfo
 // DIA: idAI2::HasFocus
 bool idAI2::HasFocus() {
@@ -3323,12 +3234,9 @@ idAI2::idAnimWebDefaults::idAnimWebDefaults() = default;
 idAI2::idAIVolatile::idAIFocusInfo::idAIFocusInfo() = default;
 // DIA: `idAI2::idAIVolatile::idAIFocusInfo::idAIFocusInfo'::`1'::dtor$0
 // DIA: idAI2::idAIVolatile::idAIDeath::idAIDeath
-idAI2::idAIVolatile::idAIDeath::idAIDeath() = default;
 // DIA: `idAI2::idAIVolatile::idAIDeath::idAIDeath'::`1'::dtor$0
 // DIA: idAI2::idAIVolatile::idAIDeath::~idAIDeath
-idAI2::idAIVolatile::idAIDeath::~idAIDeath() = default;
 // DIA: idAI2::idAnimWebDefaults::~idAnimWebDefaults
-idAI2::idAnimWebDefaults::~idAnimWebDefaults() = default;
 // DIA: idAI2::RobotBatteryExplodes
 bool idAI2::RobotBatteryExplodes(idEntity* attacker) {
   (void)attacker;
@@ -4372,280 +4280,17 @@ bool idAI2::GetAnimationRot(const idAnimWebPath& animPath,
 // DIA: idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb
 // DIA: idFSMManager::idFSMStack::idFSMStack
 // DIA: idActor::SetLastDamageInfo
-void idActor::SetLastDamageInfo(const idEntity* inflictor,
-                                const idDeclDamage* damageDefinition) {
-  lastDamageInflictor = inflictor;
-  lastDamageDefinition = damageDefinition;
-}
 // DIA: idPlayer::GetProxyMove
-idProxyMove* idPlayer::GetProxyMove() const {
-  if (proxyMoveEntity == nullptr) return nullptr;
-  const int entityNumber = proxyMoveEntity->GetEntityNumber();
-  if (entityNumber >= 0 && gameLocal != nullptr &&
-      gameLocal->GetEntityByNumber(entityNumber) != proxyMoveEntity) {
-    return nullptr;
-  }
-  return dynamic_cast<idProxyMove*>(proxyMoveEntity);
-}
 // DIA: idProp_Moveable::SetOwner
-void idProp_Moveable::SetOwner(idEntity* ownerEntity) {
-  owner = ownerEntity;
-}
 // DIA: idAIMemory::ShouldAvoid
-bool idAIMemory::ShouldAvoid(const int currentTime) {
-  return avoidEntity != nullptr && currentTime < avoidFinishedTime &&
-         avoidRadius != 0.0F;
-}
 // DIA: idAIMemory::SetAvoidEntity
-void idAIMemory::SetAvoidEntity(const int currentTime,
-                                const idEntity* entity, const float radius,
-                                const float durationSeconds) {
-  avoidEntity = entity;
-  avoidRadius = radius;
-  avoidFinishedTime =
-      currentTime - static_cast<int>(durationSeconds * -1000.0F);
-}
 // DIA: idAIMemory::SetSpottedEnemyTrigger
-void idAIMemory::SetSpottedEnemyTrigger(const idEntity* entity) {
-  spottedEnemyTrigger = entity;
-  spottedEnemyTriggerNumber =
-      entity != nullptr ? entity->GetEntityNumber() : -1;
-}
 // DIA: idAIMemory::GetSpottedEnemyTrigger
-const idEntity* idAIMemory::GetSpottedEnemyTrigger() const {
-  if (spottedEnemyTrigger == nullptr) return nullptr;
-  if (gameLocal == nullptr || spottedEnemyTriggerNumber < 0) {
-    return spottedEnemyTrigger;
-  }
-  return gameLocal->GetEntityByNumber(spottedEnemyTriggerNumber) ==
-                 spottedEnemyTrigger
-             ? spottedEnemyTrigger
-             : nullptr;
-}
 // DIA: idAIMemory::SetDetectedEnemyTrigger
-void idAIMemory::SetDetectedEnemyTrigger(const idEntity* entity) {
-  detectedEnemyTrigger = entity;
-  detectedEnemyTriggerNumber =
-      entity != nullptr ? entity->GetEntityNumber() : -1;
-}
 // DIA: idAIMemory::GetDetectedEnemyTrigger
-const idEntity* idAIMemory::GetDetectedEnemyTrigger() const {
-  if (detectedEnemyTrigger == nullptr) return nullptr;
-  if (gameLocal == nullptr || detectedEnemyTriggerNumber < 0) {
-    return detectedEnemyTrigger;
-  }
-  return gameLocal->GetEntityByNumber(detectedEnemyTriggerNumber) ==
-                 detectedEnemyTrigger
-             ? detectedEnemyTrigger
-             : nullptr;
-}
 // DIA: idAIMemory::SetTriggeredInteraction
-void idAIMemory::SetTriggeredInteraction(idPlayer* entity) {
-  triggeredInteraction = entity;
-  triggeredInteractionNumber =
-      entity != nullptr ? entity->GetEntityNumber() : -1;
-}
-idPlayer* idAIMemory::GetTriggeredInteractionForTest() const {
-  if (triggeredInteraction == nullptr) return nullptr;
-  if (gameLocal == nullptr || triggeredInteractionNumber < 0) {
-    return triggeredInteraction;
-  }
-  return gameLocal->GetEntityByNumber(triggeredInteractionNumber) ==
-                 triggeredInteraction
-             ? triggeredInteraction
-             : nullptr;
-}
 // DIA: idSpawnFocusWithRequirement::idSpawnFocusWithRequirement
-idSpawnFocusWithRequirement::idSpawnFocusWithRequirement() = default;
 // DIA: idAIEditable::idAIActionSettings::Clear
-void idAIEditable::idAIActionSettings::Clear() {
-  usesTurrets = false;
-  stationaryMode = false;
-  noLowerBodyTurns = false;
-  enemyTrailUpdatePeriod = 4.0F;
-  isElite = false;
-  isDualWielder = false;
-  isCommander = false;
-  isHeavy = false;
-  isKampHund = false;
-  isSuperSoldat = false;
-
-  cover.usesCombatScenePoints = true;
-  cover.usesClose = true;
-  cover.usesIdle = true;
-  cover.usesEmergencyExit = false;
-  cover.dodgeMovingToScenepoint = false;
-  cover.scenePointSelectionFlags = 3;
-  cover.coverFlags = 0x36;
-  cover.coverTargetMinRange = 200.0F;
-  cover.coverMinRange = 50.0F;
-  cover.coverMaxRange = 1000.0F;
-  cover.coverRandomWeight = 0.1F;
-  cover.coverHistoryWeight = 1.0F;
-  cover.coverVerticalWeight = 1.0F;
-  cover.coverTacticalWeight = 0.25F;
-  cover.coverTargetTimeout = -1.0F;
-  cover.returnToCoverDelay = 1.0F;
-
-  melee.meleeMaxRange = 75.0F;
-  melee.meleeLongMaxRange = 0.0F;
-  melee.playerTakedownRange = 0.0F;
-  melee.playerTakedownMaxHealth = 0.0F;
-  melee.playerTakedownDecl = nullptr;
-  melee.instantHitExcludeFromTrace = false;
-
-  search.usesSearchScenePoints = true;
-  search.searchMinRange = 50.0F;
-  search.searchMaxRange = -1.0F;
-  roam.usesRoamScenePoints = true;
-  roam.roamMinRange = 50.0F;
-  roam.roamMaxRange = -1.0F;
-  roam.idleTalkPeriod = -1.0F;
-  look.usesLookScenePoints = true;
-  look.lookMinRange = 50.0F;
-  look.lookMaxRange = -1.0F;
-  look.minLookSPPeriod = 5.0F;
-  look.combatTargetDelayLook = -1.0F;
-
-  fire.aimAngle = 15.0F;
-  fire.gangstaPoseFraction = 0.0F;
-  fire.gangstaDuration = 3.0F;
-  fire.maxFireRange = -1.0F;
-  fire.usesGrenades = false;
-  fire.fakeGrenadeMD6 = nullptr;
-  fire.fakeGrenadeExplosion = nullptr;
-  fire.secondaryFireRange = -1.0F;
-  fire.useReloadAnimWhenMoving = false;
-  fire.additiveFireAnims.ClearFree();
-  fire.additiveFireAnimsCrouch.ClearFree();
-  fire.additiveFireAnimBlendTime = 0.0F;
-  fire.freeAmmoDistance = -1.0F;
-  fire.goNutsRange = 0.0F;
-  fire.safeReloadFraction = 0.0F;
-  fire.aimDot = CosineDegrees(fire.aimAngle);
-  fire.gangstaAimDot = CosineDegrees(fire.aimAngle + 10.0F);
-  fire.aimDotUpsideDown = CosineDegrees(fire.aimAngle + 20.0F);
-  fire.fireTiming.bUseFireTiming = false;
-  fire.fireTiming.minBurstDuration = 1.0F;
-  fire.fireTiming.maxBurstDuration = 3.0F;
-  fire.fireTiming.minBurstPause = 0.2F;
-  fire.fireTiming.maxBurstPause = 1.0F;
-  fire.fireTiming.missTime = 0.0F;
-  fire.fireTiming.missTimeMinRange = 300.0F;
-  fire.fireTiming.missTrackAlongGround = false;
-  fire.fireTiming.spotLostFire = 2.0F;
-  fire.fireTiming.spotGainedFire = 0.0F;
-  fire.fireTiming.minSpotLostRange = 75.0F;
-  fire.fireTiming.predictTargetMovement = false;
-  fire.fireTiming.focusCompensationTime = -1.0F;
-
-  close.closeFlags = 1;
-  close.closeMinRange = 0.0F;
-  close.closeMaxRange = -1.0F;
-  close.stopOnSpotRange = 500.0F;
-  close.noSpotTimeBeforeWalking = 3.0F;
-  close.maxRunRange = -1.0F;
-  close.useEvasiveManeuvers = false;
-  close.noStopOnSpotWhenBoreBlocked = false;
-  close.evadeInterval = 1000;
-  close.evadeMinDistance = 300;
-  close.useOutOfReach = false;
-  close.outOfReachGentlemanRange = 0.0F;
-  close.periodicVoice.use = false;
-  close.periodicVoice.minTime = 1000;
-  close.periodicVoice.maxTime = 1000;
-
-  dodge.dodgeFlags = 0xF6;
-  dodge.dodgeMinRange = 100.0F;
-  dodge.dodgeMaxRange = -1.0F;
-  dodge.tauntMinRange = 100.0F;
-  dodge.dodgePeriod = 2.0F;
-  dodge.dodgeAnimPeriod = 4.0F;
-  dodge.detectGrenadesInAir = false;
-  taunt.tauntMinInterval = 4.0F;
-  taunt.tauntMaxInterval = 7.0F;
-
-  squad.squadLeader.value = 0x1FFF;
-  squad.playerIsLeader = false;
-  squad.leaderRange = 200.0F;
-  squad.scenePointRange = 500.0F;
-  squad.squadActive = true;
-  outOfReach.distance = 32.0F;
-
-  customRobot.usesRobot = false;
-  customRobot.isBoss = true;
-  customRobot.stageGroup.Set("battery");
-  customRobot.stageHealth = 300.0F;
-  customRobot.curStageHealth = 300.0F;
-  customRobot.bossHealth = 1.0F;
-  customRobot.chargeHealthFract = 0.15000001F;
-  customRobot.chargeTime = 5.0F;
-  customRobot.shootHealthDrain = 0.0F;
-  customRobot.autoRecharge = false;
-  customRobot.useRechargeAnim = false;
-  customRobot.isCharging = false;
-  customRobot.chargeStartTime = -1;
-  customRobot.chargeDoneTime = -1;
-  customRobot.numStages = 1;
-  customRobot.triggerOnPowerOut.value = 0x1FFF;
-  customRobot.triggerOnChargingDone.value = 0x1FFF;
-  customRobot.curStage = 0;
-  customRobot.noFireTime = -1;
-  customRobot.immuneDoneTime = -1;
-  customRobot.turnfastSound = nullptr;
-  customRobot.lastBodyDir = idVec3{1.0F, 0.0F, 0.0F};
-  customRobot.nextTurnfastTime = -1;
-  customRobot.lastShootTime = -1;
-  customRobot.nextMTSPCheck = -1;
-
-  robotBlinding.bUsesBlindness = false;
-  robotBlinding.blindedDuration = -1.0F;
-  robotBlinding.reblindCooldown = 0.0F;
-  robotBlinding.endBlindedTime = 0;
-  robotBlinding.endReblindCooldown = 0;
-  robotBlinding.blindedDamageGroup = nullptr;
-  EMPStun.bUsesEMPStun = false;
-  EMPStun.stunDuration = -1.0F;
-  EMPStun.isEMPMagnetic = false;
-  EMPStun.isNeverEMPMagnetic = false;
-  EMPStun.endStunnedTime = 0;
-  sleeping.bUsesSleeping = false;
-  sleeping.sleepRadius = 100.0F;
-  sleeping.isSleeping = false;
-
-  robotDeath.timeToCritical = -1.0F;
-  robotDeath.timeCriticalToExplode = -1.0F;
-  robotDeath.explodeDamage = nullptr;
-  robotDeath.stopEffectsDelay = 1.0F;
-  robotDeath.criticalTimestamp = -1;
-  robotDeath.explodeTimestamp = -1;
-  robotDeath.deadTimeStamp = -1;
-  robotDeath.deathSetup = false;
-
-  tesla.usesTesla = false;
-  tesla.useTeslaAnim = true;
-  tesla.isHeavyGuardGun = false;
-  tesla.teslaMeleeRange = 0.0F;
-  tesla.teslaAASRange = 0.0F;
-  tesla.teslaMinRange = 0.0F;
-  tesla.teslaRange = 500.0F;
-  tesla.teslaChargeTime = 5.0F;
-  tesla.teslaCoolDownTime = 5.0F;
-  tesla.teslaExplodeDelay = 0.25F;
-  tesla.teslaMaxRangeDamageScale = 1.0F;
-  tesla.useTeslaWhileBlinded = false;
-  tesla.useTeslaBombGroundEffects = false;
-  tesla.spawnTeslaBombInFOV = false;
-  tesla.teslaTargetOffset = 64.0F;
-  tesla.inhibitFireTime = 0.0F;
-  tesla.teslaDamageDecl = nullptr;
-  tesla.teslaBombDamageDecl = nullptr;
-  tesla.teslaBombDangerZone = 0.0F;
-  tesla.teslaBoltDecl = nullptr;
-  tesla.teslaBoltFlickerInterval = 0.5F;
-  tesla.teslaBlindFireDuration = 0.0F;
-  tesla.teslaBombFxDecl = nullptr;
-}
 // DIA: idAI2::GetFakeEnemy
 const idEntity* idAI2::GetFakeEnemy() const {
   if (fakeEnemy == nullptr) return nullptr;
@@ -4697,16 +4342,6 @@ void idAI2::UpdateGroupStatusConditions() {
   setCondition(4, enemyMoved);
 }
 // DIA: idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo
-idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo() {
-  subWeb = aiSubWeb_t::relaxed;
-  turretAnimator.lastBlendTriangle = 0;
-  turretAnimator.vertexAliasHandles.fill(0xFFFFU);
-  viewTagData.trans = {};
-  viewTagData.rot = {};
-  viewTagData.parentJoint = 0xFFFFU;
-  syncedAnim.targetSpawnId = 0x1FFF;
-  ikEnableTime = -1;
-}
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$0
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$1
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$2
@@ -4715,7 +4350,6 @@ idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo() {
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$5
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::idAIAnimationInfo'::`1'::dtor$6
 // DIA: idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo
-idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo() = default;
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo'::`1'::dtor$0
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo'::`1'::dtor$1
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo'::`1'::dtor$2
@@ -4724,69 +4358,12 @@ idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo() = default;
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo'::`1'::dtor$5
 // DIA: `idAI2::idAIVolatile::idAIAnimationInfo::~idAIAnimationInfo'::`1'::dtor$6
 // DIA: idAI2::idAIVolatile::idAIScriptInfo::idAIScriptInfo
-idAI2::idAIVolatile::idAIScriptInfo::idAIScriptInfo() {
-  threads.granularity = 1;
-  threads.memTag = 5;
-  threads.listStatic = 1;
-  threads.num = 0;
-  threads.size = 4;
-  threads.list = threads.staticList;
-  std::fill(std::begin(threads.staticList), std::end(threads.staticList), 0);
-  fibers.granularity = 1;
-  fibers.memTag = 5;
-  fibers.listStatic = 1;
-  fibers.num = 0;
-  fibers.size = 4;
-  fibers.list = fibers.staticList;
-  std::fill(std::begin(fibers.staticList), std::end(fibers.staticList), 0);
-  lastAIEventOriginator.value = 0x1FFF;
-  lastAIEventInstigator.value = 0x1FFF;
-}
 // DIA: idAI2::idAIVolatile::idAIScriptInfo::~idAIScriptInfo
-idAI2::idAIVolatile::idAIScriptInfo::~idAIScriptInfo() = default;
 // DIA: idAIDamageInfo::~idAIDamageInfo
 // DIA: idAI2::idAIConstant::idAIConstant
-idAI2::idAIConstant::idAIConstant() {
-  physics.contents.bytes.fill(0);
-  physics.clipMask.bytes.fill(0);
-  physics.playerClipMask.bytes.fill(0);
-  physics.extendedClipMask.bytes.fill(0);
-  movement.moveSpeed = {0.0F, 0.0F};
-  movement.bodyTurnRate = {0.0F, 0.0F};
-  movement.moveTurnRate = {0.0F, 0.0F};
-  movement.influence.offset = {};
-  movement.influence.innerRadius = 32.0F;
-  movement.influence.outerRadius = 64.0F;
-  movement.influence.angle = 0.0F;
-  movement.influence.trailDist = 32.0F;
-  movement.influence.trailFadeInTime = 0.25F;
-  movement.influence.trailFadeOutTime = 2.0F;
-  animation.animWebs[0] = nullptr;
-  animation.useMoods = false;
-  animation.useLipsync = false;
-  animation.useGestures = false;
-  animation.useEyeTracking = false;
-  animation.useFaceSetupEyeTracking = false;
-  animation.useBlinking = false;
-  animation.useLidDeformation = false;
-  animation.useFaceManager = false;
-  animation.useFacialAnims = false;
-  animation.useCombatWebOnly = false;
-  animation.useRelaxedWebOnly = false;
-  animation.useHandsRelaxed = false;
-  animation.canUseTurret = false;
-  animation.useAimOffsetAnims = false;
-  animation.focusTrackingYawOnlyOverride = 0.0F;
-  animation.useMoodsEnabled = false;
-  animation.useLipsyncEnabled = false;
-  animation.useGesturesEnabled = false;
-  animation.useFacialAnimsEnabled = false;
-  animation.useFaceSetupEyeTrackingEnabled = false;
-}
 // DIA: `idAI2::idAIConstant::idAIConstant'::`1'::dtor$0
 // DIA: `idAI2::idAIConstant::idAIConstant'::`1'::dtor$3
 // DIA: idAI2::idAIConstant::~idAIConstant
-idAI2::idAIConstant::~idAIConstant() = default;
 // DIA: `idAI2::idAIConstant::~idAIConstant'::`1'::dtor$0
 // DIA: `idAI2::idAIConstant::~idAIConstant'::`1'::dtor$2
 // DIA: idAI2::DamageRobot
@@ -8177,30 +7754,23 @@ idRecoveredValue idAI2::SpawnCorpse(...) { return RecordCoreCall("SpawnCorpse");
 // DIA: idAI2::GetAnimationDeltaAndRot
 idRecoveredValue idAI2::GetAnimationDeltaAndRot(...) { return RecordCoreCall("GetAnimationDeltaAndRot"); }
 // DIA: idAIScriptProxy::ForceFSMIntoExecutingScript
+idRecoveredValue idAIScriptProxy::ForceFSMIntoExecutingScript(...) {
+  return {};
+}
 // DIA: idList<idHandle<int,enum invalidAIEvent_t,-1>,5>::Append
 // DIA: idList<idHandle<int,enum invalidAIEvent_t,-1>,5>::Insert
 // DIA: idList<eboltControlNode_t,5>::Append
 // DIA: idList<idCrosshairCustomIcon,5>::SetNum
 // DIA: idAIMoveState::~idAIMoveState
 // DIA: idAIMoveState::GetMoveStatus
-aiMoveStatus_t idAIMoveState::GetMoveStatus() const { return moveStatus; }
 // DIA: idAIMoveState::GetFinalPoint
-const idVec3& idAIMoveState::GetFinalPoint() const { return finalPoint; }
 // DIA: idAIMoveState::GetNextPoint
 // DIA: idAIMoveState::IsPlayingTraversalAnim
-bool idAIMoveState::IsPlayingTraversalAnim() const {
-  return traversalPlaying;
-}
 // DIA: idAIMoveState::SetTranslationDeltaScale
-void idAIMoveState::SetTranslationDeltaScale(const idVec3& scale) {
-  translationScale = scale;
-}
 // DIA: idAIMoveState::`scalar deleting destructor'
 // DIA: idAI2::idAIVolatile::idAIPhysics::~idAIPhysics
-idAI2::idAIVolatile::idAIPhysics::~idAIPhysics() = default;
 // DIA: `idAI2::idAIVolatile::idAIPhysics::~idAIPhysics'::`1'::dtor$0
 // DIA: idAI2::idAIVolatile::idAIPain::~idAIPain
-idAI2::idAIVolatile::idAIPain::~idAIPain() = default;
 // DIA: idAI2::UpdateTesla
 idRecoveredValue idAI2::UpdateTesla(...) { return RecordCoreCall("UpdateTesla"); }
 // DIA: `idAI2::UpdateTesla'::`1'::dtor$0
@@ -8282,6 +7852,7 @@ idRecoveredValue idAI2::Think_PlayerControl(...) { return RecordCoreCall("Think_
 // DIA: `idAI2::Think_PlayerControl'::`1'::dtor$16
 // DIA: `idAI2::Think_PlayerControl'::`1'::dtor$17
 // DIA: idAIScriptProxy::InternalCallEvent
+idRecoveredValue idAIScriptProxy::InternalCallEvent(...) { return {}; }
 // DIA: idLegsFSM::~idLegsFSM
 // DIA: idAI2::Spawn
 idRecoveredValue idAI2::Spawn(...) { return RecordCoreCall("Spawn"); }
@@ -8408,10 +7979,8 @@ idRecoveredValue idAI2::Think_Impl(...) { return RecordCoreCall("Think_Impl"); }
 // DIA: `idAI2::Think_Impl'::`1'::dtor$6
 // DIA: `idAI2::Think_Impl'::`1'::dtor$8
 // DIA: idAI2::idAIVolatile::idAIFSMInfo::~idAIFSMInfo
-idAI2::idAIVolatile::idAIFSMInfo::~idAIFSMInfo() = default;
 // DIA: `idAI2::idAIVolatile::idAIFSMInfo::~idAIFSMInfo'::`1'::dtor$0
 // DIA: idAI2::idAIVolatile::~idAIVolatile
-idAI2::idAIVolatile::~idAIVolatile() = default;
 // DIA: `idAI2::idAIVolatile::~idAIVolatile'::`1'::dtor$0
 // DIA: `idAI2::idAIVolatile::~idAIVolatile'::`1'::dtor$1
 // DIA: `idAI2::idAIVolatile::~idAIVolatile'::`1'::dtor$2
@@ -8485,58 +8054,19 @@ idAI2::idAIVolatile::idAIVolatile() = default;
 // DIA: `idAI2::~idAI2'::`1'::dtor$14
 // DIA: `idAI2::~idAI2'::`1'::dtor$16
 // DIA: idActor::GetAF
-const idAnimator_AF* idActor::GetAF() const {
-  return &articulatedFigureProperties;
-}
 // DIA: idActor::GetEyePos
-void idActor::GetEyePos(idVec3* eyePosition) {
-  const idVec3 origin =
-      GetPhysics() != nullptr ? GetPhysics()->GetOrigin() : idVec3{};
-  *eyePosition = origin + GetEyeOffset();
-}
-
 // DIA: idActor::GetLastEyePos
-void idActor::GetLastEyePos(idVec3* eyePosition) const {
-  *eyePosition = lastEyePosition;
-}
 // DIA: idActor::GetEyeAxis
-void idActor::GetEyeAxis(idMat3* outputEyeAxis) const {
-  *outputEyeAxis = eyeAxis;
-}
 // DIA: idActor::SetEyeAxis
-void idActor::SetEyeAxis(const idMat3* inputEyeAxis) {
-  eyeAxis = *inputEyeAxis;
-}
 // DIA: idActor::GetInventory
-const idInventoryCollection* idActor::GetInventory() const {
-  return &inventory;
-}
 // DIA: idActor::GetAttachments
-const idAttachmentCollection* idActor::GetAttachments() const {
-  return &attachments;
-}
 // DIA: idActor::GetTriggerTouchList
-const idList<idEntityPtr<idEntity>, 5>* idActor::GetTriggerTouchList() const {
-  return &touching;
-}
 // DIA: idActor::GetDisplayName
-idStrId idActor::GetDisplayName() const { return displayName; }
 // DIA: idActor::GetPosture
-int idActor::GetPosture() const { return posture; }
 // DIA: idActor::GetLeanState
-leanState_t idActor::GetLeanState() const { return leanState; }
 // DIA: idActor::SetLeanState
-void idActor::SetLeanState(leanState_t newLeanState) {
-  leanState = newLeanState;
-}
 // DIA: idActor::GetWeaponReadyState
-weaponReadyState_t idActor::GetWeaponReadyState() const {
-  return weaponReadyState;
-}
 // DIA: idActor::SetWeaponReadyState
-void idActor::SetWeaponReadyState(weaponReadyState_t state) {
-  weaponReadyState = state;
-}
 // DIA: idAI2::GetAASPositionMgr
 idAASPositionMgr* idAI2::GetAASPositionMgr() {
   return aasPositionManager.get();
@@ -8592,6 +8122,7 @@ bool idAI2::IsDying() const {
          (animEventState.dead && GetAlertCycle() != 6);
 }
 // DIA: idAIEditable::idAIEditable
+idAIEditable::idAIEditable() = default;
 // DIA: `idAIEditable::idAIEditable'::`1'::dtor$0
 // DIA: `idAIEditable::idAIEditable'::`1'::dtor$12
 // DIA: `idAIEditable::idAIEditable'::`1'::dtor$1
@@ -8996,5 +8527,3 @@ idCVar rpLandWetRippleIntensity("rpLandWetRippleIntensity", "0", 0, "recovered A
 // DIA: `dynamic atexit destructor for 'ai_controlHeartBeatIntervalsMin''
 // DIA: `dynamic atexit destructor for 'ai_controlHeartBeatIntervalsMax''
 // DIA: `dynamic atexit destructor for 'ai_controlTakeDownDistance''
-
-#include "tungsten/game/ai/ai2_core_support.inl"

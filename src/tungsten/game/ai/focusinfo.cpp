@@ -324,6 +324,11 @@ bool idFocusInfo::HasActiveFocus() const {
           idealFocusPoint.LengthSqr() > 0.0F);
 }
 
+// Header-emitted focus accessor used by AI2.
+bool idFocusInfo::HasFocus() {
+  return focusEntity != nullptr || hasExplicitFocusPoint;
+}
+
 // DIA: `dynamic initializer for 'ai_debugAimRotationTracker''
 // DIA: `dynamic initializer for 'ai_debugLookRotationTracker''
 // DIA: `dynamic atexit destructor for 'ai_debugAimRotationTracker''

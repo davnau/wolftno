@@ -7,7 +7,7 @@
 class idCoverActions {
 public:
   virtual ~idCoverActions() = default;
-  void Clear();
+  void Clear() { actionMask &= 0xE0u; }
   void Init(const struct aas2Cover_t* cover);
 
   void SetActionMask(std::uint8_t value) {

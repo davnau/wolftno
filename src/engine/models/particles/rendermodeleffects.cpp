@@ -176,8 +176,9 @@ bool idRenderModelEffects::AddParticles(
       continue;
 
     const int totalParticles = stage->systemProperties.totalParticles;
-    const int bunchDuration = static_cast<int>(stage->cycleMsec *
-                                               stage->systemProperties.spawnBunching);
+    const int bunchDuration =
+        stage->cycleMsec *
+        static_cast<int>(stage->systemProperties.spawnBunching);
     const int elapsed = gameTime - systemStartTime;
     int previousParticle = 0;
     int currentParticle = 0;
@@ -406,8 +407,8 @@ idRenderModelEffects::idRenderModelEffects() {
   g.axis = mat3_identity;
   deferredAxis = mat3_identity;
   FreeSurfaces();
-  g.flags1 |= 0x80u;
-  g.flags2 |= 0x20u;
+  g.flags0 |= 0x80u;
+  g.flags1 |= 0x20u;
   g.modelDepthSort = MODEL_DEPTH_SORT_LAST;
 
   particles = AllocateEffects<effectParticleParms_t>(
@@ -434,9 +435,13 @@ idRenderModelEffects::idRenderModelEffects() {
   for (idList<deferredStage_t, 5>& stages : deferredStages)
     stages.ClearFree();
 
-  triangles = AllocateEffects<idTriangles>(
-      "w:\\build\\tech5\\shared\\idlib\\Heap.h(113) : tag", 1024,
-      false);
+  auto* triangleAllocation = static_cast<std::uint8_t*>(
+      idMem::Singleton()->AllocWithLocation(
+          "w:\\build\\tech5\\shared\\idlib\\Heap.h(113) : tag",
+          sizeof(idTriangles) * 1024 + 8, kEffectParticleTag, false,
+          ALIGN_16, HEAP_DEFAULTHEAP));
+  *reinterpret_cast<std::uint32_t*>(triangleAllocation) = 1024;
+  triangles = reinterpret_cast<idTriangles*>(triangleAllocation + 8);
   for (int index = 0; index < 1024; ++index) {
     new (&triangles[index]) idTriangles{};
     triangles[index].bounds[0] = {-99999.0f, -99999.0f, -99999.0f};
@@ -458,7 +463,7 @@ idRenderModelEffects::~idRenderModelEffects() {
   if (triangles != nullptr) {
     for (int index = 0; index < 1024; ++index)
       triangles[index].~idTriangles();
-    memory->Free(triangles, ALIGN_16);
+    memory->Free(reinterpret_cast<std::uint8_t*>(triangles) - 8, ALIGN_16);
   }
 }
 
@@ -475,4 +480,327 @@ void idRenderModelEffects::ResetForEdit() {
   if (surfaces.size < 0)
     surfaces.ClearFree();
   surfaces.num = surfaces.size > 0 ? 0 : surfaces.size;
+}
+
+bool idRenderModelEffects::UpdateInView(
+    const idRenderView* currentView, const idRenderView* nextView,
+    idRenderModelUpdateTools* updateTools) {
+  if (r_skipEffectParticles.valueInteger == 1) {
+    if (surfaces.size < 0)
+      surfaces.ClearFree();
+    surfaces.num = surfaces.size > 0 ? 0 : surfaces.size;
+    CommitThisFrame();
+    return false;
+  }
+
+  const int useParticleGenJobs = r_useParticleGenJobs.valueInteger;
+  if (surfaces.size < 0)
+    surfaces.ClearFree();
+  surfaces.num = surfaces.size > 0 ? 0 : surfaces.size;
+
+  const int tracerSurfaceStart = surfaces.num;
+  if (r_skipTracers.valueInteger == 0) {
+    for (int tracerIndex = latchedTracerRange[0];
+         tracerIndex < latchedTracerRange[1]; ++tracerIndex) {
+      const idMaterial* material =
+          tracers[tracerIndex & (kTracerCapacity - 1)].mat;
+      int surfaceIndex = tracerSurfaceStart;
+      while (surfaceIndex < surfaces.num &&
+             surfaces[surfaceIndex].material != material)
+        ++surfaceIndex;
+      if (surfaceIndex != surfaces.num)
+        continue;
+
+      idRenderModelSurface surface{};
+      surface.material = material;
+      surface.geometryIsReference = true;
+      surface.referenceMask = 1;
+      idTriangles* geometry = &triangles[surfaces.num];
+      surface.geometry = geometry;
+      geometry->vertexMask = 31;
+      const int firstIndex = indexOffset;
+      int numVerts = 0;
+      int numIndexes = 0;
+
+      for (int matchingIndex = tracerIndex;
+           matchingIndex < latchedTracerRange[1]; ++matchingIndex) {
+        const tracerParms_t& tracer =
+            tracers[matchingIndex & (kTracerCapacity - 1)];
+        if (tracer.mat != material)
+          continue;
+        if ((vertOffset >> 2) + 2 >= 2048)
+          break;
+
+        idDrawVert* verts = &mappedVerts[vertOffset];
+        vertOffset += 8;
+        indexOffset += 12;
+        numVerts += 8;
+        numIndexes += 12;
+
+        float elapsed = static_cast<float>(latchedTime - deltaTime -
+                                           tracer.startTime) *
+                        tracer.speed * 0.001f;
+        elapsed = std::max(elapsed, 0.0f);
+        const idVec3 tail = tracer.origin + tracer.dir * elapsed;
+        const idVec3 tip = tail + tracer.dir * tracer.length;
+        const idVec3 toView = currentView->r.vieworg - tracer.origin;
+        idVec3 side{
+            tracer.dir.y * toView.z - tracer.dir.z * toView.y,
+            tracer.dir.z * toView.x - tracer.dir.x * toView.z,
+            tracer.dir.x * toView.y - tracer.dir.y * toView.x};
+        const float sideLength = std::sqrt(std::max(
+            side.x * side.x + side.y * side.y + side.z * side.z,
+            1.17549435e-38f));
+        side = side * (tracer.height * 0.5f / sideLength);
+
+        verts[0].xyz = tail + side;
+        verts[1].xyz = tip + side;
+        verts[2].xyz = tail - side;
+        verts[3].xyz = tip - side;
+        verts[4].xyz = tip - side;
+        verts[5].xyz = tip + side;
+        verts[6].xyz = tail - side;
+        verts[7].xyz = tail + side;
+        verts[0].st = {0.0f, 0.0f};
+        verts[1].st = {1.0f, 0.0f};
+        verts[2].st = {0.0f, 1.0f};
+        verts[3].st = {1.0f, 1.0f};
+        verts[4].st = {1.0f, 1.0f};
+        verts[5].st = {1.0f, 0.0f};
+        verts[6].st = {0.0f, 1.0f};
+        verts[7].st = {0.0f, 0.0f};
+      }
+
+      geometry->numVerts = numVerts;
+      geometry->numIndexes = numIndexes;
+      geometry->vertexBuffer.Reference(vertexBuffer[mappedBufferIndex]);
+      geometry->indexBuffer.Reference(indexBuffer, 2 * firstIndex,
+                                      2 * numIndexes);
+      surfaces.Append(surface);
+    }
+  }
+
+  const int decalSurfaceStart = surfaces.num;
+  if (r_skipDecals.valueInteger == 0) {
+    for (int decalIndex = latchedDecalRange[0];
+         decalIndex < latchedDecalRange[1]; ++decalIndex) {
+      const idMaterial* material =
+          decals[decalIndex & (kDecalCapacity - 1)].mat;
+      int surfaceIndex = decalSurfaceStart;
+      while (surfaceIndex < surfaces.num &&
+             surfaces[surfaceIndex].material != material)
+        ++surfaceIndex;
+      if (surfaceIndex != surfaces.num)
+        continue;
+
+      idRenderModelSurface surface{};
+      surface.material = material;
+      surface.geometryIsReference = true;
+      surface.referenceMask = 1;
+      idTriangles* geometry = &triangles[surfaces.num];
+      surface.geometry = geometry;
+      geometry->vertexMask = 31;
+      const int firstIndex = indexOffset;
+      int numVerts = 0;
+      int numIndexes = 0;
+
+      for (int matchingIndex = decalIndex;
+           matchingIndex < latchedDecalRange[1]; ++matchingIndex) {
+        const int slot = matchingIndex & (kDecalCapacity - 1);
+        const decalParms_t& decal = decals[slot];
+        if (decal.mat != material)
+          continue;
+        if ((vertOffset >> 2) + 1 >= 2048)
+          break;
+
+        idDrawVert localVerts[4];
+        std::memcpy(localVerts, decalVerts[slot].verts, sizeof(localVerts));
+        const int fadeInEnd = decal.startTime + decal.fadeInEndTime;
+        const int fadeOutStart = decal.startTime + decal.fadeOutStartTime;
+        float fade = 0.0f;
+        if (latchedTime < fadeInEnd) {
+          fade = 1.0f - static_cast<float>(latchedTime - decal.startTime) /
+                            static_cast<float>(fadeInEnd - decal.startTime);
+        } else if (latchedTime > fadeOutStart) {
+          fade = static_cast<float>(latchedTime - fadeOutStart) /
+                 static_cast<float>(decal.startTime + decal.lifeTime -
+                                    fadeOutStart);
+          fade = std::clamp(fade, 0.0f, 1.0f);
+        }
+        const std::uint8_t alpha = static_cast<std::uint8_t>(
+            static_cast<int>((1.0f - fade) * 255.0f));
+        const shadowMapCPU_t* shadowMap = static_cast<const shadowMapCPU_t*>(
+            updateTools->globalShadowMap);
+        for (idDrawVert& vertex : localVerts) {
+          const float shadow = shadowMap != nullptr
+                                   ? shadowMap->ShadowSample(vertex.xyz)
+                                   : 1.0f;
+          const int sample = std::clamp(
+              static_cast<int>(shadow * 255.0f), 0, 255);
+          vertex.color[0] = static_cast<std::uint8_t>(sample);
+          vertex.color[1] = static_cast<std::uint8_t>(sample);
+          vertex.color[2] = static_cast<std::uint8_t>(sample);
+          vertex.color[3] = static_cast<std::uint8_t>(
+              (static_cast<unsigned>(alpha) * vertex.color[3]) >> 8);
+        }
+
+        std::memcpy(&mappedVerts[vertOffset], localVerts, sizeof(localVerts));
+        vertOffset += 4;
+        indexOffset += 6;
+        numVerts += 4;
+        numIndexes += 6;
+      }
+
+      geometry->numVerts = numVerts;
+      geometry->numIndexes = numIndexes;
+      geometry->vertexBuffer.Reference(vertexBuffer[mappedBufferIndex]);
+      geometry->indexBuffer.Reference(indexBuffer, 2 * firstIndex,
+                                      2 * numIndexes);
+      surfaces.Append(surface);
+    }
+  }
+
+  const int previousUnsortedBuffer =
+      (idRenderModelTransparency::mappedBufferIndex + 2) % 3;
+  const idVertexBuffer& previousVerts =
+      idRenderModelTransparency::vertexBufferUnsorted[previousUnsortedBuffer];
+  for (int stageIndex = 0;
+       stageIndex < deferredStages[previousUnsortedBuffer].num; ++stageIndex) {
+    const deferredStage_t& stage =
+        deferredStages[previousUnsortedBuffer][stageIndex];
+    idRenderModelSurface surface{};
+    surface.material = stage.mtr;
+    surface.geometryIsReference = true;
+    surface.referenceMask = 1;
+    idTriangles* geometry = &triangles[surfaces.num];
+    surface.geometry = geometry;
+    geometry->vertexMask = 3167;
+    geometry->numVerts = stage.vertCount;
+    geometry->numIndexes = 6 * (stage.vertCount >> 2);
+    geometry->vertexBuffer.Reference(previousVerts);
+    geometry->indexBuffer.Reference(
+        idRenderModelTransparency::indexBufferUnsorted,
+        2 * stage.indexOffset, 2 * geometry->numIndexes);
+    surfaces.Append(surface);
+  }
+
+  particleRenderView->viewOrg = nextView->r.vieworg;
+  particleRenderView->viewFwd = nextView->r.viewaxis.mat[0];
+  particleRenderView->viewLeft = nextView->r.viewaxis.mat[1];
+  particleRenderView->viewUp = nextView->r.viewaxis.mat[2];
+  particleRenderView->renderTime = latchedTime;
+  particleRenderView->deltaTime = deltaTime;
+  particleRenderView->atlasWidth = static_cast<std::uint16_t>(
+      globalImages->transSortImageAtlas->ATLAS_WIDTH);
+  particleRenderView->atlasHeight = static_cast<std::uint16_t>(
+      globalImages->transSortImageAtlas->ATLAS_HEIGHT);
+
+  SortEffectParticles();
+  const int numParticles = latchedParticleRange[1] - latchedParticleRange[0];
+  std::vector<int> estimatedQuads(static_cast<std::size_t>(numParticles));
+  for (int index = 0; index < numParticles; ++index) {
+    const effectParticleParms_t& particle =
+        particles[(latchedParticleRange[0] + index) &
+                  (kParticleCapacity - 1)];
+    estimatedQuads[index] =
+        EstimateQuadAllocation(particle.stage, &particle, latchedTime);
+  }
+
+  const visibleInfluenceSpheres_t* visibleInfluenceSpheres =
+      updateTools->transparencyModel->visibleInfluenceSpheres;
+  idList<deferredStage_t, 5>& currentDeferredStages =
+      deferredStages[idRenderModelTransparency::mappedBufferIndex];
+  if (currentDeferredStages.size < 0)
+    currentDeferredStages.ClearFree();
+  currentDeferredStages.num =
+      currentDeferredStages.size > 0 ? 0 : currentDeferredStages.size;
+
+  int generatedParmCount = 0;
+  for (int particleIndex = 0; particleIndex < numParticles;
+       ++particleIndex) {
+    int quadCount = estimatedQuads[particleIndex];
+    if (quadCount == 0)
+      continue;
+
+    effectParticleParms_t* firstParticle =
+        &particles[(latchedParticleRange[0] + particleIndex) &
+                   (kParticleCapacity - 1)];
+    int batchCount = 1;
+    while (particleIndex + 1 < numParticles) {
+      effectParticleParms_t* nextParticle =
+          &particles[(latchedParticleRange[0] + particleIndex + 1) &
+                     (kParticleCapacity - 1)];
+      if (nextParticle->stage != firstParticle->stage ||
+          nextParticle == particles ||
+          quadCount + estimatedQuads[particleIndex + 1] > 128 ||
+          batchCount > 135)
+        break;
+      quadCount += estimatedQuads[++particleIndex];
+      ++batchCount;
+    }
+
+    const idParticleStage* stage = firstParticle->stage;
+    if (stage->colorAttributes.useGlobalShadows) {
+      const shadowMapCPU_t* shadowMap = static_cast<const shadowMapCPU_t*>(
+          updateTools->globalShadowMap);
+      firstParticle->shadow = shadowMap != nullptr
+                                  ? shadowMap->ShadowSample(firstParticle->origin)
+                                  : 1.0f;
+    }
+
+    deferredParticleGenParms_t& parms =
+        particleGenParms[generatedParmCount];
+    parms.numJobs = 1;
+    parms.mergedSurfaces = false;
+    parms.numLocations = 0;
+    parms.location = nullptr;
+    parms.renderView = particleRenderView;
+    parms.effectParticleParms = firstParticle;
+    parms.modelParticleParms = nullptr;
+    parms.stage = stage;
+    parms.tables = firstParticle->tables;
+    parms.staticVerts = stage->GetStaticVerts();
+    parms.numEffectParticleParms =
+        static_cast<std::uint16_t>(batchCount);
+    parms.numModelParticleParms = 0;
+    parms.numTables = firstParticle->numTables;
+    parms.staticVertsSize = stage->GetNumStaticVerts();
+    parms.deadTime = stage->maxDeadTime;
+    parms.visibleInfluenceSpheres = visibleInfluenceSpheres;
+    parms.maxVertsToGen = 4 * quadCount;
+    parms.verts = nullptr;
+    parms.quadDepth = nullptr;
+    parms.quadsUsed = nullptr;
+    parms.meshDistribution.ConstructEmpty();
+
+    bool allocated = false;
+    if (stage->isTransparencySorted) {
+      if (r_skipEffectParticles.valueInteger != 3) {
+        allocated = idRenderModelTransparency::AllocateQuadSegment(
+            quadCount, parms.verts, parms.quadDepth, parms.quadsUsed,
+            stage->hasEmissivePass);
+      }
+    } else if (r_skipEffectParticles.valueInteger != 2) {
+      deferredStage_t deferredStage{};
+      deferredStage.mtr = stage->systemProperties.material;
+      allocated = idRenderModelTransparency::AllocateUnsortedQuadSegment(
+          quadCount, parms.verts, deferredStage.indexOffset,
+          deferredStage.vertCount);
+      if (allocated)
+        currentDeferredStages.Append(deferredStage);
+    }
+
+    if (!allocated)
+      continue;
+    if (useParticleGenJobs == 1) {
+      updateTools->renderModelJobList->AddJob(
+          reinterpret_cast<jobRun_t>(ParticleGenJob), &parms);
+    } else {
+      ParticleGenJob(&parms);
+    }
+    ++generatedParmCount;
+  }
+
+  CommitThisFrame();
+  return true;
 }

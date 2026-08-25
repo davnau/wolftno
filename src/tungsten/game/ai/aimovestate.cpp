@@ -598,3 +598,16 @@ void idAIMoveState::AdvanceLinearMovement(int time, float speedScale) {
 // DIA: `dynamic atexit destructor for 'ai_forceMicrotransitions''
 // DIA: `dynamic atexit destructor for 'ai_pathResolver''
 // DIA: `dynamic atexit destructor for 'ai_aaspush''
+
+// Header-emitted move-state accessors used by AI2.
+aiMoveStatus_t idAIMoveState::GetMoveStatus() const { return moveStatus; }
+
+const idVec3& idAIMoveState::GetFinalPoint() const { return finalPoint; }
+
+bool idAIMoveState::IsPlayingTraversalAnim() const {
+  return traversalPlaying;
+}
+
+void idAIMoveState::SetTranslationDeltaScale(const idVec3& scale) {
+  translationScale = scale;
+}

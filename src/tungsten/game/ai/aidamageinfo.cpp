@@ -138,3 +138,16 @@ void idAIDamageInfo::Update(
   }
   jointIndex = impactJoint;
 }
+
+// Header-emitted damage-info support used by AI2.
+idEntity* idAIDamageInfo::GetInflictor() const {
+  return const_cast<idEntity*>(inflictor);
+}
+
+idEntity* idAIDamageInfo::GetAttacker() const {
+  return const_cast<idEntity*>(attacker);
+}
+
+float idDamageGroup::HealthRatio() const {
+  return maxHealth > 0.0F ? health / maxHealth : 0.0F;
+}

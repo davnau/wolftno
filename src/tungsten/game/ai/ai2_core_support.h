@@ -1342,9 +1342,17 @@ public:
 class idBaseHealth {
 public:
   virtual ~idBaseHealth() = default;
-  void SetCurBaseHealth(float health);
+  void SetCurBaseHealth(float health) {
+    if (health > 0.0F) {
+      ClearDeadFlag();
+      SetCurBaseHealth_Impl(health);
+    }
+  }
   bool DamageShield_Impl(float damage, bool allowDeath, bool overflow,
-                         float* remainingDamage, bool ignoreArmor);
+                         float* remainingDamage, bool ignoreArmor) {
+    (void)overflow;
+    return Damage_Impl(damage, allowDeath, remainingDamage, ignoreArmor);
+  }
 
 protected:
   virtual void ClearDeadFlag() = 0;
@@ -1809,7 +1817,12 @@ private:
 
 class idFXManager {
 public:
-  void SetExternalTransform(const idVec3& position, const idMat3& rotation);
+  void SetExternalTransform(const idVec3& position,
+                            const idMat3& rotation) {
+    externalPosition = position;
+    externalRotation = rotation;
+    hasExternalPositionAndRotation = true;
+  }
   int StartFX(const idVec3* position, const idMat3* axis, int gameTime,
               fxCondition_t condition) {
     lastStartPosition = *position;
@@ -2231,7 +2244,11 @@ public:
 template <typename T>
 class idRange {
 public:
-  T GetRatio(T current) const;
+  T GetRatio(T current) const {
+    const T range = maxRange - minRange;
+    const T clampedCurrent = std::max(T{}, current - minRange);
+    return range != T{} ? std::min(T{1}, clampedCurrent / range) : T{};
+  }
   T minRange{};
   T maxRange{};
 };

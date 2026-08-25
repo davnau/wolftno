@@ -1,16 +1,10 @@
 #pragma once
 
 #include "shared/idlib/math/vector.h"
+#include "shared/idlib/geometry/screenrect.h"
 
 #include <cstddef>
 #include <cstdint>
-
-struct idScreenRect {
-  int x1;
-  int y1;
-  int x2;
-  int y2;
-};
 
 enum modelDepthSort_t : int {
   MODEL_DEPTH_SORT_FIRST = -6,

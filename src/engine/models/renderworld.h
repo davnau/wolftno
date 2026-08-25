@@ -292,6 +292,9 @@ struct modelTrace_t {
 
 class idRenderWorldCommitted {
 public:
+  int GetNumCommittedModels() const;
+  int GetNumCommittedLights() const;
+  int GetNumAddAlwaysModels() const;
   void ApproximateLightingForBounds(const idBounds*, approximateLighting_t*);
   void ApproximateAmbientForBounds(const idBounds*, approximateLighting_t*);
   void BoundsInAreas(const idBounds*, int*, int*, int);

@@ -502,3 +502,80 @@ bool idAIMemory::Contains(
   }
   return false;
 }
+
+// Header-emitted memory accessors used by AI2.
+const idEntity* idAIMemory::GetEnemy() const { return currentEnemy; }
+
+const idEntity* idAIMemory::GetFriendly() const { return currentFriendly; }
+
+const idEntity* idAIMemory::GetFriendlyBlocker() const {
+  return friendlyBlocker;
+}
+
+idEntity* idAIMemory::GetLastAttacker() const { return lastAttacker; }
+
+bool idAIMemory::ShouldAvoid(const int currentTimeValue) {
+  return avoidEntity != nullptr && currentTimeValue < avoidFinishedTime &&
+         avoidRadius != 0.0F;
+}
+
+void idAIMemory::SetAvoidEntity(const int currentTimeValue,
+                                const idEntity* entity,
+                                const float radius,
+                                const float durationSeconds) {
+  avoidEntity = entity;
+  avoidRadius = radius;
+  avoidFinishedTime =
+      currentTimeValue - static_cast<int>(durationSeconds * -1000.0F);
+}
+
+void idAIMemory::SetSpottedEnemyTrigger(const idEntity* entity) {
+  spottedEnemyTrigger = entity;
+  spottedEnemyTriggerNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
+
+const idEntity* idAIMemory::GetSpottedEnemyTrigger() const {
+  if (spottedEnemyTrigger == nullptr) return nullptr;
+  if (gameLocal == nullptr || spottedEnemyTriggerNumber < 0) {
+    return spottedEnemyTrigger;
+  }
+  return gameLocal->GetEntityByNumber(spottedEnemyTriggerNumber) ==
+                 spottedEnemyTrigger
+             ? spottedEnemyTrigger
+             : nullptr;
+}
+
+void idAIMemory::SetDetectedEnemyTrigger(const idEntity* entity) {
+  detectedEnemyTrigger = entity;
+  detectedEnemyTriggerNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
+
+const idEntity* idAIMemory::GetDetectedEnemyTrigger() const {
+  if (detectedEnemyTrigger == nullptr) return nullptr;
+  if (gameLocal == nullptr || detectedEnemyTriggerNumber < 0) {
+    return detectedEnemyTrigger;
+  }
+  return gameLocal->GetEntityByNumber(detectedEnemyTriggerNumber) ==
+                 detectedEnemyTrigger
+             ? detectedEnemyTrigger
+             : nullptr;
+}
+
+void idAIMemory::SetTriggeredInteraction(idPlayer* entity) {
+  triggeredInteraction = entity;
+  triggeredInteractionNumber =
+      entity != nullptr ? entity->GetEntityNumber() : -1;
+}
+
+idPlayer* idAIMemory::GetTriggeredInteractionForTest() const {
+  if (triggeredInteraction == nullptr) return nullptr;
+  if (gameLocal == nullptr || triggeredInteractionNumber < 0) {
+    return triggeredInteraction;
+  }
+  return gameLocal->GetEntityByNumber(triggeredInteractionNumber) ==
+                 triggeredInteraction
+             ? triggeredInteraction
+             : nullptr;
+}

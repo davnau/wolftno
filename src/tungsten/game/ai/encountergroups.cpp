@@ -830,3 +830,16 @@ idEncounterGroupMgr::~idEncounterGroupMgr() = default;
 // DIA: `dynamic initializer for 'ai_debugGoodWill''
 // DIA: `dynamic atexit destructor for 'ai_debugGrenadeHints''
 // DIA: `dynamic atexit destructor for 'ai_debugGoodWill''
+
+// Header-emitted encounter-group accessors used by AI2.
+idCombatStage* idEncounterGroup::GetCurrentCombatStage() {
+  return curCombatStage < 0 || curCombatStage >= combatStages.Num()
+             ? nullptr
+             : &combatStages[curCombatStage];
+}
+
+const idCombatStage* idEncounterGroup::GetCurrentCombatStage() const {
+  return curCombatStage < 0 || curCombatStage >= combatStages.Num()
+             ? nullptr
+             : &combatStages[curCombatStage];
+}
