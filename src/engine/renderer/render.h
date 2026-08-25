@@ -38,6 +38,11 @@ struct idViewBypass {
 };
 
 struct idEnvBlendParms {
+  void RemoveRenderParm(const idDeclRenderParm* parm);
+  void Clear();
+  void CopyFrom(const idEnvBlendParms& other);
+  void SetFloat(const idDeclRenderParm* parm, float value, float blend);
+
   idList<const idDeclRenderParm*, 5> parms;
   idList<parmValue_t, 5> values;
   idList<float, 5> blends;
@@ -72,6 +77,10 @@ struct idStaticEnvBlendParms : public idEnvBlendParms {
 };
 
 struct renderView_t {
+  void BuildProjectionMatrix(idRenderMatrix& projectionMatrix, int jitterWidth,
+                             int jitterHeight) const;
+  void BuildViewMatrix(idRenderMatrix& viewMatrix) const;
+
   int renderTime;
   int viewID;
   bool forceFullVirtualTextureLoad;
@@ -250,6 +259,9 @@ struct alignas(16) renderSettings_t {
 
 class alignas(16) idRenderView {
 public:
+  idRenderView();
+  ~idRenderView();
+
   void CommitParameters(int windowWidth, int windowHeight, int renderWidth,
                         int renderHeight);
 

@@ -3,6 +3,8 @@
 #include "shared/idlib/containers/staticlist.h"
 #include "tungsten/game/ai/targetting/targetinfo.h"
 
+class idAIWorldState;
+
 class idTargetCache {
 public:
   idTargetCache();

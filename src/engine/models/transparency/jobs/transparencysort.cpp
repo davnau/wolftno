@@ -1,5 +1,7 @@
 #include "engine/models/transparency/jobs/transparencysort.h"
 
+#include "engine/models/static/jobs/statictransparencygen.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -143,7 +145,8 @@ std::uint32_t TransparencySortQuads(const transSortParms_t* parms) {
       if (numSortedQuads != segment.segmentOffset) {
         std::memmove(parms->verts + 4 * numSortedQuads,
                      parms->verts + 4 * segment.segmentOffset,
-                     sizeof(idDrawVert) * 4 * static_cast<std::size_t>(numQuads));
+                     sizeof(idTransparencyVert) * 4 *
+                         static_cast<std::size_t>(numQuads));
         std::memmove(parms->quadDepths + numSortedQuads,
                      parms->quadDepths + segment.segmentOffset,
                      sizeof(float) * static_cast<std::size_t>(numQuads));
@@ -193,4 +196,3 @@ std::uint32_t TransparencySortQuads(const transSortParms_t* parms) {
   parms->sortResult->numOpaqueQuads = numOpaqueQuads;
   return static_cast<std::uint32_t>(numSortedQuads);
 }
-

@@ -103,6 +103,7 @@ aiSenseState_t::aiSenseState_t(const aiSenseState_t& other)
 
 // DIA: idAIWorldState::Clear
 void idAIWorldState::Clear() {
+  targetCache.Clear();
   activeIndices.clear();
   freeIndices.clear();
   for (int slot = MAX_ENTITY_STATES - 1; slot >= 0; --slot) {

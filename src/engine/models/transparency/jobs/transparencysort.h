@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
+class idTransparencyVert;
+
 struct transSortIndex_t {
   std::uint32_t value;
 };
@@ -30,7 +32,7 @@ struct transSortParms_t {
   std::int16_t sort;
   int numSegmentAllocations;
   transSortSegmentInfo_t* segmentInfo;
-  idDrawVert* verts;
+  idTransparencyVert* verts;
   std::uint8_t* emissiveQuads;
   int numQuadsToSort;
   int pad0;

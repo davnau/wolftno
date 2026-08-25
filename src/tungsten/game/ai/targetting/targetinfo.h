@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tungsten/game/ai/gamestate/aiworldstate.h"
+#include "tungsten/game/ai/gamestate/aientitystate.h"
 
 #include <cmath>
 

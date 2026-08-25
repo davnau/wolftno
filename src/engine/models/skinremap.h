@@ -1,6 +1,16 @@
 #pragma once
 
-// The concrete skin remap fields are owned by the renderer/skin declaration
-// port.  Models only retain these objects through idList at this boundary.
-struct skinRemap_t {};
+#include "shared/idlib/math/vector.h"
 
+#include <cstddef>
+
+class idMaterial;
+
+struct skinRemap_t {
+  const idMaterial* mtr{};
+  idVec2 texOffset{};
+};
+
+static_assert(sizeof(skinRemap_t) == 16, "skinRemap_t ABI drift");
+static_assert(offsetof(skinRemap_t, texOffset) == 8,
+              "skinRemap_t texture-offset ABI drift");

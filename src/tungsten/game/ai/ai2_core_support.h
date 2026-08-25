@@ -383,6 +383,42 @@ public:
     lastForceStateFlags = flags;
     ++forceStateCount;
   }
+  int ForceState(const char* subWebName, const char* stateName,
+                 const blendParms_t& blendParms, int flags) {
+    lastForcedSubWebName = subWebName != nullptr ? subWebName : "";
+    lastForcedStateName = stateName != nullptr ? stateName : "";
+    ++namedForceStateCount;
+    if (declaration == nullptr) return 0;
+
+    const animWebSubWebIndex_t subWebIndex =
+        declaration->GetSubWebIndexForName(lastForcedSubWebName.data);
+    const animWebStateIndex_t stateIndex =
+        declaration->GetStateIndexForName(lastForcedStateName.data);
+    if (subWebIndex.value < 0 || stateIndex.value < 0 ||
+        declaration->FindNodeIndex(subWebIndex, stateIndex).value < 0) {
+      return 0;
+    }
+
+    ForceState(idAnimWebIndex{subWebIndex.value},
+               idAnimWebIndex{stateIndex.value}, blendParms, flags);
+    return 1;
+  }
+  void ConfigureMergeBranchForTest(bool present, bool hasLeft) {
+    mergeBranchPresent = present;
+    mergeBranchHasLeft = hasLeft;
+  }
+  bool HasMergeBranchForAI() const { return mergeBranchPresent; }
+  void ClearMergeBranchLeftForAI() {
+    mergeBranchHasLeft = false;
+    ++mergeBranchLeftClearCount;
+  }
+  void InternalPreBlendTreeForAI(const idAnimStack* stack, int currentTime,
+                                 int gameMillisecondsPerRealSecond) {
+    lastPreBlendStack = stack;
+    lastPreBlendTime = currentTime;
+    lastPreBlendMillisecondsPerRealSecond = gameMillisecondsPerRealSecond;
+    ++preBlendCount;
+  }
   int ChangeStateVia(idAnimWebIndex destinationSubWeb,
                      idAnimWebIndex destinationState,
                      idAnimWebIndex viaSubWeb, idAnimWebIndex viaState,
@@ -469,6 +505,27 @@ public:
     return lastForcedOriginBlend;
   }
   int GetLastForceStateFlagsForTest() const { return lastForceStateFlags; }
+  int GetNamedForceStateCountForTest() const {
+    return namedForceStateCount;
+  }
+  const char* GetLastForcedSubWebNameForTest() const {
+    return lastForcedSubWebName.data;
+  }
+  const char* GetLastForcedStateNameForTest() const {
+    return lastForcedStateName.data;
+  }
+  bool MergeBranchHasLeftForTest() const { return mergeBranchHasLeft; }
+  int GetMergeBranchLeftClearCountForTest() const {
+    return mergeBranchLeftClearCount;
+  }
+  int GetPreBlendCountForTest() const { return preBlendCount; }
+  const idAnimStack* GetLastPreBlendStackForTest() const {
+    return lastPreBlendStack;
+  }
+  int GetLastPreBlendTimeForTest() const { return lastPreBlendTime; }
+  int GetLastPreBlendMillisecondsPerRealSecondForTest() const {
+    return lastPreBlendMillisecondsPerRealSecond;
+  }
   int GetFindPathCountForTest() const { return findPathCount; }
   idAnimWebIndex GetLastFindPathCurrentNodeIndexForTest() const {
     return lastFindPathCurrentNodeIndex;
@@ -593,6 +650,16 @@ private:
   int lastChangeFlags{-1};
   float select01{0.0F};
   float meleeAttack{0.0F};
+  idStr lastForcedSubWebName;
+  idStr lastForcedStateName;
+  int namedForceStateCount{0};
+  bool mergeBranchPresent{false};
+  bool mergeBranchHasLeft{false};
+  int mergeBranchLeftClearCount{0};
+  const idAnimStack* lastPreBlendStack{nullptr};
+  int lastPreBlendTime{-1};
+  int lastPreBlendMillisecondsPerRealSecond{0};
+  int preBlendCount{0};
 };
 
 struct idAI2::idAIVolatile::idAIDeath {
@@ -1398,6 +1465,7 @@ public:
   float GetLookForwardInterestForTest() const {
     return lookForwardInterest;
   }
+  float GetLookForwardInterest() const { return lookForwardInterest; }
   void SetLookForwardInterestForTest(float value) {
     lookForwardInterest = value;
   }
@@ -1804,6 +1872,9 @@ public:
   idFiniteStateMachine* GetCombatScenePointFSMForTest() {
     return &combatScenePoint;
   }
+  idFiniteStateMachine* GetRoamScenePointFSMForAI() {
+    return &roamScenePoint;
+  }
 
 private:
   idFiniteStateMachine alertCycle{"alertCycle"};
@@ -1813,6 +1884,7 @@ private:
   idFSMStack stack;
   int setStackCount{0};
   bool alertCycleAvailable{true};
+  idFiniteStateMachine roamScenePoint{"roamScenePoint"};
 };
 
 class idFXManager {

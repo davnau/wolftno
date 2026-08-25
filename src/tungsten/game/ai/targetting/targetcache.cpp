@@ -1,4 +1,5 @@
 #include "tungsten/game/ai/targetting/targetcache.h"
+#include "tungsten/game/ai/gamestate/aiworldstate.h"
 
 // DIA: idTargetCache::RemoveBySpawnId
 void idTargetCache::RemoveBySpawnId(const idSpawnId& spawnId) {

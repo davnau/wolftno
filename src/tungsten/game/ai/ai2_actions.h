@@ -2,6 +2,7 @@
 
 #include "tungsten/game/ai/aitypes.h"
 #include "tungsten/game/ai/aivisibility.h"
+#include "tungsten/game/ai/corpsemanager.h"
 #include "tungsten/game/game_runtime.h"
 #include "tungsten/game/declvoiceover.h"
 #include "engine/cm/collisionmodel.h"
@@ -32,6 +33,7 @@ class idFaction;
 class idFaceMgr;
 class idPresentable;
 class idAnimWebPath;
+class idAnimStack;
 class idMD6Anim;
 class idWeapon;
 class idInventoryItem;
@@ -67,6 +69,8 @@ class idInteractionCamera;
 class idAIEntityState;
 class aiSenseState_t;
 class idAIWorldState;
+class idTargetList;
+class idCheckSurroundingsState;
 class idAICamera_Control;
 class idFocusTrace;
 class idAASPositionMgr;
@@ -105,6 +109,7 @@ extern idCVar ai_debugOrientation;
 extern idCVar ai_debugPerception;
 extern idCVar ai_debugDodge;
 extern idCVar ai_showFOV;
+extern idCVar ai_enableAutoFocus;
 extern idCVar ai_useAimTracker;
 extern idCVar ai_useLookTracker;
 class idRagdollInfo {
@@ -177,6 +182,10 @@ public:
   const idVec3& GetLastUnattachDirectionForTest() const {
     return lastUnattachDirection;
   }
+  void StartFromSaved(const idList<AFBodyPart_t, 5>& bodies) {
+    (void)bodies;
+  }
+  void PutToRest() {}
 
 private:
   bool syncBlockerA{false};
@@ -194,7 +203,10 @@ private:
   int setGravityCount{0};
   int unattachBonesCount{0};
 };
-class idAttachmentCollection {};
+class idAttachmentCollection {
+public:
+  void HideAttachments() const {}
+};
 struct idStrId {
   unsigned int id{0};
 };
@@ -1075,10 +1087,30 @@ public:
       hiddenMeshes[static_cast<std::size_t>(meshIndex)] = true;
     }
   }
+  void HideKitsExcept(int kitType, const char* name) {
+    lastHiddenKitType = kitType;
+    lastHiddenKitName = name != nullptr ? name : "";
+    ++hideKitsExceptCount;
+  }
   bool IsMeshHidden(int meshIndex) const {
     return meshIndex >= 0 &&
            meshIndex < static_cast<int>(hiddenMeshes.size()) &&
            hiddenMeshes[static_cast<std::size_t>(meshIndex)];
+  }
+  int GetHideKitsExceptCountForTest() const {
+    return hideKitsExceptCount;
+  }
+  int GetLastHiddenKitTypeForTest() const { return lastHiddenKitType; }
+  const char* GetLastHiddenKitNameForTest() const {
+    return lastHiddenKitName.data;
+  }
+  void SetFrameFromAnim(const idMD6Anim* animation, int frame,
+                        bool force, bool sync, void* callback) {
+    (void)animation;
+    (void)frame;
+    (void)force;
+    (void)sync;
+    (void)callback;
   }
   void ConfigureRenderAxesForTest(const idMat3& globalAxisValue,
                                   const idMat3& deferredAxisValue,
@@ -1119,6 +1151,9 @@ private:
   idMat3 globalAxis{};
   idMat3 deferredAxis{};
   bool deferredAxisValid{false};
+  int lastHiddenKitType{3};
+  idStr lastHiddenKitName;
+  int hideKitsExceptCount{0};
 };
 
 class idActionNode : public idEntity {
@@ -1162,6 +1197,9 @@ struct idRelationship {
     if (attitude <= ATTITUDE_NEUTRAL) return ATTITUDESTAGE_OUTSIDER;
     return attitude > ATTITUDE_LIKE ? ATTITUDESTAGE_HEROIC
                                     : ATTITUDESTAGE_ACCEPTED;
+  }
+  static float FloatForAttitude(attitude_t attitude) {
+    return static_cast<float>(attitude);
   }
 };
 
@@ -1322,16 +1360,6 @@ struct idEncounterState {
   idEntity* target{nullptr};
   idVec3 lastKnownPosition{};
   int lastSeenTime{-1};
-};
-
-struct idTargetList {
-  struct entry_t {
-    idEntity* entity{nullptr};
-    idPlayer* player{nullptr};
-    float health{100.0F};
-    float maxHealth{100.0F};
-  };
-  idList<entry_t, 5> viableTargets;
 };
 
 class idEncounterGroup {
@@ -1538,6 +1566,7 @@ static_assert(sizeof(idEventArg) == 24, "idEventArg ABI drift");
 
 extern const idEventDef EV_DisintigrateHide;
 extern const idEventDef EV_Hide;
+extern const idEventDef EV_Show;
 extern const idEventDef EV_Activate;
 extern const idEventDef EV_DropAttachedProjectiles;
 extern const idEventDef EV_Remove;
@@ -2103,6 +2132,12 @@ public:
   float maxHealth{0.0F};
   float health{0.0F};
   std::vector<goreLevelInfo_t> goreLevelInfo;
+  float locationArmor{0.0F};
+  idList<idStr, 5> hideMeshes;
+  struct armorDestroyedMeshKit_t {
+    int kitType{3};
+    idStr name;
+  } armorDestroyedMeshKit;
   float HealthRatio() const;
 };
 
@@ -2470,6 +2505,34 @@ struct idAIDeathSystemObservation {
   idEntity* deathSpawnedEntity{nullptr};
   idVec3 deathSpawnLinearVelocity{};
   idVec3 deathSpawnAngularVelocity{};
+};
+
+struct idAISpawnCorpseObservation {
+  int updateVisualsCount{0};
+  int walkIKDisableAllCount{0};
+  bool walkIKDead{false};
+  int becomeActiveCount{0};
+  int lastBecomeActiveFlags{0};
+  int startFromSavedCount{0};
+  int savedBodyCount{0};
+  int putAFToRestCount{0};
+  int blendStackCount{0};
+  const idAnimStack* blendStack{nullptr};
+  int blendGameTime{0};
+  int blendPreviousGameTime{0};
+  int blendMillisecondsPerFrame{0};
+  int blendGameTimePerSecond{0};
+  int animationLookupCount{0};
+  int firstAnimationLookupIndex{-1};
+  int secondAnimationLookupIndex{-1};
+  int setFrameCount{0};
+  const idMD6Anim* setFrameAnimation{nullptr};
+  int setFrameIndex{0};
+  bool setFrameForce{false};
+  bool setFrameSync{false};
+  int becomeInactiveCount{0};
+  int lastBecomeInactiveFlags{0};
+  int hideAttachmentsCount{0};
 };
 
 struct idAITakedownObservation {
@@ -3361,7 +3424,7 @@ public:
   idRecoveredValue DoMeleeDamage(idRecoveredOverloadTag<1>);
   idRecoveredValue DormantBegin(...);
   idRecoveredValue DormantEnd(...);
-  idRecoveredValue DoSpawnSettings(...);
+  void DoSpawnSettings();
   bool Draw(idPlayer* player);
   void Dropped(idEntity* user, const idDeclInventory* inventoryDeclaration);
   void EnableAIEventResponse(int flags);
@@ -3369,8 +3432,8 @@ public:
   void EndSync();
   bool EquipItem(idInventoryItem* item, equipSlot_t equipSlot);
   eventVoid* Event_DetectPlayer(eventVoid* result);
-  idRecoveredValue FindAutoFocus(...);
-  idRecoveredValue FindAutoFocusEntity(...);
+  void FindAutoFocus();
+  float FindAutoFocusEntity(idEntity** bestEntity);
   const idWeapon* FindWeaponToDraw() const;
   idRecoveredValue FinishFireWeapon(...);
   idRecoveredValue FirstThink(...);
@@ -3621,7 +3684,7 @@ public:
   bool ShouldScramble();
   idRecoveredValue ShowFlareEffect(...);
   idRecoveredValue Spawn(...);
-  idRecoveredValue SpawnCorpse(...);
+  void SpawnCorpse(const idCorpseManager::corpseSave_t* corpse);
   idRecoveredValue SpawnFlareEffect(...);
   idRecoveredValue SpawnTeslaBomb(...);
   void StartActionScript(int gameTime);
@@ -3827,6 +3890,70 @@ public:
   idFaceMgr& GetFaceManager() { return *faceManager; }
   void SetPresentable(idPresentable* value) { presentable = value; }
   idPresentable* GetPresentable() const { return presentable; }
+  void ConfigureSpawnSettingsForTest(bool detectCombat,
+                                     bool detectSearch,
+                                     const idSoundShader* ambientSound,
+                                     const char* entranceAnimationPath,
+                                     bool playerLeadsSquad) {
+    spawnDetectPlayerCombat = detectCombat;
+    spawnDetectPlayerSearch = detectSearch;
+    spawnAmbientSound = ambientSound;
+    spawnEntranceAnimationPath =
+        entranceAnimationPath != nullptr ? entranceAnimationPath : "";
+    spawnPlayerIsSquadLeader = playerLeadsSquad;
+  }
+  void ClearSpawnMissingArmorForTest() { spawnMissingArmor.Clear(); }
+  void AddSpawnMissingArmorForTest(const char* damageGroupName) {
+    spawnMissingArmor.Append(
+        idStr(damageGroupName != nullptr ? damageGroupName : ""));
+  }
+  idDamageGroup& AddDamageGroupForTest(const char* damageGroupName,
+                                       float armor) {
+    idDamageGroup group;
+    group.groupName = damageGroupName != nullptr ? damageGroupName : "";
+    group.locationArmor = armor;
+    staggerDamageGroups.push_back(group);
+    return staggerDamageGroups.back();
+  }
+  void SetSpawnAnimationStackForTest(const idAnimStack* value) {
+    spawnAnimationStack = value;
+  }
+  void SetSpawnPlayerGenerationForTest(int value) {
+    spawnPlayerGeneration = value;
+  }
+  int GetSpawnAwarenessCycleForTest() const {
+    return spawnAwarenessCycle;
+  }
+  int GetSquadLeaderSpawnIdForTest() const {
+    return squadLeaderSpawnId;
+  }
+  int GetSpawnAmbientSoundStartCountForTest() const {
+    return spawnAmbientSoundStartCount;
+  }
+  int GetSpawnAmbientSoundChannelForTest() const {
+    return spawnAmbientSoundChannel;
+  }
+  const idSoundShader* GetLastSpawnAmbientSoundForTest() const {
+    return lastSpawnAmbientSound;
+  }
+  unsigned int GetSpawnAmbientSoundFlagsForTest() const {
+    return spawnAmbientSoundFlags;
+  }
+  unsigned int GetSpawnAmbientSoundPeerMaskForTest() const {
+    return spawnAmbientSoundPeerMask;
+  }
+  void SetAnimWebNodeAnimationIndexForTest(int index,
+                                           const idMD6Anim* animation) {
+    if (index < 0 ||
+        index >= static_cast<int>(animWebState.nodeAnimations.size())) {
+      return;
+    }
+    animWebState.nodeAnimations[static_cast<std::size_t>(index)].animation =
+        animation;
+  }
+  const idAISpawnCorpseObservation& GetSpawnCorpseObservationForTest() const {
+    return spawnCorpseObservation;
+  }
   idAIScriptProxy& GetScriptProxy() { return scriptProxy; }
   const idAIScriptProxy& GetScriptProxy() const { return scriptProxy; }
   const idAIAnimEventState& GetAnimEventState() const { return animEventState; }
@@ -4419,6 +4546,9 @@ public:
   }
   idAIWorldState& GetWorldState() { return *worldState; }
   const idAIWorldState& GetWorldState() const { return *worldState; }
+  idCheckSurroundingsState& GetCheckSurroundingsStateForTest() {
+    return *checkSurroundingsState;
+  }
   idAIMemory& GetMemory() { return *memory; }
   const idAIMemory& GetMemory() const { return *memory; }
   void SetAAS(const idAAS2* value) { aas = value; }
@@ -4531,6 +4661,13 @@ public:
   void UpdateAimFocusForTest() { UpdateAimFocus(); }
   void SetupRobotDeadForTest() { SetupRobotDead(); }
   bool FindClosestFocusForTest() { return FindClosestFocus(); }
+  void ConfigureAutoFocusForTest(int entityMode, int surroundingsMode,
+                                 int minimumTime, int maximumTime) {
+    autoFocusEntityMode = entityMode;
+    autoFocusSurroundingsMode = surroundingsMode;
+    autoFocusMinimumTime = minimumTime;
+    autoFocusMaximumTime = maximumTime;
+  }
   int GetLookFocusTimeout() const { return lookFocusTimeout; }
   void SetActionScriptRunning(bool running);
   int GetActionScriptRunningQueryCountForTest() const;
@@ -4545,6 +4682,14 @@ public:
     speakingEyeTrackingCapability = eyeTracking;
     speakingBlinkingCapability = blinkingValue;
     speakingLidDeformationCapability = lidDeformationValue;
+    if (aiConstants != nullptr) {
+      aiConstants->animation.useMoods = mood;
+      aiConstants->animation.useLipsync = lipSync;
+      aiConstants->animation.useGestures = gesture;
+      aiConstants->animation.useEyeTracking = eyeTracking;
+      aiConstants->animation.useBlinking = blinkingValue;
+      aiConstants->animation.useLidDeformation = lidDeformationValue;
+    }
   }
   void ConfigureCurrentScenePoint(idScenePoint* value, int activationTime) {
     currentScenePoint = value;
@@ -5164,6 +5309,10 @@ private:
   float currentEnemyRange{0.0F};
   float fieldOfViewDot{0.0F};
   bool autoFocusEnabled{false};
+  int autoFocusEntityMode{2};
+  int autoFocusSurroundingsMode{2};
+  int autoFocusMinimumTime{800};
+  int autoFocusMaximumTime{1200};
   int lookFocusTimeout{-1};
   int actionScriptFlags{0};
   bool actionScriptRunning{false};
@@ -5176,6 +5325,7 @@ private:
   bool speakingLidDeformationCapability{false};
   bool headTrackingLocked{false};
   std::array<std::unique_ptr<idFocusInfo>, 2> focusInfos;
+  std::unique_ptr<idCheckSurroundingsState> checkSurroundingsState;
   std::unique_ptr<idAIMoveState> moveState;
   idScenePoint* currentScenePoint{nullptr};
   int currentScenePointActivationTime{0};
@@ -5363,6 +5513,22 @@ private:
   mutable int lastLookDebugDuration{0};
   mutable idVec3 lastLookDebugPosition{};
   mutable int lookDebugCount{0};
+  bool spawnDetectPlayerCombat{false};
+  bool spawnDetectPlayerSearch{false};
+  const idSoundShader* spawnAmbientSound{nullptr};
+  idList<idStr, 5> spawnMissingArmor;
+  idStr spawnEntranceAnimationPath;
+  bool spawnPlayerIsSquadLeader{false};
+  int spawnPlayerGeneration{0};
+  int squadLeaderSpawnId{0x1FFF};
+  int spawnAwarenessCycle{ALERTCYCLE_NONE};
+  const idAnimStack* spawnAnimationStack{nullptr};
+  int spawnAmbientSoundStartCount{0};
+  int spawnAmbientSoundChannel{0};
+  const idSoundShader* lastSpawnAmbientSound{nullptr};
+  unsigned int spawnAmbientSoundFlags{0};
+  unsigned int spawnAmbientSoundPeerMask{0};
+  idAISpawnCorpseObservation spawnCorpseObservation;
 };
 
 static_assert(sizeof(idAI2::idAIVolatile::idAIAnimationInfo) == 0xEB8,

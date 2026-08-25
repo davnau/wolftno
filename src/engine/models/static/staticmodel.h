@@ -7,7 +7,13 @@
 #include <cstddef>
 #include <cstdint>
 
-struct sourceSurface_t {};
+struct sourceSurface_t {
+  const idMaterial* mtr{};
+  int mtrChecksum{};
+  int renderSurface{};
+  int firstVertex{};
+  int lastVertex{};
+};
 
 struct idStaticModelSurface : idRenderModelSurface {
   idList<skinRemap_t, 5> skinRemaps;
@@ -55,6 +61,12 @@ extern idStaticModelManager* staticModelManager;
 
 static_assert(sizeof(idStaticModelSurface) == 128,
               "idStaticModelSurface ABI drift");
+static_assert(sizeof(sourceSurface_t) == 24,
+              "sourceSurface_t ABI drift");
+static_assert(offsetof(sourceSurface_t, mtrChecksum) == 8,
+              "sourceSurface_t checksum offset drift");
+static_assert(offsetof(sourceSurface_t, lastVertex) == 20,
+              "sourceSurface_t last-vertex offset drift");
 static_assert(offsetof(idStaticModelSurface, skinRemaps) == 104,
               "idStaticModelSurface remap offset drift");
 static_assert(sizeof(idStaticModel) == 440, "idStaticModel ABI drift");

@@ -1,4 +1,5 @@
 #include "tungsten/game/ai/encountergroups.h"
+#include "tungsten/game/ai/targetting/targetlist.h"
 
 #include <algorithm>
 #include <cmath>
@@ -798,21 +799,24 @@ idEncounterGroup::~idEncounterGroup() = default;
 void idEncounterGroup::UpdateTargetList(const idTargetList* targets) {
   if (targets == nullptr) return;
   const int frame = gameLocal != nullptr ? gameLocal->GetFrameNum() : 0;
-  for (int i = 0; i < targets->viableTargets.Num(); ++i) {
-    const idTargetList::entry_t& incoming = targets->viableTargets[i];
-    if (incoming.entity == nullptr) continue;
+  for (int i = 0; i < targets->NumViableTargets(); ++i) {
+    const idTargetInfo* incoming = targets->GetViableTarget(i);
+    if (incoming == nullptr || incoming->es == nullptr) continue;
+    idEntity* entity = incoming->es->GetEntity();
+    if (entity == nullptr) continue;
     int found = -1;
     for (int j = 0; j < targetList.Num(); ++j)
-      if (targetList[j].target == incoming.entity) found = j;
+      if (targetList[j].target != nullptr &&
+          targetList[j].target->GetEntityNumber() ==
+              incoming->es->spawnId.value) {
+        found = j;
+        break;
+      }
     if (found < 0) found = targetList.Append(target_t{});
-    targetList[found].target = incoming.entity;
-    targetList[found].player = incoming.player;
-    targetList[found].health = incoming.health;
-    targetList[found].maxHealth = incoming.maxHealth;
+    targetList[found].target = entity;
+    targetList[found].player = dynamic_cast<idPlayer*>(entity);
     targetList[found].frame = frame;
   }
-  for (int i = targetList.Num() - 1; i >= 0; --i)
-    if (targetList[i].frame != frame) targetList.RemoveIndex(i);
 }
 
 // DIA: idEncounterGroupMgr::idEncounterGroupMgr

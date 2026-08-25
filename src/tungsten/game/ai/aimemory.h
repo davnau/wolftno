@@ -266,6 +266,11 @@ public:
   bool IsInteractionUsable() const { return interactionIsUsable; }
 
   void SetCurrentTime(int value) { currentTime = value; }
+  int GetSpawnTimeForTest() const { return spawnTime; }
+  int GetNextDodgeTimeForTest() const { return nextDodgeTime; }
+  idScenePoint* GetOverrideScenePoint() const {
+    return overrideScenePoint;
+  }
   void SetEnemy(idEntity* value) { currentEnemy = value; }
   void SetFriendly(idEntity* value) { currentFriendly = value; }
   void SetFriendlyBlocker(idEntity* value) { friendlyBlocker = value; }

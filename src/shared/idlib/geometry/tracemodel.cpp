@@ -667,14 +667,56 @@ void idTraceModel::GetMassProperties(float density, float& mass, idVec3& center,
 }
 
 void idTraceModel::Swap() {
-  for (unsigned e = 0; e < numEdges; ++e)
-    std::swap(edges[e].v[0], edges[e].v[1]);
-  for (unsigned p = 0; p < numPolys; ++p) {
-    std::reverse(polyEdges[p], polyEdges[p] + numPolyEdges[p]);
-    for (unsigned e = 0; e < numPolyEdges[p]; ++e)
-      polyEdges[p][e] ^= 0x80u;
+  const auto swap16 = [](std::uint16_t value) {
+    return static_cast<std::uint16_t>((value << 8) | (value >> 8));
+  };
+  const auto swap32 = [](std::uint32_t value) {
+    return ((value & 0x000000ffu) << 24) |
+           ((value & 0x0000ff00u) << 8) |
+           ((value & 0x00ff0000u) >> 8) |
+           ((value & 0xff000000u) >> 24);
+  };
+  const auto swapFloat = [&](float& value) {
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    bits = swap32(bits);
+    std::memcpy(&value, &bits, sizeof(value));
+  };
+
+  for (float& value : vertsX) swapFloat(value);
+  for (float& value : vertsY) swapFloat(value);
+  for (float& value : vertsZ) swapFloat(value);
+  for (float& value : edgeNormalX) swapFloat(value);
+  for (float& value : edgeNormalY) swapFloat(value);
+  for (float& value : edgeNormalZ) swapFloat(value);
+  for (float& value : polyPlaneX) swapFloat(value);
+  for (float& value : polyPlaneY) swapFloat(value);
+  for (float& value : polyPlaneZ) swapFloat(value);
+  for (float& value : polyPlaneW) swapFloat(value);
+  for (std::uint32_t& value : numPolyEdges) value = swap32(value);
+  for (traceModelEdge_t& edge : edges) {
+    edge.v[0] = swap16(edge.v[0]);
+    edge.v[1] = swap16(edge.v[1]);
   }
-  CalculatePolygonPlanes();
-  GenerateEdgeNormals();
-  TestConvexity();
+  auto swapEnumOrCount = [&](auto& value) {
+    std::uint32_t bits = 0;
+    static_assert(sizeof(value) == sizeof(bits));
+    std::memcpy(&bits, &value, sizeof(bits));
+    bits = swap32(bits);
+    std::memcpy(&value, &bits, sizeof(value));
+  };
+  swapEnumOrCount(type);
+  swapEnumOrCount(numVerts);
+  swapEnumOrCount(numEdges);
+  swapEnumOrCount(numPolys);
+  swapEnumOrCount(maxPolyEdges);
+  swapFloat(offset.x);
+  swapFloat(offset.y);
+  swapFloat(offset.z);
+  for (idVec3& bound : bounds.b) {
+    swapFloat(bound.x);
+    swapFloat(bound.y);
+    swapFloat(bound.z);
+  }
+  swapFloat(radius);
 }

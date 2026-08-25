@@ -8,8 +8,6 @@
 #include "shared/idlib/text/str.h"
 
 #include <cstring>
-#include <algorithm>
-#include <cmath>
 
 idCVar r_globalShadowsCoordinateBias(
     "r_globalShadowsCoordinateBias", "0.5", CVAR_FLOAT,
@@ -20,60 +18,6 @@ idCVar r_globalShadowsDepthBias(
 idCVar r_useGlobalShadows(
     "r_useGlobalShadows", "1", CVAR_BOOL,
     "If false, always return 1.0 for shadow tests");
-
-float shadowMapCPU_t::ShadowSample(const idVec3& worldPoint) const {
-  if (!useShadowMap || map == nullptr)
-    return 1.0f;
-
-  const float projected[4] = {
-      worldPoint.x * mvp.m[0] + worldPoint.y * mvp.m[1] +
-          worldPoint.z * mvp.m[2] + mvp.m[3],
-      worldPoint.x * mvp.m[4] + worldPoint.y * mvp.m[5] +
-          worldPoint.z * mvp.m[6] + mvp.m[7],
-      worldPoint.x * mvp.m[8] + worldPoint.y * mvp.m[9] +
-          worldPoint.z * mvp.m[10] + mvp.m[11],
-      worldPoint.x * mvp.m[12] + worldPoint.y * mvp.m[13] +
-          worldPoint.z * mvp.m[14] + mvp.m[15]};
-
-  int coords[2]{};
-  float fractions[2][2]{};
-  for (int axis = 0; axis < 2; ++axis) {
-    const float coordinate = width * projected[axis] + coordinateBias;
-    const float integral = std::floor(coordinate);
-    coords[axis] = static_cast<int>(integral);
-    fractions[axis][1] = coordinate - integral;
-    if (coords[axis] < 0) {
-      coords[axis] = 0;
-      fractions[axis][1] = 0.0f;
-    } else if (coords[axis] >= width - 1) {
-      coords[axis] = width - 2;
-      fractions[axis][1] = 1.0f;
-    }
-    fractions[axis][0] = 1.0f - fractions[axis][1];
-  }
-
-  const int sampleOffsets[4] = {
-      coords[0] + coords[1] * width,
-      coords[0] + 1 + coords[1] * width,
-      coords[0] + (coords[1] + 1) * width,
-      coords[0] + 1 + (coords[1] + 1) * width};
-  const float depth = std::clamp(projected[2], 0.0f, 1.0f) * 65535.0f +
-                      depthBias;
-  const unsigned sampleDepth = static_cast<unsigned>(static_cast<int>(depth));
-  const float equalDepthWeight = 1.0f - (depth - std::floor(depth));
-  float shadow = 0.0f;
-  for (int y = 0; y < 2; ++y) {
-    for (int x = 0; x < 2; ++x) {
-      const unsigned mapDepth = map[std::abs(sampleOffsets[y * 2 + x])];
-      const float weight = fractions[0][x] * fractions[1][y];
-      if (mapDepth > sampleDepth)
-        shadow += weight;
-      else if (mapDepth == sampleDepth)
-        shadow += equalDepthWeight * weight;
-    }
-  }
-  return shadow;
-}
 
 idGlobalShadows::idGlobalShadows() {
   shadowMap = static_cast<shadowMapCPU_t*>(

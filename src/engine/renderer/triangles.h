@@ -6,6 +6,12 @@
 
 #include <cstdint>
 
+template <typename T, int DefaultTag> class idList;
+class idDeclSkins;
+class idMaterial;
+struct skinRemap_t;
+struct sourceSurface_t;
+
 class idVertexScaleAndBias {
 public:
   idVec3 xyzScale;
@@ -26,6 +32,11 @@ public:
                                         int numIndexes);
   static void UpdateIndexBuffer(idTriangles* triangles);
   static void UpdateVertexBuffer(idTriangles* triangles);
+  void VmtrMapTexCoordsWithSkins(
+      idList<sourceSurface_t, 5>* sourceSurfaces, int renderSurface,
+      const idMaterial* originalMaterial, const idDeclSkins* skins,
+      idList<skinRemap_t, 5>* skinRemaps,
+      idList<const idMaterial*, 5>* usedMaterials);
   void CreateBounds();
   float GetSurfaceArea() const;
   void FreeCPUData() {

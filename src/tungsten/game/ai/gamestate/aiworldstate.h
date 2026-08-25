@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tungsten/game/ai/gamestate/aigamestate.h"
+#include "tungsten/game/ai/targetting/targetcache.h"
 #include "shared/idlib/containers/list.h"
 
 #include <array>
@@ -80,6 +81,8 @@ public:
         ? &entityStates[static_cast<std::size_t>(activeIndices[index])]
         : nullptr;
   }
+  idTargetCache& GetTargetCache() { return targetCache; }
+  const idTargetCache& GetTargetCache() const { return targetCache; }
   void SetRadius(float value) { radius = value; }
   float GetRadiusForTest() const { return radius; }
   aiStimulus_t GetLastAddedStimulusForTest() const {
@@ -87,6 +90,7 @@ public:
   }
 
 private:
+  idTargetCache targetCache;
   std::array<idAIEntityState, MAX_ENTITY_STATES> entityStates{};
   std::vector<int> activeIndices;
   std::vector<int> freeIndices;

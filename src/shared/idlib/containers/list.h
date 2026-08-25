@@ -105,6 +105,14 @@ public:
     }
     num = 0;
   }
+  template <typename U = T>
+  void DeleteContents() {
+    for (int index = 0; index < num; ++index) {
+      delete list[index];
+      list[index] = nullptr;
+    }
+    ClearFree();
+  }
   bool SetNum(int count) {
     if (count > size && !Resize(count))
       return false;
