@@ -15,7 +15,7 @@ struct idBareJXR {
 
   idBareJXR();
 
-  void BeginDecompressImageGrayScaleMacroBlockRow();
+  void BeginDecompressImageRGBMacroBlockRow();
   void DecompressImageGrayScaleMacroBlock(std::uint8_t* output,
                                           int blockNumber, int byteStride);
   void DecompressImageRGBMacroBlock(std::uint8_t* output, int blockNumber,

@@ -1,4 +1,5 @@
 #include "engine/cm/collisionmodelmanager.h"
+
 #include "shared/idlib/lib.h"
 
 #include <algorithm>
@@ -6,6 +7,12 @@
 
 idCollisionModelManager collisionModelManagerLocal;
 idCollisionModelManager* collisionModelManager = &collisionModelManagerLocal;
+
+idCollisionModel* LoadCollisionModelByName(const char* path) {
+  const cmHandle_t handle = collisionModelManager->LoadModel(path);
+  return const_cast<idCollisionModelLocal*>(
+      collisionModelManager->GetModel(handle));
+}
 
 void idQueryData::AdvanceSubModelQueryFirstSubmittedIndex() {
   firstSubmitted = subModelQueries;

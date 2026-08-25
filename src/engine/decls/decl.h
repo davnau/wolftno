@@ -225,6 +225,7 @@ public:
   virtual bool IsInventoryDecl() const;
 
   int GetLineNum() const;
+  int GetTextLength() const;
   bool SourceFileExists() const;
   bool EverReloaded() const;
   idDeclSource* DeclSource() const;

@@ -28,6 +28,22 @@ struct DCTHeader_t {
   std::uint16_t alphaSize;
 };
 
+struct HDPHeader_t {
+  std::uint8_t qualityDiffuse;
+  std::uint8_t qualityNormal;
+  std::uint8_t qualitySpecular;
+  std::uint8_t qualityPower;
+  std::uint8_t flags;
+  std::uint8_t pad;
+  std::uint16_t diffuseSize;
+  std::uint16_t normalSize;
+  std::uint16_t specularSize;
+  std::uint16_t powerSize;
+  std::uint16_t alphaSize;
+};
+
+using JXRHeader_t = HDPHeader_t;
+
 struct transcodeParms_t {
   int imageFlags;
   int layoutVersion;
@@ -71,11 +87,36 @@ struct transcodeParms_t {
 };
 
 void TranscodePage_DXT_DXT(const transcodeParms_t* parms);
+void TranscodePage_DXT_DXT_upsample(const transcodeParms_t* parms);
+void TranscodePage_HDP_DXT(const transcodeParms_t* parms);
+void TranscodePage_HDP_DXT_upsample(const transcodeParms_t* parms);
+void TranscodePage_HDP_RAW(const transcodeParms_t* parms);
+void TranscodePage_HDP_RAW_upsample(const transcodeParms_t* parms);
+void TranscodePage_JXR_DXT(const transcodeParms_t* parms);
+void TranscodePage_JXR_DXT_upsample(const transcodeParms_t* parms);
 void TranscodePage_DCT_DXT(const transcodeParms_t* parms);
+void TranscodePage_DCT_RAW(const transcodeParms_t* parms);
+void TranscodePage_DCT_RAW_upsample(const transcodeParms_t* parms);
+void TranscodePage_DCT_DXT_upsample(const transcodeParms_t* parms);
+void TranscodePage(const transcodeParms_t* parms);
+void UpSample16x16(std::uint8_t* destination, unsigned int destinationX,
+                   unsigned int destinationY,
+                   unsigned int destinationBytePitch,
+                   const std::uint8_t* source, unsigned int sourceX,
+                   unsigned int sourceY, unsigned int sourceMaskY,
+                   int upsampleLevel, int upsampleFilter, int sharpenScale,
+                   int noiseScale);
+void StorePower16x16(const std::uint8_t* power, int tileX, int tileY,
+                     std::uint8_t* rgba);
+void StoreSpecularScale16x16(const std::uint8_t* specularScale, int tileX,
+                             int tileY, std::uint8_t* rgba);
 
 static_assert(sizeof(DCTHeader_t) == 0x10, "DCTHeader_t ABI drift");
 static_assert(offsetof(DCTHeader_t, diffuseSize) == 0x6,
               "DCTHeader_t diffuse size offset drift");
+static_assert(sizeof(HDPHeader_t) == 0x10, "HDPHeader_t ABI drift");
+static_assert(offsetof(HDPHeader_t, diffuseSize) == 0x6,
+              "HDPHeader_t diffuse size offset drift");
 
 static_assert(offsetof(transcodeParms_t, targetBytePitch) == 0x40,
               "transcodeParms_t target pitch offset drift");

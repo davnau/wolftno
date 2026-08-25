@@ -19,6 +19,9 @@ against both recovered Hex-Rays output and recovered assembly.
   behavior are parity failures.
 - Function-count, object-symbol, compile, and behavior checks are required, but
   function counts alone never prove parity.
+- Per-file source counts include only `dia_line_record` entries emitted by that
+  file's matching object. Header-emitted and compiler-generated records are
+  retained as support inventory, but do not belong to the `.cpp` source count.
 
 ## Inventory
 
@@ -33,7 +36,10 @@ against both recovered Hex-Rays output and recovered assembly.
 2. `ai/aaspositionmgr.cpp` — parity verified (6/6 functions)
 3. `ai/aasviscache.cpp` — parity verified (9/9 functions)
 4. `ai/ai2_actions.cpp` — parity verified (129/129 records)
-5. `ai/ai2.cpp` — active verification (380/1127 records re-ported;
+5. `ai/ai2.cpp` — active verification (344/485 explicit source records re-ported;
    file is not complete)
+   - AI2's recovered export has 1,127 total DIA records: 517 compiler-primary,
+     124 header-emitted, and 486 line records. One line record belongs to
+     `AnimatedEntity.obj`, leaving 485 records sourced by `AI2.cpp`.
 
 All remaining `.cpp` files are unverified for 1:1 parity.

@@ -148,6 +148,10 @@ bool RectanglesOverlapWithGutter(const imageProperties_t& candidate,
 const idMaterial* idMaterial::PackMaterials(
     const char* name, const idList<const idMaterial*, 5>& materials,
     unsigned int skinFileTimeStamp) {
+  if (materials.Num() <= 0) {
+    return nullptr;
+  }
+
   const int startTime = static_cast<int>(Sys_Milliseconds());
 
   idList<imageProperties_t, 46> imageProperties;
@@ -337,8 +341,6 @@ const idMaterial* idMaterial::PackMaterials(
                 name);
   }
   file.Printf("}\n");
-  const char terminator = '\0';
-  file.Write(&terminator, sizeof(terminator));
 
   delete materialMap;
 

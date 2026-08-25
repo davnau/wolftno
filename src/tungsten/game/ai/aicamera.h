@@ -22,6 +22,11 @@ public:
   const idMat3& GetCameraAxis() const { return cameraAxis; }
   bool IsFlying() const { return flying; }
   bool WasDrawn() const { return drawn; }
+  void SetCameraTransformForTest(const idVec3& position,
+                                 const idMat3& axis) {
+    cameraPosition = position;
+    cameraAxis = axis;
+  }
 
 private:
   idEntity* target{nullptr};

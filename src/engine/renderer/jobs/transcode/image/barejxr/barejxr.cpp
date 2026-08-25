@@ -73,7 +73,7 @@ idBareJXR::idBareJXR()
       cROIWidth(0),
       cROIHeight(0) {}
 
-void idBareJXR::BeginDecompressImageGrayScaleMacroBlockRow() {
+void idBareJXR::BeginDecompressImageRGBMacroBlockRow() {
   ReadMacroblockRow(static_cast<jxr_image*>(tempBuffer));
 }
 

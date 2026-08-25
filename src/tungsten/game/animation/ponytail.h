@@ -22,6 +22,10 @@ public:
   bool IsInitialized() const { return initialized; }
   bool IsUsingParentAnimStack() const { return usingParentAnimStack; }
   int GetAttachmentHandle() const { return attachmentHandle; }
+  void ConfigureAttachmentForGoreTest(int value) {
+    attachmentHandle = value;
+    initialized = true;
+  }
   int GetBlendCount() const { return blendCount; }
   idEntity* GetParent() const { return parent; }
 

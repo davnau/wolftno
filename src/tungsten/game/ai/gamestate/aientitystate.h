@@ -44,15 +44,6 @@ enum visibleType_t {
   VISIBLE_INVALID = 5
 };
 
-struct trackingParms_t {
-  float springK{1.0F};
-  float springMass{1.0F};
-  float springDamping{2.0F};
-  float springMaxSpeed{0.0F};
-  float springMaxLength{0.0F};
-  float deltaSeconds{0.016F};
-};
-
 template <int Minimum, int Maximum>
 class idLeakyIntegrator {
 public:

@@ -80,6 +80,10 @@ public:
   virtual cmModelStats_t GetPolytopeStats() const = 0;
 };
 
+// Narrow model-loading boundary for modules that cannot include the current
+// collision builder's temporary material declaration.
+idCollisionModel* LoadCollisionModelByName(const char* path);
+
 class idCollisionModelLocal final : public idCollisionModel {
 public:
   idCollisionModelLocal();

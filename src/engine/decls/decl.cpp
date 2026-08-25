@@ -64,6 +64,8 @@ idResource* idResourceList::Alloc(const char*) const {
   return nullptr;
 }
 
+int idDecl::GetTextLength() const { return textLength; }
+
 int idResourceList::AllocSize() const {
   return 0;
 }

@@ -47,7 +47,7 @@ class idRenderModelTransparency;
 class idRenderModelUpdateTools;
 class idRenderWorldLocal;
 class idSnapShot;
-struct idSphere;
+class idSphere;
 class idStaticModel;
 class idTraceOpts;
 class idVirtualTexture;

@@ -483,7 +483,7 @@ bool idRenderModelGui::CommitSubclass() {
       const guiModelSurface_t& guiSurface = guiSurfaces.ptr[index];
       if (guiSurface.numVerts == 0 || guiSurface.material == nullptr)
         continue;
-      idRenderModelSurface* surface = surfaces.Alloc();
+      idRenderModelSurface* surface = &surfaces.Alloc();
       surface->material = guiSurface.material;
       surface->geometryIsReference = true;
       surface->extraGLState = guiSurface.extraGLState;

@@ -14,7 +14,12 @@
 #include "tungsten/game/ai/gamestate/aiworldstate.h"
 #include "tungsten/game/ai/encountergroupmanager.h"
 #include "tungsten/game/ai/targetting/targetlist.h"
+#include "tungsten/game/ai/targetting/filters/enemytargetfilter.h"
+#include "tungsten/game/ai/targetting/filters/friendlytargetfilter.h"
 #include "tungsten/game/ai/targetting/filters/nonenemytargetfilter.h"
+#include "tungsten/game/ai/targetting/selectors/enemytargetselector.h"
+#include "tungsten/game/ai/targetting/selectors/friendlytargetselector.h"
+#include "tungsten/game/ai/targetting/selectors/neutraltargetselector.h"
 #include "tungsten/game/animation/facemgr.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
 #include "engine/aas2file/aas2file.h"
@@ -30,8 +35,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <string_view>
+#include <unordered_map>
 
 namespace {
 
@@ -317,7 +324,132 @@ aiSubWeb_t SubWebFromInitializedName(const char* subWebName) {
   return aiSubWeb_t::max;
 }
 
+struct scriptProxyOwnerEntry_t {
+  const idAIScriptProxy* proxy{nullptr};
+  idAI2* owner{nullptr};
+};
+
+std::vector<scriptProxyOwnerEntry_t>& ScriptProxyOwners() {
+  static std::vector<scriptProxyOwnerEntry_t> owners;
+  return owners;
+}
+
+idAI2* FindScriptProxyOwner(const idAIScriptProxy* proxy) {
+  for (const scriptProxyOwnerEntry_t& entry : ScriptProxyOwners()) {
+    if (entry.proxy == proxy) return entry.owner;
+  }
+  return nullptr;
+}
+
+int executeDoomScriptStateToken;
+
+std::unordered_map<const idAttachmentCollection*,
+                   std::vector<idAttachment*>>&
+GoreAttachmentLists() {
+  static std::unordered_map<const idAttachmentCollection*,
+                            std::vector<idAttachment*>> lists;
+  return lists;
+}
+
+std::unordered_map<const idInventoryItem*, int>& GoreEquipSlots() {
+  static std::unordered_map<const idInventoryItem*, int> slots;
+  return slots;
+}
+
+struct goreTreeState_t {
+  bool skeletonAvailable{false};
+  std::vector<std::pair<short, short>> jointParents;
+  mutable int childQueryCount{0};
+};
+
+std::unordered_map<const idTreeAnimator*, goreTreeState_t>& GoreTreeStates() {
+  static std::unordered_map<const idTreeAnimator*, goreTreeState_t> states;
+  return states;
+}
+
+std::vector<idAI2*>& ActiveAIForUpdateDeaths() {
+  static std::vector<idAI2*> activeAI;
+  return activeAI;
+}
+
 }  // namespace
+
+void idAttachmentCollection::AddForGoreTest(idAttachment* attachment) {
+  GoreAttachmentLists()[this].push_back(attachment);
+}
+
+void idAttachmentCollection::ClearForGoreTest() {
+  GoreAttachmentLists().erase(this);
+}
+
+int idAttachmentCollection::NumForAI() const {
+  const auto found = GoreAttachmentLists().find(this);
+  return found != GoreAttachmentLists().end()
+             ? static_cast<int>(found->second.size())
+             : 0;
+}
+
+idAttachment* idAttachmentCollection::ForIndexForAI(int index) const {
+  const auto found = GoreAttachmentLists().find(this);
+  if (found == GoreAttachmentLists().end() || index < 0 ||
+      index >= static_cast<int>(found->second.size())) {
+    return nullptr;
+  }
+  return found->second[static_cast<std::size_t>(index)];
+}
+
+void idInventoryItem::SetEquipSlotForGoreTest(int value) {
+  GoreEquipSlots()[this] = value;
+}
+
+int idInventoryItem::GetEquipSlotForAI() const {
+  const auto found = GoreEquipSlots().find(this);
+  return found != GoreEquipSlots().end() ? found->second : 0;
+}
+
+void idTreeAnimator::ConfigureGoreSkeletonForTest(bool available) {
+  GoreTreeStates()[this].skeletonAvailable = available;
+}
+
+void idTreeAnimator::AddGoreJointParentForTest(short child, short parent) {
+  GoreTreeStates()[this].jointParents.push_back({child, parent});
+}
+
+void idTreeAnimator::ClearGoreJointParentsForTest() {
+  GoreTreeStates()[this].jointParents.clear();
+}
+
+bool idTreeAnimator::HasGoreSkeletonForAI() const {
+  const auto found = GoreTreeStates().find(this);
+  return found != GoreTreeStates().end() && found->second.skeletonAvailable;
+}
+
+bool idTreeAnimator::IsGoreJointChildOfForAI(short child,
+                                             short parent) const {
+  auto found = GoreTreeStates().find(this);
+  if (found == GoreTreeStates().end()) return false;
+  ++found->second.childQueryCount;
+  short current = child;
+  for (std::size_t depth = 0;
+       depth <= found->second.jointParents.size(); ++depth) {
+    bool parentFound = false;
+    for (const std::pair<short, short>& relation :
+         found->second.jointParents) {
+      if (relation.first != current) continue;
+      if (relation.second == parent) return true;
+      current = relation.second;
+      parentFound = true;
+      break;
+    }
+    if (!parentFound) return false;
+  }
+  return false;
+}
+
+int idTreeAnimator::GetGoreJointChildQueryCountForTest() const {
+  const auto found = GoreTreeStates().find(this);
+  return found != GoreTreeStates().end() ? found->second.childQueryCount : 0;
+}
 
 idCodeResource<idDeclRenderParm> rp_aiRobotGlow("aiRobotGlow");
 idCodeResource<idDeclRenderParm> rp_aiSelfDestructGlow(
@@ -330,6 +462,9 @@ idCVar joy_pitchSpeed("joy_pitchSpeed", "1", 0,
                       "controller pitch speed");
 idCVar joy_yawSpeed("joy_yawSpeed", "1", 0, "controller yaw speed");
 extern idCVar ai_debugScenePoints;
+extern idCVar ai_debugLatchedState;
+extern idCVar ai_debugEnemyTargetSelector;
+extern idCVar ai_limitTargetUpdates;
 extern idCVar takedownID;
 extern idCVar takedownType;
 extern idCVar ai_droppedLootDistance;
@@ -338,6 +473,7 @@ extern idCVar ai_scrambleTime;
 
 const idEventDef EV_DisintigrateHide{};
 const idEventDef EV_Hide{};
+const idEventDef EV_Show{};
 const idEventDef EV_Activate{};
 const idEventDef EV_DropAttachedProjectiles{};
 const idEventDef EV_Remove{};
@@ -407,6 +543,7 @@ idAI2::idAI2()
       painAnimator(std::make_unique<idAnimator_Channel>()),
       memory(std::make_unique<idAIMemory>()),
       shootAnimator(std::make_unique<idAnimator_Channel>()) {
+  scriptProxy.BindOwner(this);
   effectsTreeAnimator = &defaultEffectsTreeAnimator;
   robotDeathFXManager = std::make_unique<idFXManager>();
   robotDeathDroneAnimator = std::make_unique<idAnimator_Drone>();
@@ -504,6 +641,40 @@ void idAI2::SetEffectsRobotGlowForTest(float value) {
 
 void idAI2::SetGoreAvailable(const char* goreName, bool available) {
   goreComponent->SetGoreAvailable(goreName, available);
+}
+
+void idAI2::ConfigureGoreCheckForTest(
+    bool result, bool fullBody, std::initializer_list<short> joints) {
+  goreComponent->ConfigureCheckForGoreForTest(result, fullBody, joints);
+}
+
+idPonytail* idAI2::AddPonytailForGoreTest(int attachmentHandle) {
+  auto ponytail = std::make_unique<idPonytail>();
+  ponytail->ConfigureAttachmentForGoreTest(attachmentHandle);
+  idPonytail* const result = ponytail.get();
+  gorePonytails.push_back(std::move(ponytail));
+  return result;
+}
+
+int idAI2::GetGoreCheckQueryCountForTest() const {
+  return goreComponent->GetCheckForGoreQueryCountForTest();
+}
+
+void idAI2::SetActiveAIForUpdateDeathsTest(
+    std::initializer_list<idAI2*> activeAI) {
+  ActiveAIForUpdateDeaths().assign(activeAI.begin(), activeAI.end());
+}
+
+void idAI2::SetHealthDeadForUpdateDeathsTest(bool value) {
+  if (value) {
+    healthComponent->SetDeadFlag();
+  } else {
+    healthComponent->ClearDeadFlag();
+  }
+}
+
+int idAI2::GetGoreDeathsUpdateCountForTest() const {
+  return goreComponent->GetUpdateGoreDeathsCountForTest();
 }
 
 void idAI2::SetAnimWebEventPendingForTest(aiAnimWeb_t web,
@@ -8119,14 +8290,190 @@ void idAI2::DoSpawnSettings() {
 // DIA: `idAI2::DoSpawnSettings'::`1'::dtor$4
 // DIA: `idAI2::DoSpawnSettings'::`1'::dtor$9
 // DIA: idAI2::SpawnCorpse
-idRecoveredValue idAI2::SpawnCorpse(...) { return RecordCoreCall("SpawnCorpse"); }
+void idAI2::SpawnCorpse(const idCorpseManager::corpseSave_t* corpse) {
+  SetSolid(false);
+
+  idFSMManager::idFSMStack stack;
+  stack.Add(GetAlertCycleFSM(), "Dead");
+  fsmManager->SetFSMStack(stack);
+
+  idAngles corpseAngles = corpse->orientation.ToAngles();
+  Teleport(&corpse->position, &corpseAngles);
+  ++spawnCorpseObservation.updateVisualsCount;
+
+  healthComponent->Kill_Impl();
+  healthComponent->SetDeadFlag();
+
+  const std::uint32_t packedCheckpoint =
+      static_cast<std::uint32_t>(corpse->checkpointKilled);
+  checkpointKilled =
+      static_cast<std::int32_t>(packedCheckpoint << 2U) >> 2;
+  unsigned int deathFlags = deathInfo->GetDeathFlags();
+  if ((packedCheckpoint & 0x40000000U) != 0U) {
+    deathFlags |= 8U;
+  } else {
+    deathFlags &= ~8U;
+  }
+  deathInfo->SetDeathFlags(deathFlags);
+
+  GetPhysics()->DisableClip();
+  walkIKActive = false;
+  walkIKEnabled = false;
+  ++spawnCorpseObservation.walkIKDisableAllCount;
+  DropAttachment(6);
+  DropAttachment(1);
+  DropAttachment(2);
+
+  if (corpse->curState.IsEmpty()) {
+    ++spawnCorpseObservation.becomeActiveCount;
+    spawnCorpseObservation.lastBecomeActiveFlags = 4;
+    spawnCorpseObservation.walkIKDead = true;
+    idAnimator_AF* articulatedFigure = GetAFMutable();
+    articulatedFigure->StartFromSaved(corpse->bodies);
+    ++spawnCorpseObservation.startFromSavedCount;
+    spawnCorpseObservation.savedBodyCount = corpse->bodies.Num();
+    articulatedFigure->PutToRest();
+    ++spawnCorpseObservation.putAFToRestCount;
+  } else {
+    deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() | 4U);
+
+    blendParms_t blendParameters;
+    blendParameters.SetDurationMS(0);
+    idAnimator_AnimWeb* bodyAnimator =
+        animWebAnimators[AIANIMWEB_BODY].get();
+    (void)bodyAnimator->ForceState(corpse->subWeb.data,
+                                   corpse->curState.data,
+                                   blendParameters, 0);
+
+    const int gameTime = gameLocal->GetGameTimeMs();
+    const int millisecondsPerFrame = gameLocal->GetGameMsPerFrame();
+    ++spawnCorpseObservation.blendStackCount;
+    spawnCorpseObservation.blendStack = spawnAnimationStack;
+    spawnCorpseObservation.blendGameTime = gameTime;
+    spawnCorpseObservation.blendPreviousGameTime =
+        gameTime - millisecondsPerFrame;
+    spawnCorpseObservation.blendMillisecondsPerFrame =
+        millisecondsPerFrame;
+    spawnCorpseObservation.blendGameTimePerSecond = 1000;
+
+    const idDeclAnimWeb* declaration = bodyAnimator->GetDeclaration();
+    if (declaration != nullptr) {
+      const animWebSubWebIndex_t subWebIndex =
+          declaration->GetSubWebIndexForName(corpse->subWeb.data);
+      const animWebStateIndex_t stateIndex =
+          declaration->GetStateIndexForName(corpse->curState.data);
+      moveState->SetMovementModeForReal(AIMOVEMODE_ANIM);
+      ++spawnCorpseObservation.movementModeSetCount;
+      spawnCorpseObservation.requestedMovementMode = AIMOVEMODE_ANIM;
+
+      const idAnimWebIndex runtimeSubWeb{subWebIndex.value};
+      const idAnimWebIndex runtimeState{stateIndex.value};
+      const idAIAnimNodePlayback* playback = GetAnimForAnimWebNodeIndex(
+          &runtimeSubWeb, &runtimeState, corpse->deathAnimIndex);
+      ++spawnCorpseObservation.animationLookupCount;
+      spawnCorpseObservation.firstAnimationLookupIndex =
+          corpse->deathAnimIndex;
+      const idMD6Anim* animation =
+          playback != nullptr ? playback->animation : nullptr;
+      if (animation == nullptr) {
+        playback = GetAnimForAnimWebNodeIndex(&runtimeSubWeb, &runtimeState,
+                                              0);
+        ++spawnCorpseObservation.animationLookupCount;
+        spawnCorpseObservation.secondAnimationLookupIndex = 0;
+        animation = playback != nullptr ? playback->animation : nullptr;
+      }
+
+      if (animation == nullptr) {
+        idLib::Warning(
+            "Entity(%s) incorrect anim. Web(%s) State(%s) Index(%d) "
+            "removing",
+            GetName(), corpse->subWeb.data, corpse->curState.data,
+            corpse->deathAnimIndex);
+        PostEventMS(&EV_Remove, 0);
+        return;
+      }
+
+      idTreeAnimator* treeAnimator = effectsTreeAnimator;
+      if (treeAnimator != nullptr) {
+        const int frame =
+            animation->animData != nullptr
+                ? static_cast<int>(animation->animData->numFrames) - 1
+                : -1;
+        treeAnimator->SetFrameFromAnim(animation, frame, true, false,
+                                       nullptr);
+        ++spawnCorpseObservation.setFrameCount;
+        spawnCorpseObservation.setFrameAnimation = animation;
+        spawnCorpseObservation.setFrameIndex = frame;
+        spawnCorpseObservation.setFrameForce = true;
+        spawnCorpseObservation.setFrameSync = false;
+        ++spawnCorpseObservation.becomeInactiveCount;
+        spawnCorpseObservation.lastBecomeInactiveFlags = 6;
+      }
+      moveState->Stop(MOVE_STATUS_DONE);
+      ++spawnCorpseObservation.moveStopCount;
+      spawnCorpseObservation.requestedMoveStopStatus = MOVE_STATUS_DONE;
+    }
+  }
+
+  GetAttachments()->HideAttachments();
+  ++spawnCorpseObservation.hideAttachmentsCount;
+  PostEventMS((packedCheckpoint & 0x40000000U) != 0U ? &EV_Hide
+                                                     : &EV_Show,
+              0);
+  deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() | 2U);
+  StartDeathSystem(false);
+}
 // DIA: `idAI2::SpawnCorpse'::`1'::dtor$0
 // DIA: `idAI2::SpawnCorpse'::`1'::dtor$1
 // DIA: idAI2::GetAnimationDeltaAndRot
-idRecoveredValue idAI2::GetAnimationDeltaAndRot(...) { return RecordCoreCall("GetAnimationDeltaAndRot"); }
+bool idAI2::GetAnimationDeltaAndRot(const idAnimWebPath& animPath,
+                                    idVec3& outDelta,
+                                    idAngles& outRotation,
+                                    const bool verifyAWPath) const {
+  return GetAnimationDelta(animPath, outDelta, verifyAWPath) &&
+         GetAnimationRot(animPath, outRotation, verifyAWPath);
+}
+
+void idAIScriptProxy::BindOwner(idAI2* value) {
+  for (scriptProxyOwnerEntry_t& entry : ScriptProxyOwners()) {
+    if (entry.proxy == this) {
+      entry.owner = value;
+      return;
+    }
+  }
+  ScriptProxyOwners().push_back({this, value});
+}
+
+idAI2* idAIScriptProxy::GetOwnerForTest() const {
+  return FindScriptProxyOwner(this);
+}
+
+void idAIScriptProxy::SetExecutingScriptStateForTest(const bool executing) {
+  idAI2* owner = FindScriptProxyOwner(this);
+  idFiniteStateMachine* alertCycle =
+      owner->fsmManager->FindAlertCycleFSM();
+  if (alertCycle != nullptr) {
+    alertCycle->SetCurrentStateForTest(
+        executing ? &executeDoomScriptStateToken : nullptr);
+  }
+}
+
 // DIA: idAIScriptProxy::ForceFSMIntoExecutingScript
-idRecoveredValue idAIScriptProxy::ForceFSMIntoExecutingScript(...) {
-  return {};
+bool idAIScriptProxy::ForceFSMIntoExecutingScript() {
+  idAI2* owner = FindScriptProxyOwner(this);
+  idFiniteStateMachine* alertCycle =
+      owner->fsmManager->FindAlertCycleFSM();
+  if (alertCycle == nullptr ||
+      alertCycle->GetCurrentStateForTest() ==
+          &executeDoomScriptStateToken) {
+    return false;
+  }
+
+  idFSMManager::idFSMStack stack;
+  stack.Add(alertCycle, "ExecuteDoomscript");
+  owner->fsmManager->SetFSMStack(stack);
+  alertCycle->SetCurrentStateForTest(&executeDoomScriptStateToken);
+  return true;
 }
 // DIA: idList<idHandle<int,enum invalidAIEvent_t,-1>,5>::Append
 // DIA: idList<idHandle<int,enum invalidAIEvent_t,-1>,5>::Insert
@@ -8143,37 +8490,956 @@ idRecoveredValue idAIScriptProxy::ForceFSMIntoExecutingScript(...) {
 // DIA: `idAI2::idAIVolatile::idAIPhysics::~idAIPhysics'::`1'::dtor$0
 // DIA: idAI2::idAIVolatile::idAIPain::~idAIPain
 // DIA: idAI2::UpdateTesla
-idRecoveredValue idAI2::UpdateTesla(...) { return RecordCoreCall("UpdateTesla"); }
+void idAI2::UpdateTesla() {
+  ++teslaUpdateObservation.callCount;
+  const int currentTime = gameLocal->GetGameTimeMs();
+  if (presentable == nullptr ||
+      presentable->GetAnimatedEntityInterface() == nullptr) {
+    return;
+  }
+  auto* const teslaTreeAnimator =
+      static_cast<idTreeAnimator*>(presentable->GetAnimatedTreeAnimator());
+  if (teslaTreeAnimator == nullptr) return;
+
+  idMat3 identity;
+  identity[0] = {1.0F, 0.0F, 0.0F};
+  identity[1] = {0.0F, 1.0F, 0.0F};
+  identity[2] = {0.0F, 0.0F, 1.0F};
+
+  const auto stopTesla = [&](const bool fire) {
+    (void)StopTesla(fire, currentTime);
+    ++teslaUpdateObservation.stopTeslaCount;
+    teslaUpdateObservation.lastStopTeslaFire = fire;
+    teslaUpdateObservation.lastStopTeslaTime = currentTime;
+  };
+  const auto spawnTeslaBomb = [&]() {
+    (void)SpawnTeslaBomb(currentTime);
+    ++teslaUpdateObservation.spawnTeslaBombCount;
+    teslaUpdateObservation.lastSpawnTeslaBombTime = currentTime;
+  };
+  const auto radiusDamage = [&](const idVec3& position,
+                                const idDeclDamage* damage) {
+    ++teslaUpdateObservation.radiusDamageCount;
+    teslaUpdateObservation.lastRadiusDamagePosition = position;
+    teslaUpdateObservation.lastRadiusDamageDecl = damage;
+  };
+  const auto stopChargingBolt = [&]() {
+    ++teslaUpdateObservation.chargingBoltStopCount;
+    teslaUpdateState.chargingBoltActive = false;
+  };
+
+  if (teslaDischargeTime >= 0 || teslaExplodeTime >= 0) {
+    bool activeTeslaCancelled = false;
+    if (teslaUpdateState.deferredEffect != 0 &&
+        teslaUpdateState.groundTrace.valid) {
+      if (teslaUpdateState.groundTrace.hasResult &&
+          teslaUpdateState.groundTrace.fraction < 1.0F) {
+        effectsFXManager->StartFX(
+            &teslaUpdateState.groundTrace.endPosition, &identity,
+            currentTime,
+            static_cast<fxCondition_t>(teslaUpdateState.deferredEffect));
+        ++teslaUpdateObservation.deferredEffectStartCount;
+        if (teslaUpdateState.bombFXDecl != nullptr &&
+            teslaBombFXEntity != nullptr) {
+          ++teslaUpdateObservation.bombEntityActivationCount;
+        }
+      }
+      teslaUpdateState.deferredEffect = 0;
+      teslaUpdateState.groundTrace.valid = false;
+      teslaUpdateState.groundTrace.queryIndex = 0;
+    }
+
+    if (teslaDischargeTime >= 0 ||
+        (teslaExplodeTime >= 0 && teslaUpdateState.boltDecl != nullptr)) {
+      bool cancelTesla = endStunnedTime != 0;
+      if (!teslaUpdateState.useTeslaWhileBlinded && endBlindedTime != 0) {
+        cancelTesla = true;
+      }
+      if (fireControl != nullptr && fireControl->IsFireInhibited()) {
+        cancelTesla = true;
+      }
+
+      const idEntity* enemy = memory->GetEnemy();
+      if (enemy == nullptr) {
+        cancelTesla = true;
+      } else if (teslaHeavyGuardGun) {
+        if (teslaDischargeTime >= 0) {
+          const idVec3 delta = enemy->GetPhysics()->GetOrigin() -
+                               GetPhysics()->GetOrigin();
+          if (delta.LengthSqr() < teslaUpdateState.minimumRange *
+                                      teslaUpdateState.minimumRange) {
+            cancelTesla = true;
+          }
+        }
+      } else {
+        if (GetSpottedDuration(enemy, currentTime) < 500) {
+          cancelTesla = true;
+        }
+        const idVec3 delta = enemy->GetPhysics()->GetOrigin() -
+                             GetPhysics()->GetOrigin();
+        const float distanceSquared = delta.LengthSqr();
+        const float maximumRange = teslaRange * 1.25F;
+        if (distanceSquared > maximumRange * maximumRange ||
+            distanceSquared < teslaUpdateState.minimumRange *
+                                  teslaUpdateState.minimumRange) {
+          cancelTesla = true;
+        }
+      }
+
+      if (cancelTesla) {
+        stopTesla(false);
+        activeTeslaCancelled = true;
+      }
+    }
+
+    if (!activeTeslaCancelled && teslaDischargeTime >= 0) {
+      if (currentTime > teslaDischargeTime) stopTesla(true);
+    } else if (!activeTeslaCancelled && teslaExplodeTime >= 0) {
+      if (teslaUpdateState.bombFindPosition) {
+        if (teslaUpdateState.bombTrace.valid) {
+          if (teslaUpdateState.bombTrace.hasResult &&
+              teslaUpdateState.bombTrace.fraction < 1.0F) {
+            const idVec3 traceDirection = NormalizedOrZero(
+                teslaUpdateState.bombTrace.endPosition -
+                teslaExplodePosition);
+            teslaExplodePosition =
+                teslaUpdateState.bombTrace.endPosition +
+                traceDirection * 20.0F;
+          }
+          teslaUpdateState.bombTrace.valid = false;
+          teslaUpdateState.bombTrace.queryIndex = 0;
+          spawnTeslaBomb();
+        } else if (static_cast<float>(currentTime) >
+                   static_cast<float>(teslaExplodeTime) -
+                       teslaUpdateState.explodeDelay * 0.5F) {
+          spawnTeslaBomb();
+        }
+      } else if (currentTime > teslaExplodeTime) {
+        if (teslaHeavyGuardGun) {
+          radiusDamage(teslaExplodePosition, teslaDamageDecl);
+          effectsFXManager->SetExternalTransform(teslaExplodePosition,
+                                                 identity);
+          effectsFXManager->StopFX(currentTime,
+                                   static_cast<fxCondition_t>(0x5C), false);
+          effectsFXManager->StartFX(
+              &teslaExplodePosition, &identity, currentTime,
+              static_cast<fxCondition_t>(0x5E));
+          if (teslaUpdateState.bombFXDecl != nullptr &&
+              teslaBombFXEntity != nullptr) {
+            ++teslaUpdateObservation.bombEntityActivationCount;
+          }
+          teslaExplodeTime = -1;
+
+          if (teslaUpdateState.useBombGroundEffects) {
+            teslaUpdateState.pendingBlindFireStart = teslaExplodePosition;
+            teslaUpdateState.pendingBlindFireEnd =
+                teslaExplodePosition - idVec3{0.0F, 0.0F, 300.0F};
+            teslaUpdateObservation.lastGroundQueryStart =
+                teslaUpdateState.pendingBlindFireStart;
+            teslaUpdateObservation.lastGroundQueryEnd =
+                teslaUpdateState.pendingBlindFireEnd;
+            ++teslaUpdateObservation.groundQuerySubmitCount;
+            teslaUpdateState.groundTrace.queryIndex =
+                gameLocal->SubmitTranslationQuery(
+                    teslaUpdateState.pendingBlindFireStart,
+                    teslaUpdateState.pendingBlindFireEnd, 0, identity, 25,
+                    GetEntityNumber(), false,
+                    "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(1839) : "
+                    "TeslaExplosionFindGround");
+            teslaUpdateState.deferredEffect = 0x5F;
+          }
+
+          if (teslaUpdateState.inhibitFireTime > 0.0F &&
+              fireControl != nullptr && GetEquippedWeapon() != nullptr) {
+            fireControl->InhibitFire(
+                GetEquippedWeapon(),
+                static_cast<int>(teslaUpdateState.inhibitFireTime * 1000.0F),
+                false);
+          }
+        }
+
+        if (teslaUpdateState.bombDangerZone > 0.0F) {
+          ++teslaUpdateObservation.clearDangerZoneCount;
+        }
+        if (teslaUpdateState.boltDecl != nullptr) {
+          stopChargingBolt();
+          SetLockHeadTracking(false);
+        }
+      } else {
+        if (teslaUpdateState.bombDamageDecl != nullptr) {
+          radiusDamage(teslaExplodePosition,
+                       teslaUpdateState.bombDamageDecl);
+        }
+
+        if (teslaUpdateState.boltDecl != nullptr &&
+            teslaUpdateState.chargingBoltTag.parentJoint != 0xFFFFU) {
+          bool updateBolt = false;
+          if (teslaUpdateState.chargingBoltActive) {
+            if (currentTime >=
+                teslaUpdateState.chargingBoltFlickerTime) {
+              stopChargingBolt();
+              const float interval = RandomFloat(
+                  teslaUpdateState.boltFlickerInterval,
+                  teslaUpdateState.boltFlickerInterval * 1.5F);
+              teslaUpdateState.chargingBoltFlickerTime =
+                  currentTime + static_cast<int>(interval * 1000.0F);
+              if (teslaUpdateState.chargingBoltFlickerTime >
+                  teslaExplodeTime) {
+                teslaUpdateState.chargingBoltFlickerTime =
+                    (currentTime + teslaExplodeTime) / 2;
+              }
+            } else {
+              updateBolt = true;
+            }
+          } else if (currentTime >=
+                     teslaUpdateState.chargingBoltFlickerTime) {
+            updateBolt = true;
+          } else {
+            stopChargingBolt();
+          }
+
+          if (updateBolt) {
+            idVec3 chargingPosition;
+            idMat3 chargingAxis;
+            if (teslaTreeAnimator->GetWorldSpaceTagTransformForAI(
+                    teslaUpdateState.chargingBoltTag, chargingPosition,
+                    chargingAxis)) {
+              if (teslaUpdateState.chargingBoltActive) {
+                ++teslaUpdateObservation.chargingBoltUpdateNodesCount;
+              } else {
+                ++teslaUpdateObservation.chargingBoltStartCount;
+                teslaUpdateState.chargingBoltActive = true;
+                const float interval = RandomFloat(
+                    teslaUpdateState.boltFlickerInterval * 0.5F,
+                    teslaUpdateState.boltFlickerInterval);
+                teslaUpdateState.chargingBoltFlickerTime =
+                    currentTime + static_cast<int>(interval * 1000.0F);
+              }
+              ++teslaUpdateObservation.chargingBoltUpdateCount;
+            } else {
+              stopChargingBolt();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (teslaUpdateState.resetTime >= 0 &&
+      currentTime > teslaUpdateState.resetTime && teslaHeavyGuardGun) {
+    const idVec3 origin{};
+    effectsFXManager->StopFX(currentTime,
+                             static_cast<fxCondition_t>(0x5A), false);
+    effectsFXManager->StartFX(&origin, &identity, currentTime,
+                              static_cast<fxCondition_t>(0x5A));
+    if (teslaUpdateState.bombFXDecl != nullptr &&
+        teslaBombFXEntity != nullptr) {
+      ++teslaUpdateObservation.bombEntityActivationCount;
+    }
+    teslaUpdateState.resetTime = -1;
+  }
+
+  if (teslaBlindFireDuration <= 0.0F ||
+      teslaUpdateState.teslaTag.parentJoint == 0xFFFFU) {
+    return;
+  }
+
+  idAIEntityState* enemyState =
+      currentEnemy != nullptr ? worldState->StateForEntity(currentEnemy)
+                              : nullptr;
+  if (currentEnemy == nullptr || enemyState == nullptr ||
+      IsRecentlySpotted(enemyState, spotLostFireTime) ||
+      (!IsRecentlySpotted(enemyState, teslaBlindFireDuration) &&
+       !IsRecentlyHeard(enemyState, teslaBlindFireDuration))) {
+    teslaBlindFireTimeStamp = 0;
+    teslaUpdateState.blindFireTrace.valid = false;
+    teslaUpdateState.blindFireTrace.queryIndex = 0;
+    teslaUpdateState.blindFireSpreadFactor = 1.0F;
+    aiEventState.teslaBlindFirePositions.Clear();
+    ++teslaUpdateObservation.blindFireResetCount;
+    return;
+  }
+
+  if (currentTime <= teslaUpdateState.resetTime ||
+      teslaDischargeTime >= 0 || teslaExplodeTime >= 0 ||
+      CanTeslaBlindFire(enemyState, 500)) {
+    return;
+  }
+
+  idVec3 teslaPosition;
+  idMat3 teslaAxis;
+  if (!teslaTreeAnimator->GetWorldSpaceTagTransformForAI(
+          teslaUpdateState.teslaTag, teslaPosition, teslaAxis)) {
+    return;
+  }
+
+  const idVec3 enemyPosition = currentEnemy->GetPhysics()->GetOrigin();
+  if (teslaUpdateState.blindFireTrace.valid) {
+    ++teslaUpdateObservation.blindFireTraceResolveCount;
+    if (teslaUpdateState.blindFireTrace.hasResult) {
+      idVec3 targetPosition = teslaUpdateState.blindFireTrace.endPosition;
+      if (teslaUpdateState.blindFireTrace.fraction < 1.0F) {
+        targetPosition =
+            teslaUpdateState.blindFireTrace.endPosition +
+            NormalizedOrZero(teslaPosition -
+                             teslaUpdateState.blindFireTrace.endPosition) *
+                60.0F;
+      }
+
+      const float distance = (teslaPosition - targetPosition).Length();
+      if (distance <= teslaUpdateState.minimumRange ||
+          distance >= teslaRange ||
+          teslaUpdateState.blindFireTrace.fraction <= 0.9F) {
+        teslaUpdateState.blindFireSpreadFactor += 0.1F;
+      } else {
+        teslaBlindFireTimeStamp = currentTime;
+        idList<idVec3, 5>& positions =
+            aiEventState.teslaBlindFirePositions;
+        if (positions.Num() == 0) {
+          positions.Append(targetPosition);
+        } else {
+          if (positions.Num() >= 3) {
+            positions[static_cast<int>(RandomInt(1U, 2))] = positions[0];
+          } else {
+            positions.Append(positions[0]);
+          }
+          positions[0] = targetPosition;
+        }
+        teslaUpdateState.blindFireSpreadFactor = 1.0F;
+      }
+    }
+    teslaUpdateState.blindFireTrace.valid = false;
+    teslaUpdateState.blindFireTrace.queryIndex = 0;
+  }
+
+  if (CanTeslaBlindFire(enemyState, 500) ||
+      !currentEnemySuspectedPosition.valid) {
+    return;
+  }
+
+  const idVec3 suspectedPosition = currentEnemySuspectedPosition.pos;
+  const idVec3 suspectedHorizontal{suspectedPosition.x - teslaPosition.x,
+                                   suspectedPosition.y - teslaPosition.y,
+                                   0.0F};
+  const idVec3 enemyHorizontal{enemyPosition.x - teslaPosition.x,
+                               enemyPosition.y - teslaPosition.y, 0.0F};
+  const float suspectedDistanceSquared = suspectedHorizontal.LengthSqr();
+  if (suspectedDistanceSquared >= teslaRange * 1.2F *
+                                       teslaRange * 1.2F ||
+      suspectedDistanceSquared <= 6400.0F ||
+      enemyHorizontal.LengthSqr() >= teslaRange * 1.3F *
+                                         teslaRange * 1.3F) {
+    return;
+  }
+
+  idMat3 orientationAxis = bodyOrientation->GetAxis();
+  if (robotState.usesRobot) GetEyeAxis(&orientationAxis);
+  const idVec3 suspectedDirection =
+      NormalizedOrZero(suspectedPosition - teslaPosition);
+  if (orientationAxis[0] * suspectedDirection <= 0.86602539F) return;
+
+  const float minimumAimDistance =
+      std::max(80.0F, teslaUpdateState.minimumRange * 1.1F);
+  const float maximumAimDistance = teslaRange * 0.9F;
+  idVec3 selectedPosition = suspectedPosition;
+  bool selectedScriptPosition = false;
+  const int scriptPositionCount =
+      teslaUpdateState.blindFireScriptPositions.Num();
+  if (scriptPositionCount > 0) {
+    int index = RandomInt(scriptPositionCount);
+    for (int checked = 0; checked < scriptPositionCount; ++checked) {
+      const idVec3 candidate =
+          teslaUpdateState.blindFireScriptPositions[index];
+      const idVec3 toCandidate = candidate - teslaPosition;
+      const float candidateDistanceSquared = toCandidate.LengthSqr();
+      if (candidateDistanceSquared >
+              minimumAimDistance * minimumAimDistance &&
+          candidateDistanceSquared <
+              maximumAimDistance * maximumAimDistance &&
+          orientationAxis[0] * NormalizedOrZero(toCandidate) >
+              0.70710671F) {
+        const float offsetDistance =
+            candidateDistanceSquared <=
+                    (enemyPosition - teslaPosition).LengthSqr()
+                ? 200.0F
+                : 80.0F;
+        selectedPosition =
+            candidate + NormalizedOrZero(toCandidate) *
+                            RandomFloat(offsetDistance);
+        teslaUpdateState.blindFireScriptPositions.RemoveIndexFast(index);
+        selectedScriptPosition = true;
+        break;
+      }
+      index = (index + 1) % scriptPositionCount;
+    }
+  }
+
+  if (!selectedScriptPosition) {
+    float closestDistanceSquared =
+        (selectedPosition - enemyPosition).LengthSqr();
+    for (int index = 0;
+         index < aiEventState.teslaBlindFirePositions.Num(); ++index) {
+      const idVec3& candidate =
+          aiEventState.teslaBlindFirePositions[index];
+      const float candidateDistanceSquared =
+          (candidate - enemyPosition).LengthSqr();
+      if (candidateDistanceSquared < closestDistanceSquared) {
+        closestDistanceSquared = candidateDistanceSquared;
+        selectedPosition = candidate;
+      }
+    }
+
+    const idVec3 spreadDelta{selectedPosition.x - enemyPosition.x,
+                             selectedPosition.y - enemyPosition.y, 0.0F};
+    const float spread =
+        std::max(80.0F, spreadDelta.Length()) *
+        teslaUpdateState.blindFireSpreadFactor;
+    selectedPosition.x += RandomFloat(-spread, spread);
+    selectedPosition.y += RandomFloat(-spread, spread);
+    selectedPosition.z += 60.0F;
+
+    const idVec3 aimDelta = selectedPosition - teslaPosition;
+    idVec3 direction = aimDelta == idVec3{}
+                           ? orientationAxis[0]
+                           : NormalizedOrZero(aimDelta);
+    if (orientationAxis[0] * direction < 0.70710671F) {
+      const idVec3 side = orientationAxis[1] * direction <= 0.0F
+                              ? -orientationAxis[1]
+                              : orientationAxis[1];
+      direction = NormalizedOrZero(
+          side + orientationAxis[0] * RandomFloat(1.0F, 2.0F));
+    }
+    const float aimDistance = std::max(
+        minimumAimDistance,
+        std::min(RandomFloat(0.8F, 1.1F) *
+                     (enemyPosition - teslaPosition).Length(),
+                 maximumAimDistance));
+    selectedPosition = teslaPosition + direction * aimDistance;
+  }
+
+  teslaUpdateState.pendingBlindFireStart = teslaPosition;
+  teslaUpdateState.pendingBlindFireEnd = selectedPosition;
+  teslaUpdateObservation.lastBlindFireTraceStart = teslaPosition;
+  teslaUpdateObservation.lastBlindFireTraceEnd = selectedPosition;
+  ++teslaUpdateObservation.blindFireTraceSubmitCount;
+  teslaUpdateState.blindFireTrace.queryIndex =
+      gameLocal->SubmitTranslationQuery(
+          teslaPosition, selectedPosition, 0, identity, 128,
+          GetEntityNumber(), false,
+          "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(2067) : "
+          "TeslaBlindfire");
+}
 // DIA: `idAI2::UpdateTesla'::`1'::dtor$0
 // DIA: idAI2::DamageGroupPopOffArmor
-idRecoveredValue idAI2::DamageGroupPopOffArmor(...) { return RecordCoreCall("DamageGroupPopOffArmor"); }
+void idAI2::DamageGroupPopOffArmor(idDamageGroup* damageGroup,
+                                   idVec3 impactPoint,
+                                   idVec3 impactDirection,
+                                   const float damage,
+                                   bool& outArmorPoppedOff) {
+  ++armorPopOffObservation.callCount;
+
+  idTreeAnimator* treeAnimator = nullptr;
+  if (presentable != nullptr &&
+      presentable->GetAnimatedEntityInterface() != nullptr) {
+    idPresentable* const animatedPresentable =
+        presentable->GetAnimatedEntityInterface();
+    treeAnimator = animatedPresentable != nullptr
+                       ? static_cast<idTreeAnimator*>(
+                             animatedPresentable->GetAnimatedTreeAnimator())
+                       : nullptr;
+  }
+  if (damageGroup == nullptr || treeAnimator == nullptr) return;
+
+  for (int index = 0; index < damageGroup->hideMeshes.Num(); ++index) {
+    ++armorPopOffObservation.hideMeshAttemptCount;
+    if (!HideMeshNoAutoRestore(damageGroup->hideMeshes[index].data)) {
+      ++armorPopOffObservation.unknownHideMeshCount;
+      idLib::Warning(
+          "%s: damage group '%s', unknown hideMesh[%d] = '%s'",
+          GetName(), damageGroup->groupName.data, index,
+          damageGroup->hideMeshes[index].data);
+    }
+  }
+
+  constexpr int kMeshKitTypeCount = 3;
+  if (damageGroup->armorDestroyedMeshKit.kitType != kMeshKitTypeCount &&
+      !damageGroup->armorDestroyedMeshKit.name.IsEmpty()) {
+    treeAnimator->HideKitsExcept(
+        damageGroup->armorDestroyedMeshKit.kitType,
+        damageGroup->armorDestroyedMeshKit.name.data);
+  }
+
+  if (damageGroup->disableHitGroups.Num() > 0 ||
+      damageGroup->enableHitGroups.Num() > 0) {
+    ++armorPopOffObservation.hitGroupUpdateCount;
+    for (int index = 0; index < damageGroup->disableHitGroups.Num();
+         ++index) {
+      disabledArmorHitGroups.Append(damageGroup->disableHitGroups[index]);
+    }
+    for (int index = 0; index < damageGroup->enableHitGroups.Num();
+         ++index) {
+      enabledArmorHitGroups.Append(damageGroup->enableHitGroups[index]);
+    }
+  }
+
+  idMat3 identity;
+  identity[0] = {1.0F, 0.0F, 0.0F};
+  identity[1] = {0.0F, 1.0F, 0.0F};
+  identity[2] = {0.0F, 0.0F, 1.0F};
+  idVec3 spawnedOrigin = impactPoint;
+  idMat3 spawnedAxis = identity;
+  idVec3 modelOrigin = impactPoint;
+  idMat3 modelAxis = identity;
+  idVec3 ejectionDirection = GetPhysics()->GetGravityNormal();
+  unsigned short parentJoint = 0xFFFFU;
+
+  ++armorPopOffObservation.spawnRequestCount;
+  idEntity* const spawnedEntity =
+      gameLocal->SpawnEntityFromDef(damageGroup->spawnEntity);
+  armorPopOffObservation.spawnedEntity = spawnedEntity;
+  if (spawnedEntity != nullptr) {
+    auto* const armor = dynamic_cast<idProp_AIArmor*>(spawnedEntity);
+    const char* propName = "prop";
+    idStr tagName = damageGroup->tagName;
+    if (armor != nullptr) {
+      propName = armor->GetPropNameForAI();
+      if (!armor->GetArmorTagNameForAI().IsEmpty()) {
+        tagName = armor->GetArmorTagNameForAI();
+      }
+    }
+    (void)propName;
+
+    if (!tagName.IsEmpty()) {
+      const idTreeAnimator::tagData_t* const tagData =
+          treeAnimator->FindArmorPropTagForAI(propName, tagName.data);
+      if (tagData == nullptr || tagData->parentJoint == 0xFFFFU) {
+        idLib::Warning(
+            "idAI2::DamageGroupPopOffArmor %s tag name %s is not valid",
+            GetName(), tagName.data);
+      } else {
+        armorPopOffObservation.tagFound = true;
+        parentJoint = tagData->parentJoint;
+        idVec3 tagOrigin;
+        idMat3 tagAxis;
+        if (treeAnimator->GetWorldSpaceTagTransformForAI(
+                *tagData, tagOrigin, tagAxis)) {
+          spawnedOrigin = tagOrigin;
+          spawnedAxis = tagAxis;
+          modelOrigin = tagOrigin;
+          modelAxis = tagAxis;
+          armorPopOffObservation.tagTransformResolved = true;
+        }
+      }
+    }
+
+    if (armor != nullptr && armor->IsInplaceModelForAI()) {
+      spawnedOrigin += spawnedAxis * armor->GetPhysicsOriginForAI();
+      const short jointIndex =
+          treeAnimator->GetJointIndexForAI(parentJoint);
+      idVec3 jointOrigin;
+      if (treeAnimator->GetWorldSpaceJointPositionForAI(jointIndex,
+                                                        jointOrigin)) {
+        ejectionDirection = spawnedOrigin - jointOrigin;
+      }
+    }
+
+    ejectionDirection = NormalizedOrZero(ejectionDirection);
+    spawnedEntity->SetOrigin(spawnedOrigin);
+    spawnedEntity->SetAxis(spawnedAxis);
+    ++armorPopOffObservation.spawnedEntityTransformCount;
+    armorPopOffObservation.spawnedEntityOrigin = spawnedOrigin;
+    armorPopOffObservation.spawnedEntityAxis = spawnedAxis;
+    armorPopOffObservation.ejectionDirection = ejectionDirection;
+
+    if (armor != nullptr) {
+      armor->SetModelTransformForAI(modelOrigin, modelAxis);
+      ++armorPopOffObservation.armorModelTransformCount;
+      if (armor->GetFXDeclForAI() != nullptr) {
+        armor->StartArmorFXForAI();
+        ++armorPopOffObservation.armorFXStartCount;
+      }
+    }
+
+    if (ai_debugArmorPopOff.GetInteger() != 0) {
+      idRenderDebug* const renderDebug =
+          gameLocal->GetRenderWorld()->GetRenderDebug();
+      renderDebug->DebugPoint(idColor::colorGreen, spawnedOrigin, 5000,
+                              false);
+      renderDebug->DebugPoint(idColor::colorRed, modelOrigin, 5000,
+                              false);
+    }
+    if (ai_debugHealth.GetInteger() >= 2) {
+      idRenderDebug* const renderDebug =
+          gameLocal->GetRenderWorld()->GetRenderDebug();
+      renderDebug->DebugPoint(idVec4{1.0F, 0.5F, 0.0F, 1.0F},
+                              spawnedOrigin, 3000, true);
+      renderDebug->DebugArrow(
+          idColor::colorRed, spawnedOrigin,
+          spawnedOrigin + ejectionDirection * (damage * 100.0F),
+          2.0F, 3000, false);
+    }
+
+    const float randomZ = RandomFloat(-1.0F, 1.0F);
+    const float randomY = RandomFloat(-1.0F, 1.0F);
+    const float randomX = RandomFloat(-1.0F, 1.0F);
+    const float velocityScale =
+        120.0F *
+        std::sqrt(std::max(damage, std::numeric_limits<float>::min()));
+    const idVec3 linearVelocity =
+        (ejectionDirection * 0.75F + impactDirection * 0.25F +
+         idVec3{randomX, randomY, randomZ} * 0.0F) *
+        velocityScale;
+    const idVec3 angularVelocity{randomX * 100.0F,
+                                 randomY * 100.0F,
+                                 randomZ * 100.0F};
+    spawnedEntity->GetPhysics()->SetLinearVelocity(linearVelocity, 0);
+    spawnedEntity->GetPhysics()->SetAngularVelocity(angularVelocity, 0);
+    armorPopOffObservation.linearVelocity = linearVelocity;
+    armorPopOffObservation.angularVelocity = angularVelocity;
+
+    if (std::strcmp(damageGroup->groupName.data, "head") == 0 &&
+        armorPopOffHeadEventDecl != nullptr) {
+      gameLocal->AddAIEvent(
+          armorPopOffHeadEventDecl, gameLocal->GetGameTimeMs(), nullptr,
+          this, GetPhysics()->GetOrigin(), 400);
+      ++armorPopOffObservation.headEventCount;
+    }
+    spawnedDetachables.Append(idEntityPtr<idEntity>(spawnedEntity));
+  }
+
+  if (damageGroup->spawnParticle != nullptr) {
+    const float randomFraction = RandomFloat();
+    const int frameMilliseconds = gameLocal->GetGameMsPerFrame();
+    const int currentTime = gameLocal->GetGameTimeMs();
+    ++armorPopOffObservation.particleSpawnCount;
+    armorPopOffObservation.lastParticleDeclaration =
+        damageGroup->spawnParticle;
+    armorPopOffObservation.lastParticleTime = currentTime;
+    armorPopOffObservation.lastParticleFrameMilliseconds =
+        frameMilliseconds;
+    armorPopOffObservation.lastParticleRandom = randomFraction;
+    armorPopOffObservation.lastParticleOrigin = spawnedOrigin;
+    armorPopOffObservation.lastParticleAxis = spawnedAxis;
+  }
+
+  if (damageGroup->popOffArmorFXCondition != 0) {
+    const int currentTime = gameLocal->GetGameTimeMs();
+    effectsFXManager->StartFX(
+        &spawnedOrigin, &spawnedAxis, currentTime,
+        static_cast<fxCondition_t>(
+            damageGroup->popOffArmorFXCondition));
+    ++armorPopOffObservation.popOffFXStartCount;
+    armorPopOffObservation.lastPopOffFXCondition =
+        damageGroup->popOffArmorFXCondition;
+  }
+
+  if (damageGroup->spawnSound != nullptr) {
+    presentable->StartSoundShader(damageGroup->spawnSound->name.data,
+                                  SND_CHANNEL_BODY);
+    ++armorPopOffObservation.soundStartCount;
+    armorPopOffObservation.lastSound = damageGroup->spawnSound;
+    armorPopOffObservation.lastSoundChannel = SND_CHANNEL_BODY;
+    armorPopOffObservation.lastSoundFlags = 0;
+    armorPopOffObservation.lastSoundPeerMask = 0xFFU;
+  }
+  outArmorPoppedOff = true;
+}
 // DIA: `idAI2::DamageGroupPopOffArmor'::`1'::dtor$0
 // DIA: idAI2::CheckForGore
-idRecoveredValue idAI2::CheckForGore(...) { return RecordCoreCall("CheckForGore"); }
+bool idAI2::CheckForGore() {
+  if (!IsDead() || !goreComponent->CheckForGore()) return false;
+
+  const bool fullBody = goreComponent->IsFullBodyGoredForAI();
+  if (fullBody) goredFullBody = true;
+
+  walkIKEnabled = false;
+  ++goreWalkIKDisableCount;
+
+  idTreeAnimator* treeAnimator = nullptr;
+  if (presentable != nullptr &&
+      presentable->GetAnimatedEntityInterface() != nullptr) {
+    idPresentable* const animatedPresentable =
+        presentable->GetAnimatedEntityInterface();
+    treeAnimator = animatedPresentable != nullptr
+                       ? static_cast<idTreeAnimator*>(
+                             animatedPresentable->GetAnimatedTreeAnimator())
+                       : nullptr;
+  }
+  if (treeAnimator == nullptr || !treeAnimator->HasGoreSkeletonForAI()) {
+    return true;
+  }
+
+  const idAttachmentCollection* const attachmentCollection = GetAttachments();
+  if (attachmentCollection == nullptr) return true;
+
+  std::vector<idAttachment*> dropAttachments;
+  dropAttachments.reserve(
+      static_cast<std::size_t>(attachmentCollection->NumForAI()));
+  for (int index = 0; index < attachmentCollection->NumForAI(); ++index) {
+    dropAttachments.push_back(attachmentCollection->ForIndexForAI(index));
+  }
+  goreAttachmentSnapshotCount = static_cast<int>(dropAttachments.size());
+
+  const idList<short, 5>& goredJoints =
+      goreComponent->GetJointsGoredThisFrameForAI();
+  for (idAttachment* const attachment : dropAttachments) {
+    if (attachment == nullptr) continue;
+
+    bool shouldDrop = fullBody;
+    if (fullBody) {
+      if (idWeapon::CastTo(attachment->GetItemForAI()) != nullptr) {
+        attachment->ClearRecoveredWeaponFlagForAI();
+        ++goreWeaponFlagClearCount;
+      }
+    } else {
+      for (int jointIndex = 0; jointIndex < goredJoints.Num(); ++jointIndex) {
+        if (attachment->GetJointIndexForAI() == goredJoints[jointIndex] ||
+            treeAnimator->IsGoreJointChildOfForAI(
+                attachment->GetJointIndexForAI(), goredJoints[jointIndex])) {
+          shouldDrop = true;
+          break;
+        }
+      }
+    }
+
+    if (!shouldDrop) continue;
+
+    idInventoryItem* const item = attachment->GetItemForAI();
+    if (item != nullptr) {
+      DropAttachment(static_cast<equipSlot_t>(item->GetEquipSlotForAI()));
+      continue;
+    }
+
+    for (const std::unique_ptr<idPonytail>& ponytail : gorePonytails) {
+      if (ponytail->GetAttachmentHandle() != attachment->GetHandleForAI()) {
+        continue;
+      }
+      ponytail->Shutdown();
+      ++gorePonytailShutdownCount;
+      break;
+    }
+  }
+
+  return true;
+}
 // DIA: idAI2::UpdateDeaths
-idRecoveredValue idAI2::UpdateDeaths(...) { return RecordCoreCall("UpdateDeaths"); }
+void idAI2::UpdateDeaths() {
+  std::vector<idAI2*>& activeAI = ActiveAIForUpdateDeaths();
+  for (std::size_t index = 0; index < activeAI.size(); ++index) {
+    idAI2* const ai = activeAI[index];
+    if (ai == nullptr || ai->updateDeathsDeactivated) continue;
+
+    const bool deathPending = ai->damageInfo->GetDeathImpulse() != nullptr ||
+                              ai->healthComponent->IsDead_Impl();
+    if (deathPending) {
+      if ((ai->deathInfo->GetDeathFlags() & 1U) != 0U) continue;
+
+      if (ai->deathInfo->GetStartDeathTime() < 0) {
+        ai->deathInfo->Set(ai->damageInfo.get());
+      }
+      ai->CheckForGore();
+      ai->StartDeathSystem(true);
+      if (ai->bodyFadeTime > 0.0F && ai->fadeOutTimestamp == -1) {
+        ai->fadeOutDuration = static_cast<int>(ai->bodyFadeTime * 1000.0F);
+        ai->fadeOutTimestamp = gameLocal->GetGameTimeMs();
+      }
+    } else if (ai->damageInfo->NumImpulses() > 0 &&
+               !ai->StartStaggeringPain(*ai->damageInfo)) {
+      const idDamageImpulse* largestImpulse = nullptr;
+      for (int impulseIndex = 0;
+           impulseIndex < ai->damageInfo->NumImpulses(); ++impulseIndex) {
+        const idDamageImpulse* const candidate =
+            ai->damageInfo->GetImpulseForTest(impulseIndex);
+        if (largestImpulse == nullptr ||
+            candidate->damage > largestImpulse->damage) {
+          largestImpulse = candidate;
+        }
+      }
+
+      if (largestImpulse != nullptr &&
+          ai->updateDeathsAdditivePainEnabled) {
+        idEntity* const inflictor = ai->damageInfo->GetInflictor();
+        idEntity* const attacker = ai->damageInfo->GetAttacker();
+        const float recentDamage =
+            ai->damageInfo->GetRecentUnscaledDamage();
+        ai->PlayAdditivePain(
+            inflictor, attacker, largestImpulse->damageDecl, recentDamage,
+            largestImpulse->impactPoint, largestImpulse->impactDir,
+            largestImpulse->jointIndex, false);
+        ++ai->updateDeathsPainObservation.callCount;
+        ai->updateDeathsPainObservation.inflictor = inflictor;
+        ai->updateDeathsPainObservation.attacker = attacker;
+        ai->updateDeathsPainObservation.damageDecl =
+            largestImpulse->damageDecl;
+        ai->updateDeathsPainObservation.damage = recentDamage;
+        ai->updateDeathsPainObservation.impactPoint =
+            largestImpulse->impactPoint;
+        ai->updateDeathsPainObservation.impactDirection =
+            largestImpulse->impactDir;
+        ai->updateDeathsPainObservation.jointIndex =
+            largestImpulse->jointIndex.value;
+        ai->updateDeathsPainObservation.blind = false;
+      }
+    }
+
+    ai->goreComponent->UpdateGoreDeaths();
+    ai->damageInfo->EndFrame();
+
+    if (ai_debugLevel.GetInteger() > 0 &&
+        ai_debugHealth.GetInteger() >= 2) {
+      idPhysics* const physics = ai->GetPhysics();
+      idRenderDebug* const renderDebug =
+          gameLocal->GetRenderWorld()->GetRenderDebug();
+      char text[64];
+      std::snprintf(text, sizeof(text), "%4.1f, %4.1f",
+                    ai->damageInfo->GetRecentUnscaledDamage(),
+                    ai->damageInfo->GetRecentBodyDamage());
+      renderDebug->DebugText(text, physics->GetOrigin(), 0.2F,
+                             idVec4{1.0F, 0.5F, 0.0F, 1.0F}, 1, 0,
+                             false, false);
+    }
+  }
+}
 // DIA: idAI2::AlarmNotification
 void idAI2::AlarmNotification() {
   const idEntity* enemy = memory->GetEnemy();
-  if (enemy == nullptr) return;
+  if (enemy == nullptr || enemy->GetEntityNumber() < 0 ||
+      gameLocal->GetEntityByNumber(enemy->GetEntityNumber()) != enemy) {
+    return;
+  }
 
-  idEncounterGroup* group = GetEncounterGroup();
+  if (encounterGroupHandle == -1) return;
+
+  idEncounterGroupManager* const groupManager =
+      gameLocal->GetEncounterGroupManager();
+  idEncounterGroup* const group =
+      groupManager != nullptr
+          ? groupManager->GroupForHandle(
+                encounterGroupHandle_t{encounterGroupHandle})
+          : nullptr;
   if (group == nullptr) return;
 
   idStaticList<idAI2*, 64> livingGroupMembers;
   group->GetLivingMembers(&livingGroupMembers);
-  for (int index = 0; index < livingGroupMembers.Num(); ++index) {
+  const int numLivingGroupMembers = livingGroupMembers.Num();
+  for (int index = 0; index < numLivingGroupMembers; ++index) {
     idAI2* member = livingGroupMembers[index];
-    if (member != nullptr && member->memory->GetEnemy() == nullptr) {
-      member->SetupFakePosition(enemy, GetPhysics()->GetOrigin(), false);
+    if (member == nullptr) continue;
+
+    const idEntity* const memberEnemy = member->memory->GetEnemy();
+    if (memberEnemy != nullptr && memberEnemy->GetEntityNumber() >= 0 &&
+        gameLocal->GetEntityByNumber(memberEnemy->GetEntityNumber()) ==
+            memberEnemy) {
+      continue;
     }
+
+    member->SetupFakePosition(enemy, GetPhysics()->GetOrigin(), false);
   }
 }
 // DIA: idAI2::RelinquishControl
-idRecoveredValue idAI2::RelinquishControl(...) { return RecordCoreCall("RelinquishControl"); }
+bool idAI2::RelinquishControl() {
+  const auto resolveControllingPlayer = [this]() -> idPlayer* {
+    if (controllingPlayer == nullptr ||
+        controllingPlayer->GetEntityNumber() < 0) {
+      return nullptr;
+    }
+    idEntity* const entity =
+        gameLocal->GetEntityByNumber(controllingPlayer->GetEntityNumber());
+    if (entity != controllingPlayer) return nullptr;
+    return dynamic_cast<idPlayer*>(entity);
+  };
+
+  if (resolveControllingPlayer() == nullptr) return false;
+  if (resolveControllingPlayer() == nullptr) return false;
+
+  idPlayer* const player = resolveControllingPlayer();
+  if (player == nullptr) return false;
+
+  player->StopSound(SND_CHANNEL_VOICE, 0xFFU);
+  player->SetIsControllingAI(false);
+  gameLocal->RemoveAIEvent(playerControlPossessionEvent);
+  moveState->SetMovementModeForReal(AIMOVEMODE_GROUND);
+  moveState->Stop(MOVE_STATUS_DONE);
+
+  player->RemoveControl(this);
+  player->SetViewAngles(playerControlViewAngles, true);
+  player->SetCommanderHUDEnabled(false);
+  idEntity* const deathCamera = player->SetupDeathCameraForAI(
+      this, playerControlCamera->GetCameraPosition(),
+      playerControlCamera->GetCameraAxis());
+  player->AddControl(deathCamera);
+  player->HideHands(HAND_HIDE_VEHICLE);
+  player->OnShow();
+
+  playerControlCamera->Stop();
+  idPlayer* const resolvedPlayerAfterCameraStop = resolveControllingPlayer();
+  resolvedPlayerAfterCameraStop->ShowHands(HAND_HIDE_GENERIC);
+  controllingPlayer = nullptr;
+
+  soundEnvironment_t environment;
+  gameLocal->GetSoundWorld()->OverrideEnvironmentParams(
+      &environment, player->GetEntityNumber());
+  return true;
+}
 // DIA: `idAI2::RelinquishControl'::`1'::dtor$0
 // DIA: idAI2::ModifyCrosshairInfo
-idRecoveredValue idAI2::ModifyCrosshairInfo(...) { return RecordCoreCall("ModifyCrosshairInfo"); }
+bool idAI2::ModifyCrosshairInfo(const idEntity* activator,
+                                const idFocusTrace* focusTrace,
+                                usableState_t usable,
+                                idCrosshairInfo* info) {
+  info->text.id = GetDisplayName().id;
+  if (usable != USABLE_LOOT && usable != USABLE_DISABLED &&
+      usable != USABLE_DISABLED_NO_ICON) {
+    if (usable == USABLE_INFO) {
+      idPlayer* const player =
+          dynamic_cast<idPlayer*>(const_cast<idEntity*>(activator));
+      if (player != nullptr &&
+          !player->PlayerBehavior_Takedown_IsInTakedown() &&
+          (player->GetTakedownFocusState() == 1 ||
+           player->GetTakedownFocusState() == 6)) {
+        info->icons.SetNum(1);
+        idCrosshairCustomIcon& icon = info->icons[0];
+        const idStrId takedownIndication =
+            player->GetTakedownIndicationTextId();
+        icon.help = player->GetLocalizedPlayerText(takedownIndication);
+        icon.usable = 258;
+        icon.useText =
+            CrosshairIconMapper(CROSSHAIRICONTEXTMAPPER_RSPRESS);
+        info->material = CHMATERIAL_TALK;
+      }
+    }
+    return idEntity::ModifyCrosshairInfo(activator, focusTrace, usable, info);
+  }
+
+  if (crosshairAttachedLoot != nullptr &&
+      crosshairAttachedLoot->GetEntityNumber() >= 0 &&
+      gameLocal->GetEntityByNumber(crosshairAttachedLoot->GetEntityNumber()) ==
+          crosshairAttachedLoot) {
+    crosshairAttachedLoot->ModifyCrosshairInfo(activator, focusTrace, usable,
+                                               info);
+  }
+
+  const auto resolveDroppedItem = [](idEntity* item) -> idEntity* {
+    if (item == nullptr || item->GetEntityNumber() < 0 ||
+        gameLocal->GetEntityByNumber(item->GetEntityNumber()) != item ||
+        item->IsRemoved()) {
+      return nullptr;
+    }
+    return item;
+  };
+
+  if (idEntity* const firstDroppedItem = resolveDroppedItem(droppedItem1)) {
+    return firstDroppedItem->ModifyCrosshairInfo(
+        activator, focusTrace, usable, info);
+  }
+  if (idEntity* const secondDroppedItem = resolveDroppedItem(droppedItem2)) {
+    return secondDroppedItem->ModifyCrosshairInfo(
+        activator, focusTrace, usable, info);
+  }
+
+  info->icons.ClearFree();
+  return false;
+}
 // DIA: idAI2::UpdateWorldState
 idRecoveredValue idAI2::UpdateWorldState(...) { return RecordCoreCall("UpdateWorldState"); }
 // DIA: `idAI2::UpdateWorldState'::`1'::dtor$0

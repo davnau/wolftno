@@ -89,7 +89,6 @@ void idAIMoveState::Init(idAI2* value) {
 // DIA: idAIMoveState::Stop
 void idAIMoveState::Stop(aiMoveStatus_t reason) {
   moveStatus = reason;
-  movementMode = MOVEMENT_STATIC;
   currentVelocity = {};
   pushVelocity = {};
   lerping = false;

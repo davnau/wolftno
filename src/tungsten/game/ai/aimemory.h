@@ -290,12 +290,16 @@ public:
     lastAvoidTime = lastAvoid;
   }
   int GetLastAimedAtTimeForTest() const { return lastAimedAtTime; }
+  void SetLastAimedAtTimeForTest(int value) { lastAimedAtTime = value; }
   int GetLastAvoidTimeForTest() const { return lastAvoidTime; }
   void SetCurrentNeutral(idEntity* value) { currentNeutral = value; }
   void SetLastAttacker(idEntity* value) { lastAttacker = value; }
   void SetSoundAlarmTime(int value) { timeToSoundAlarm = value; }
   int GetSoundAlarmTimeForTest() const { return timeToSoundAlarm; }
   void SetEnemyTrailUpdatePeriod(int value) { enemyTrailUpdatePeriod = value; }
+  int GetEnemyTrailUpdatePeriodForTest() const {
+    return enemyTrailUpdatePeriod;
+  }
   void AddVoiceVolume(idVolume_LocationVoice* value) {
     voiceVolumes.Append(value);
   }
@@ -352,6 +356,68 @@ public:
   }
   bool HasCurrentFriendlyLOSBlockerForTest() const {
     return currentFriendlyLOSBlocker;
+  }
+  void SetLastSafePositionForTest(const idVec3& value, bool valid) {
+    lastSafePos.pos = value;
+    lastSafePos.valid = valid;
+  }
+  const idAIPos& GetLastSafePositionForTest() const { return lastSafePos; }
+  void SetCurrentEnemyDirectionForTest(const idVec3& value) {
+    currentEnemyDir = value;
+  }
+  const idVec3& GetCurrentEnemyDirectionForTest() const {
+    return currentEnemyDir;
+  }
+  void SetCurrentEnemyAimDirectionForTest(const idVec3& value) {
+    currentEnemyAimDir = value;
+  }
+  const idVec3& GetCurrentEnemyAimDirectionForTest() const {
+    return currentEnemyAimDir;
+  }
+  void SetCurrentEnemyRangeForTest(float value) {
+    currentEnemyRange = value;
+  }
+  float GetCurrentEnemyRangeForTest() const { return currentEnemyRange; }
+  void SetFriendlyLOSBlockerDirectionForTest(const idVec3& value) {
+    currentFriendlyLOSBlockerDir = value;
+  }
+  const idVec3& GetFriendlyLOSBlockerDirectionForTest() const {
+    return currentFriendlyLOSBlockerDir;
+  }
+  void SetFriendlyFireCosAngleOffForTest(float value) {
+    friendlyFireCosAngleOff = value;
+  }
+  float GetFriendlyFireCosAngleOffForTest() const {
+    return friendlyFireCosAngleOff;
+  }
+  void SetPlayerViewDataForTest(float dot, float range, int spottedTime) {
+    playerDot = dot;
+    playerRange = range;
+    playerSpottedTime = spottedTime;
+  }
+  float GetPlayerDotForTest() const { return playerDot; }
+  float GetPlayerRangeForTest() const { return playerRange; }
+  int GetPlayerSpottedTimeForTest() const { return playerSpottedTime; }
+  void SetEventInstigatorForTest(idEntity* value) {
+    eventInstigator = value;
+  }
+  idEntity* GetEventInstigatorForTest() const { return eventInstigator; }
+  void SetLastIdleTalkTimeForTest(int value) { lastIdleTalkTime = value; }
+  int GetLastIdleTalkTimeForTest() const { return lastIdleTalkTime; }
+  void SetLookScenePointAllowancesForTest(bool combat, bool search,
+                                          bool roam) {
+    allowCombatLookSPs = combat;
+    allowSearchLookSPs = search;
+    allowRoamLookSPs = roam;
+  }
+  bool GetAllowCombatLookScenePointsForTest() const {
+    return allowCombatLookSPs;
+  }
+  bool GetAllowSearchLookScenePointsForTest() const {
+    return allowSearchLookSPs;
+  }
+  bool GetAllowRoamLookScenePointsForTest() const {
+    return allowRoamLookSPs;
   }
   void SetEnemyTrailPosForTest(int index, const idVec3& value, bool valid) {
     if (index < 0 || index >= static_cast<int>(enemyTrailPositions.size())) {
@@ -469,4 +535,18 @@ private:
   int currentFriendlyBlockerTime{-1};
   bool currentFriendlyLOSBlocker{false};
   idAIPos currentEnemySuspectedPos{};
+  idAIPos lastSafePos{};
+  idVec3 currentEnemyDir{0.0F, 0.0F, -1.0F};
+  idVec3 currentEnemyAimDir{0.0F, 0.0F, -1.0F};
+  float currentEnemyRange{-1.0F};
+  idVec3 currentFriendlyLOSBlockerDir{0.0F, 0.0F, 1.0F};
+  float friendlyFireCosAngleOff{0.96600002F};
+  float playerDot{0.0F};
+  float playerRange{16000.0F};
+  int playerSpottedTime{0};
+  idEntity* eventInstigator{nullptr};
+  int lastIdleTalkTime{-1};
+  bool allowCombatLookSPs{false};
+  bool allowSearchLookSPs{false};
+  bool allowRoamLookSPs{false};
 };

@@ -67,6 +67,11 @@ public:
     }
     idStr::Copynz(output, fixedName.data, outputLength);
   }
+  void FixLongFilename(const char* basePath, const char* extension,
+                       const char* input, char* output, int outputLength,
+                       bool) const {
+    FixLongFilename(basePath, extension, input, output, outputLength);
+  }
   std::uint32_t GetTimestamp(const char* path, bool) const {
     return GetTimestamp(path);
   }

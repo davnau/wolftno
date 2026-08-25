@@ -10,6 +10,7 @@
 using cmHandle_t = int;
 
 class idCollisionQueryJobManager;
+class idRenderModelSurface;
 
 class idCollisionGridState {
 public:
@@ -83,6 +84,9 @@ public:
   cmHandle_t ModelFromSurface(const std::vector<idVec3>& vertices,
                               const std::vector<std::uint32_t>& indices,
                               const char* name = "surface");
+  idCollisionModel* ModelFromSurface(
+      const char* name, const idRenderModelSurface** surfaces,
+      int numSurfaces, bool writeBinary);
   cmHandle_t LoadGrid(const char* path);
   cmHandle_t StreamModel(const char* path);
   int FindStreamArea(cmHandle_t model, const idVec3& point) const;

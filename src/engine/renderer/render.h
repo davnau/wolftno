@@ -264,6 +264,7 @@ public:
 
   void CommitParameters(int windowWidth, int windowHeight, int renderWidth,
                         int renderHeight);
+  int GetModelOcclusionResult(int modelIndex) const;
 
   renderView_t g;
   const idDeclEnv* m_pModelEnvOverride;

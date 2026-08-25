@@ -88,6 +88,12 @@ public:
   aiStimulus_t GetLastAddedStimulusForTest() const {
     return lastAddedStimulus;
   }
+  void SetOwnerInCover(bool value) { ownerInCover = value; }
+  bool IsOwnerInCoverForTest() const { return ownerInCover; }
+  int GetUpdateCountForTest() const { return updateCount; }
+  const trackingParms_t& GetLastTrackingParmsForTest() const {
+    return lastTrackingParms;
+  }
 
 private:
   idTargetCache targetCache;
@@ -110,6 +116,8 @@ private:
   aiStimulus_t lastAddedStimulus{AISTIM_NONE};
   idAIGameState* lastGameState{nullptr};
   idAILogic* lastOwner{nullptr};
+  trackingParms_t lastTrackingParms{};
+  int updateCount{0};
 };
 
 idAIEntityState::aiDefVisInfo_t* AllocQuery(

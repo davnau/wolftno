@@ -365,7 +365,7 @@ bool idRenderModelChain::Load(idFile* file) {
   if (valueCount > splineSettings.size)
     splineSettings.ResizeForPort(valueCount);
   for (int index = 0; index < valueCount; ++index) {
-    splinePoint_t* point = splineSettings.Alloc();
+    splinePoint_t* point = &splineSettings.Alloc();
     if (!ReadBigVec3(file, point->value) || !ReadBigFloat(file, point->time))
       return false;
   }
@@ -419,7 +419,7 @@ void idRenderModelChain::Build(const chainGenerateInfo_t& generateInfo,
   splineSettings.ClearFree();
   splineSettings.ResizeForPort(spline.GetNumValues());
   for (int index = 0; index < spline.GetNumValues(); ++index) {
-    splinePoint_t* point = splineSettings.Alloc();
+    splinePoint_t* point = &splineSettings.Alloc();
     point->value = spline.GetValue(index);
     point->time = spline.GetTime(index);
   }
@@ -512,7 +512,7 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
         const idMat3 axis = LinkAxis(
             direction, LinkRotation(random, link, genInfo.rotateRandom,
                                     genInfo.startRotation));
-        SetJoint(*transforms.Alloc(), origin, axis);
+        SetJoint(transforms.Alloc(), origin, axis);
       }
     } else {
       const float spacing = curveLength / static_cast<float>(numLinks);
@@ -526,7 +526,7 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
         const idMat3 axis = LinkAxis(
             direction, LinkRotation(random, link, genInfo.rotateRandom,
                                     genInfo.startRotation));
-        SetJoint(*transforms.Alloc(), origin, axis);
+        SetJoint(transforms.Alloc(), origin, axis);
       }
     }
   }

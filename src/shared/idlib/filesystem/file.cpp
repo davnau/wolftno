@@ -175,25 +175,29 @@ std::size_t idFile_Memory::Read(void* buffer, std::size_t length) {
   return result;
 }
 std::size_t idFile_Memory::Write(const void* buffer, std::size_t length) {
-  if (mode == FS_READ || !buffer || length == 0)
-    return 0;
-  const std::uint64_t position = static_cast<std::uint64_t>(Tell());
-  std::uint64_t required = position + length;
-  if (maxSize && required > maxSize) {
-    if (position >= maxSize)
-      return 0;
-    length = static_cast<std::size_t>(maxSize - position);
-    required = maxSize;
+  if (mode == FS_READ) {
+    idLib::FatalError("idFile_Memory::Write: %s not opened in write mode",
+                      name.data);
   }
+  const std::uint64_t position = static_cast<std::uint64_t>(Tell());
+  const std::uint64_t required = position + length + 1;
   if (required > allocated) {
-    if (!ownsData)
-      return 0;
-    std::uint64_t capacity = std::max<std::uint64_t>(256, allocated);
-    while (capacity < required)
-      capacity += capacity / 2;
+    if (maxSize != 0) {
+      idLib::FatalError("idFile_Memory::Write: exceeded maximum size %llu",
+                        static_cast<unsigned long long>(maxSize));
+    }
+    std::uint64_t spread = required - 1;
+    spread |= spread >> 1;
+    spread |= spread >> 2;
+    spread |= spread >> 4;
+    spread |= spread >> 8;
+    spread |= spread >> 16;
+    const std::uint64_t capacity =
+        std::max(2 * allocated, spread + allocated + 1);
     char* replacement = new char[static_cast<std::size_t>(capacity)];
-    if (filePtr && fileSize)
-      std::memcpy(replacement, filePtr, static_cast<std::size_t>(fileSize));
+    if (allocated != 0) {
+      std::memcpy(replacement, filePtr, static_cast<std::size_t>(allocated));
+    }
     delete[] filePtr;
     filePtr = replacement;
     curPtr = filePtr + position;
@@ -201,7 +205,8 @@ std::size_t idFile_Memory::Write(const void* buffer, std::size_t length) {
   }
   std::memcpy(curPtr, buffer, length);
   curPtr += length;
-  fileSize = std::max(fileSize, required);
+  fileSize = std::max(fileSize, position + length);
+  filePtr[fileSize] = '\0';
   return length;
 }
 

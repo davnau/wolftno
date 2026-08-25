@@ -4,7 +4,7 @@
 #include "shared/idlib/math/plane.h"
 #include "shared/idlib/math/vector.h"
 
-struct idSphere;
+class idSphere;
 
 enum planeSide_t {
   PLANESIDE_FRONT = 0,

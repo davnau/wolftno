@@ -2,7 +2,8 @@
 
 #include "shared/idlib/math/vector.h"
 
-struct idSphere {
+class idSphere {
+public:
   idVec3 origin;
   float radius;
 

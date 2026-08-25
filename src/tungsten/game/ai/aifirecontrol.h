@@ -37,6 +37,10 @@ public:
   virtual void SetFireAtLastKnownDuration(const idWeapon* weapon,
                                           int duration) = 0;
   virtual int GetFireAtLastKnownDuration(const idWeapon* weapon) const = 0;
+  virtual void ResetNextPullTriggerTime(idAI2* ai, int time) {
+    (void)ai;
+    (void)time;
+  }
 
   void SetFireMode(idAI2* owner, aiFireMode_t mode);
   void SetForceFireDuration(idAI2* owner, int endTime);
@@ -113,7 +117,7 @@ public:
   void DormantEnd(int timeDormant);
   void SetNextPullTriggerTime(const idWeapon* weapon, int time) override;
   int GetNextPullTriggerTime(const idWeapon* weapon) const override;
-  void ResetNextPullTriggerTime(idAI2* ai, int time);
+  void ResetNextPullTriggerTime(idAI2* ai, int time) override;
   void SetEndBurstTime(const idWeapon* weapon, int time) override;
   int GetEndBurstTime(const idWeapon* weapon) const override;
   void SetFireAtLastKnownDuration(const idWeapon* weapon,

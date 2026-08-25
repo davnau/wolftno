@@ -8,6 +8,7 @@
 
 template <typename T, int DefaultTag> class idList;
 class idDeclSkins;
+class idFile;
 class idMaterial;
 struct skinRemap_t;
 struct sourceSurface_t;
@@ -22,9 +23,13 @@ public:
 
 class idTriangles {
 public:
+  idTriangles() = default;
+  idTriangles(int numVerts, int numIndexes);
   ~idTriangles();
+  idTriangles* CreateStandardTriangles() const;
   static idTriangles* CreateStandardTriangles(const idTriangles* source);
   static idTriangles* CopyStaticTriSurf(const idTriangles* source);
+  void MergeTriangles(const idTriangles* source);
   static void MergeTriangles(idTriangles* destination,
                              const idTriangles* source);
   static void AllocStaticTriSurfVerts(idTriangles* triangles, int numVerts);
@@ -32,6 +37,9 @@ public:
                                         int numIndexes);
   static void UpdateIndexBuffer(idTriangles* triangles);
   static void UpdateVertexBuffer(idTriangles* triangles);
+  void ReadFromFile(idFile* file);
+  void WriteToFile(idFile* file) const;
+  idBounds BoundsFromVertScan() const;
   void VmtrMapTexCoordsWithSkins(
       idList<sourceSurface_t, 5>* sourceSurfaces, int renderSurface,
       const idMaterial* originalMaterial, const idDeclSkins* skins,

@@ -3,7 +3,7 @@
 // Header-emitted player support used by AI.
 idRecoveredValue idPlayer::GetUCmdTracker1(...) { return {}; }
 
-idRecoveredValue idPlayer::GetIsSprinting(...) { return {}; }
+bool idPlayer::GetIsSprinting() const { return sprinting; }
 
 idRecoveredValue idPlayer::GetFocusTracker(...) { return {}; }
 

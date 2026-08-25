@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 template <typename T, int DefaultTag = 5> class idList {
@@ -90,11 +91,14 @@ public:
     --num;
     return true;
   }
-  T* Alloc() {
+  using AllocResult = std::conditional_t<DefaultTag == 85, T&, T*>;
+  AllocResult Alloc() {
     EnsureCapacity(num + 1);
-    if (num >= size)
-      return nullptr;
-    return &list[num++];
+    const int index = num >= size ? size - 1 : num++;
+    if constexpr (DefaultTag == 85)
+      return list[index];
+    else
+      return index >= 0 ? &list[index] : nullptr;
   }
   void Clear() { num = 0; }
   void ClearFree() {

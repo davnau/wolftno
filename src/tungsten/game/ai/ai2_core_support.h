@@ -164,6 +164,10 @@ private:
 
 class idGoreComponent {
 public:
+  bool CheckForGore() {
+    ++checkForGoreQueryCount;
+    return checkForGoreResult;
+  }
   bool CheckForGoreByName(const idAtomicString* goreName) const {
     if (goreName == nullptr || goreName->str == nullptr) return false;
     return std::find(goreNames.begin(), goreNames.end(), goreName->str) !=
@@ -175,9 +179,36 @@ public:
     if (available && found == goreNames.end()) goreNames.emplace_back(goreName);
     if (!available && found != goreNames.end()) goreNames.erase(found);
   }
+  void ConfigureCheckForGoreForTest(bool result, bool fullBody,
+                                    std::initializer_list<short> joints) {
+    checkForGoreResult = result;
+    goredFullBody = fullBody;
+    jointsGoredThisFrame.Clear();
+    for (short joint : joints) jointsGoredThisFrame.Append(joint);
+  }
+  bool IsFullBodyGoredForAI() const { return goredFullBody; }
+  const idList<short, 5>& GetJointsGoredThisFrameForAI() const {
+    return jointsGoredThisFrame;
+  }
+  int GetCheckForGoreQueryCountForTest() const {
+    return checkForGoreQueryCount;
+  }
+  bool UpdateGoreDeaths() {
+    ++updateGoreDeathsCount;
+    return updateGoreDeathsResult;
+  }
+  int GetUpdateGoreDeathsCountForTest() const {
+    return updateGoreDeathsCount;
+  }
 
 private:
   std::vector<std::string> goreNames;
+  idList<short, 5> jointsGoredThisFrame;
+  bool checkForGoreResult{false};
+  bool goredFullBody{false};
+  int checkForGoreQueryCount{0};
+  bool updateGoreDeathsResult{false};
+  int updateGoreDeathsCount{0};
 };
 
 class idAIHealth {
@@ -1799,6 +1830,8 @@ public:
   }
   void SetCallback(idAIFSMCallback* value) { callback = value; }
   idAIFSMCallback* GetCallbackForTest() const { return callback; }
+  int GetStatus() const { return status; }
+  void SetStatusForTest(int value) { status = value; }
 
 private:
   idStr name;
@@ -1822,6 +1855,7 @@ private:
   idEventArg* lastCallEventArguments{nullptr};
   int callEventCount{0};
   idAIFSMCallback* callback{nullptr};
+  int status{1};
 };
 
 class idFSMManager {
@@ -1842,8 +1876,14 @@ public:
   };
   virtual ~idFSMManager();
   idFiniteStateMachine* FindFSM(const char* name) {
-    return name != nullptr && std::strcmp(name, alertCycle.GetName()) == 0
-               ? &alertCycle
+    if (name == nullptr) return nullptr;
+    if (std::strcmp(name, alertCycle.GetName()) == 0) return &alertCycle;
+    if (std::strcmp(name, combatScenePoint.GetName()) == 0)
+      return &combatScenePoint;
+    if (std::strcmp(name, searchScenePoint.GetName()) == 0)
+      return &searchScenePoint;
+    return std::strcmp(name, roamScenePoint.GetName()) == 0
+               ? &roamScenePoint
                : nullptr;
   }
   idFiniteStateMachine* FindAlertCycleFSM() {
@@ -1875,6 +1915,9 @@ public:
   idFiniteStateMachine* GetRoamScenePointFSMForAI() {
     return &roamScenePoint;
   }
+  idFiniteStateMachine* GetSearchScenePointFSMForTest() {
+    return &searchScenePoint;
+  }
 
 private:
   idFiniteStateMachine alertCycle{"alertCycle"};
@@ -1885,6 +1928,7 @@ private:
   int setStackCount{0};
   bool alertCycleAvailable{true};
   idFiniteStateMachine roamScenePoint{"roamScenePoint"};
+  idFiniteStateMachine searchScenePoint{"searchScenePoint"};
 };
 
 class idFXManager {
@@ -2007,11 +2051,37 @@ public:
 struct eboltControlNode_t { int value{0}; };
 class idCrosshairCustomIcon {
 public:
-  int value{0};
+  union {
+    const void* material;
+    std::intptr_t value;
+  };
+  int itemCount{0};
+  int usable{2};
+  const char* help{""};
+  const char* useText{"use"};
+
+  idCrosshairCustomIcon() : material(nullptr) {}
 };
-class idPonytail {
+
+enum crosshairMaterial_t : int {
+  CHMATERIAL_NONE = 0,
+  CHMATERIAL_TALK = 1,
+};
+
+enum crosshairIconTextMapper_t : int {
+  CROSSHAIRICONTEXTMAPPER_USE = 0,
+  CROSSHAIRICONTEXTMAPPER_RSPRESS = 1,
+};
+
+inline const char* CrosshairIconMapper(crosshairIconTextMapper_t mapper) {
+  return mapper == CROSSHAIRICONTEXTMAPPER_RSPRESS ? "rs_press" : "use";
+}
+
+class idCrosshairInfo {
 public:
-  int value{0};
+  idStrId text{};
+  crosshairMaterial_t material{CHMATERIAL_NONE};
+  idStaticList<idCrosshairCustomIcon, 3> icons;
 };
 class idAnimWebAI;
 class idAIAction {};
@@ -2026,12 +2096,57 @@ public:
 private:
   idVec3 proxyPlayerOrigin{};
 };
-class idTarget_AlarmSystem : public idEntity {};
+enum aiAlarmState_t : int {
+  AIALARMSTATE_IDLE = 0,
+  AIALARMSTATE_PRE_SECOND_ALARM = 1,
+};
+
+class idTarget_AlarmSystem : public idEntity {
+public:
+  bool IsSpawnersActive() const { return spawnersActive; }
+  void SetSpawnersActiveForTest(bool value) { spawnersActive = value; }
+  aiAlarmState_t GetAlarmState() const { return alarmState; }
+  void SetAlarmStateForTest(aiAlarmState_t value) { alarmState = value; }
+
+private:
+  bool spawnersActive{false};
+  aiAlarmState_t alarmState{AIALARMSTATE_IDLE};
+};
+
+enum aiTension_t : int {
+  AITENSION_NONE = 0,
+  AITENSION_COMBAT_NOALARM = 1,
+};
+
+class idTarget_AITensionManager : public idEntity {
+public:
+  aiTension_t GetCurrentTension() const { return currentTension; }
+  void SetCurrentTensionForTest(aiTension_t value) {
+    currentTension = value;
+  }
+
+private:
+  aiTension_t currentTension{AITENSION_NONE};
+};
+
 class idTarget_FakeEnemy : public idEntity {
 public:
   explicit idTarget_FakeEnemy(float weightValue = 0.0F)
       : weight(weightValue) {}
+  void AddTargetForTest(idEntity* target) {
+    targets.Append(idEntityPtr<idEntity>(target));
+  }
+  void ClearTargetsForTest() { targets.Clear(); }
+  int NumTargetsForTest() const { return targets.Num(); }
+  void SetAddsTriggerStimulusForTest(bool value) {
+    addsTriggerStimulus = value;
+  }
+  bool AddsTriggerStimulus() const { return addsTriggerStimulus; }
   float weight{0.0F};
+
+private:
+  idList<idEntityPtr<idEntity>, 5> targets;
+  bool addsTriggerStimulus{true};
 };
 
 class idTurret : public idEntity {};

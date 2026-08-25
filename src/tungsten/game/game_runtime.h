@@ -14,11 +14,16 @@ class idEncounterGroupManager;
 class idDeclEntityDef;
 class idDeclDamage;
 class idFaction;
+class idAI2;
+class idTarget_AITensionManager;
 struct idEventDef;
 class idEntity;
 class idPlayer;
 class idWaypoint;
 enum aimPoint_t : int;
+enum usableState_t : int;
+class idFocusTrace;
+class idCrosshairInfo;
 
 enum aiHoldFireReason_t : int {
   AI_HOLDFIRE_REASON_NONE = 0,
@@ -38,6 +43,21 @@ struct idPostedEvent {
 struct idStoppedSound {
   int channel{0};
   unsigned int peerMask{0};
+};
+
+struct soundEnvironment_t {
+  float DryGain{0.0F};
+  float RoomGain{0.0F};
+  float RoomHFGain{0.0F};
+  int DecayTime{1000};
+  int DecayHFTime{1000};
+  float ReflectionsGain{0.0F};
+  int ReflectionsDelay{0};
+  float ReverbGain{0.0F};
+  int ReverbDelay{0};
+  float Diffusion{1.0F};
+  float Density{1.0F};
+  float HFReference{5000.0F};
 };
 
 struct inputSettings_t {
@@ -128,6 +148,7 @@ public:
   }
   virtual bool IsAIInjuryEligible() const { return false; }
   virtual bool ShouldEnterDormancyImmediately() const { return false; }
+  virtual int GetBoundaryType() const { return 1; }
 };
 
 class idEntity {
@@ -209,6 +230,10 @@ public:
     ++dropToFloorCount;
   }
   virtual void SetDeathSpawnedFlag() { entityFlags |= 4U; }
+  virtual bool ModifyCrosshairInfo(const idEntity* activator,
+                                   const idFocusTrace* focusTrace,
+                                   usableState_t usable,
+                                   idCrosshairInfo* info);
 
   idMat3* GetPresentableAxis();
   const idMat3* GetPresentableAxis() const { return &presentableAxis; }
@@ -259,6 +284,12 @@ public:
     return lastDropToFloorActivate;
   }
   unsigned int GetEntityFlagsForTest() const { return entityFlags; }
+  void ConfigureModifyCrosshairInfoResultForTest(bool value);
+  int GetModifyCrosshairInfoCountForTest() const;
+  const idEntity* GetLastCrosshairActivatorForTest() const;
+  const idFocusTrace* GetLastCrosshairFocusTraceForTest() const;
+  int GetLastCrosshairUsableForTest() const;
+  idCrosshairInfo* GetLastCrosshairInfoForTest() const;
 
 protected:
   idPhysics* physics{nullptr};
@@ -287,6 +318,11 @@ class idSoundWorld {
 public:
   virtual ~idSoundWorld() = default;
   virtual bool Trace(const idVec3& from, const idVec3& to) = 0;
+  virtual void OverrideEnvironmentParams(
+      const soundEnvironment_t* parameters, int listenerId) {
+    (void)parameters;
+    (void)listenerId;
+  }
 };
 
 class idGameLocal {
@@ -426,6 +462,25 @@ public:
   }
   virtual idSoundWorld* GetSoundWorld() const { return nullptr; }
   virtual int GetMapNameLength() const { return 0; }
+  virtual void RemoveAIEvent(int handle) { (void)handle; }
+  virtual int GetNumActiveAI() const { return 0; }
+  virtual idAI2* GetActiveAI(int index) const {
+    (void)index;
+    return nullptr;
+  }
+  virtual int GetBestForwardPlayerViewDataID() const { return -1; }
+  virtual int GetBestBackwardPlayerViewDataID() const { return -1; }
+  virtual bool IsDangerZoneBad() const { return false; }
+  virtual bool GetDangerZone(int currentTime, idVec3* origin,
+                             float* radius) const {
+    (void)currentTime;
+    (void)origin;
+    (void)radius;
+    return false;
+  }
+  virtual idTarget_AITensionManager* GetAITensionManager() const {
+    return nullptr;
+  }
   void AddDyingAI(idEntity* entity) {
     if (entity == nullptr) return;
     for (int i = 0; i < dyingAI.Num(); ++i)

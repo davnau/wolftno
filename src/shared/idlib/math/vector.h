@@ -90,6 +90,7 @@ public:
     return length;
   }
 
+  void NormalVectors(idVec3& left, idVec3& down) const;
   float ToYaw() const;
   float ToYaw(const idVec3& up) const;
   float ToPitch() const;

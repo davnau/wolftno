@@ -417,6 +417,9 @@ void idAIWorldState::UpdateInternal(idAIGameState* gameState,
 void idAIWorldState::Update(idAIGameState* gameState, idAILogic* owner,
                             trackingParms_t* trackingParms) {
   if (owner == nullptr) return;
+  ++updateCount;
+  lastTrackingParms = trackingParms != nullptr ? *trackingParms
+                                               : trackingParms_t{};
   const aiLatchedState_t* ownerState = owner->GetState();
   if (ownerState == nullptr) return;
   UpdateInternal(gameState, owner, trackingParms, ownerState);

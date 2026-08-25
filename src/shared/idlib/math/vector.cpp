@@ -110,3 +110,13 @@ float idVec3::ToYaw(const idVec3& up) const {
   float yaw = std::atan2(right, forward) * idMath::M_RAD2DEG;
   return yaw < 0.0f ? yaw + 360.0f : yaw;
 }
+void idVec3::NormalVectors(idVec3& left, idVec3& down) const {
+  const float d = x * x + y * y;
+  if (d == 0.0f) {
+    left = {1.0f, 0.0f, 0.0f};
+  } else {
+    const float inverseLength = 1.0f / std::sqrt(d);
+    left = {-y * inverseLength, x * inverseLength, 0.0f};
+  }
+  down = left.Cross(*this);
+}

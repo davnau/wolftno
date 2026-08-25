@@ -1,6 +1,7 @@
 #pragma once
 
-struct idHashIndex {
+class idHashIndex {
+public:
   int* hash;
   int* indexChain;
   int hashSize;
