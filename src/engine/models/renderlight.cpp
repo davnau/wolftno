@@ -177,7 +177,7 @@ void idRenderLight::Commit() {
   committed->lightMtr = material;
   committed->name = name.str;
   const bool materialCastsShadows =
-      material != nullptr && (material->recoveredPrefix[16] & 1U) != 0;
+      material != nullptr && material->MaterialCastsShadows();
   committed->castsShadows =
       !g.noShadows && materialCastsShadows && r_shadows.valueInteger != 0;
   committed->needsReferences = true;

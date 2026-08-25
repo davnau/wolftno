@@ -50,8 +50,8 @@ bool idAIScriptedAnimWeb::ValidateAWebPath(idAI2* ai,
   idStr subWebName;
   idStr stateName;
   if (ai == nullptr ||
-      !ai->GetSubWebAndStateFromAnimWebPath(path.data, &subWebName,
-                                            &stateName)) {
+      !ai->GetSubWebAndStateFromAnimWebPath(path.data, subWebName,
+                                            stateName)) {
     validationErrors.Append(path);
     return false;
   }

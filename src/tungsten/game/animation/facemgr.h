@@ -8,6 +8,20 @@
 
 class idFaceMgr;
 
+enum mood_t : int {
+  MOOD_NONE = 0,
+  MOOD_CLEAR = 1,
+  MOOD_HAPPY = 2,
+  MOOD_SAD = 3,
+  MOOD_ANGRY = 4,
+  MOOD_SUSPICIOUS = 5,
+  MOOD_DRUNK = 6,
+  MOOD_SLEEPY = 7,
+  MOOD_NERVOUS = 8,
+  MOOD_DEAD = 9,
+  MOOD_MAX = 10,
+};
+
 class idFaceAnimator {
 public:
   idFaceAnimator();
@@ -58,6 +72,13 @@ public:
   virtual ~idFaceMgr();
 
   void SetEnableEyeTracking(idEntity* owner, bool enable);
+  void SetMood(mood_t value) { currentMood = value; }
+  mood_t GetMoodForTest() const { return currentMood; }
+  mood_t GetDefaultMood() const { return defaultMood; }
+  void SetDefaultMoodForTest(mood_t value) {
+    defaultMood = value;
+    currentMood = value;
+  }
   void SuppressBlinking(bool suppress);
   void SuppressLidDeformation(bool suppress);
   void Shutdown(idEntity* owner);
@@ -132,6 +153,8 @@ private:
   bool lidDeformationSuppressed{false};
   bool voicePlaying{false};
   bool eyesClosed{false};
+  mood_t currentMood{MOOD_NONE};
+  mood_t defaultMood{MOOD_NONE};
 };
 
 #define FACE_CVAR_LIST(X) \

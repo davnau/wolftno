@@ -30,7 +30,7 @@ public:
   float diameter;
   bool dirty;
   bool jobQueued;
-  unsigned char recoveredCableFlagsPadding[2]{};
+  unsigned char recoveredCableFlagsPadding[2];
   subdivPoint_t* subdivPoints;
   cableGenParms_t* parms;
   int currentPointsBuffer;
@@ -41,7 +41,7 @@ public:
   int numVertices;
   int numIndices;
   int jobDone;
-  unsigned int recoveredCableTail{};
+  unsigned int recoveredCableTail;
 };
 
 extern idCVar r_useCableGenJobs;

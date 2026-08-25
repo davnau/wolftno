@@ -38,6 +38,23 @@ std::filesystem::path ResolveBasePath(const char* path, unsigned int) {
 
 idFile::idFile() : uniqID(++atomicUniqID) {}
 
+std::size_t idFile::ReadString(idStr& string) {
+  int length = 0;
+  std::size_t bytes = Read(&length, sizeof(length));
+  if (length <= 0) {
+    string.Empty();
+    return bytes;
+  }
+  string.Fill(' ', length);
+  return bytes + Read(&string[0], static_cast<std::size_t>(length));
+}
+
+std::size_t idFile::WriteString(const char* string) {
+  const int length = string != nullptr ? static_cast<int>(std::strlen(string)) : 0;
+  const std::size_t bytes = Write(&length, sizeof(length));
+  return bytes + (length > 0 ? Write(string, static_cast<std::size_t>(length)) : 0);
+}
+
 std::size_t idFile::ReadOfs(std::int64_t offset, void* buffer, std::size_t length) {
   const std::int64_t old = Tell();
   if (Seek(offset, FS_SEEK_SET) != 0)

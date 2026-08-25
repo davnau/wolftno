@@ -39,6 +39,16 @@ public:
     list[num] = value;
     return num++;
   }
+  template <int OtherTag> int Append(const idList<T, OtherTag>& other) {
+    if (other.num <= 0)
+      return num;
+    EnsureCapacity(num + other.num);
+    if (num + other.num > size)
+      return -1;
+    for (int i = 0; i < other.num; ++i)
+      list[num++] = other.list[i];
+    return num;
+  }
   int Insert(const T& value, int index) {
     index = std::max(0, std::min(index, num));
     EnsureCapacity(num + 1);

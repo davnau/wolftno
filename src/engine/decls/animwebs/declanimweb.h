@@ -104,6 +104,10 @@ static_assert(sizeof(idDeclAnimWebNode::idModelInfo)==64);
 
 class idDeclAnimWeb final : public idDecl {
 public:
+  enum invalidSubWebIndex_t : int { INVALID_SUBWEB_INDEX = -1 };
+  enum invalidStateIndex_t : int { INVALID_STATE_INDEX = -1 };
+  enum invalidNodeIndex_t : int { INVALID_NODE_INDEX = -1 };
+
   using stateList_t = animWebStateList_t;
   struct idStateInfo { idAtomicString name; };
   struct idSubWebInfo {

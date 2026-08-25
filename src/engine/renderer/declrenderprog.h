@@ -9,8 +9,36 @@
 
 class idImage;
 class idTextureSampler;
+class idFile;
+struct shaderConstructInfo_t;
+
+enum progTarget_t : int {
+  PT_PC = 0,
+  PT_PC_D3D = 1,
+  PT_360 = 2,
+  PT_DURANGO = 3,
+  PT_PS3 = 4,
+  PT_ORBIS = 5,
+  PT_NUM_TARGETS = 6,
+};
+
+struct renderProgParms_t {
+  progTarget_t target;
+  bool useUniformArrays;
+  bool useDeferredSlowmapLighting;
+  bool feedbackBGRA;
+  bool useNormalGBuffer;
+  bool validateInOutParms360;
+};
 
 struct renderProgData_t {
+  renderProgData_t();
+  ~renderProgData_t();
+  renderProgData_t& operator=(const renderProgData_t& other);
+  void Clear();
+  void Write(idFile* file) const;
+  bool Read(idFile* file);
+
   idStr inheritsFrom;
   unsigned int compoundCheckSum;
   unsigned int parentCheckSum;
@@ -46,8 +74,26 @@ template <typename T, std::size_t Count> struct idDeclFixedArray {
 
 class idDeclRenderProg : public idDecl {
 public:
+  idDeclRenderProg();
+  ~idDeclRenderProg() override;
+  const char* DefaultDefinition() const override;
+  bool ReloadIfStale() override;
+  void Print() override;
+  void List() override;
+  idDeclInfo* GetDeclInfo() override;
+  void Parse(idParser& source) override;
+  void FreeData() override;
+
+  void Clear();
+  void UploadTargetCode();
+  renderProgData_t GetRenderProgData(const renderProgParms_t* parms,
+                                     shaderConstructInfo_t* vertInfo,
+                                     shaderConstructInfo_t* fragInfo);
+  static idFile* OpenFileReadWithOverride(const char* filename);
+
   static void BindTexture(int textureUnit, const idImage* image,
                           const idTextureSampler* sampler);
+  bool ProgUsesParm(const idDeclRenderParm* parm) const;
 
   const idDeclRenderProg* renamed;
   renderProgData_t data;
@@ -62,7 +108,24 @@ public:
   void* fragmentProgram;
   idDeclFixedArray<void*, 45> vertexUniforms;
   idDeclFixedArray<void*, 42> fragmentUniforms;
+
+  static idDeclInfoTemplate<idDeclRenderProg> resourceList;
 };
+
+unsigned int CompileGLSL(idStr* programGLSL, unsigned int* checksum,
+                         bool isVertexProgram, const char* name,
+                         const char* fileName);
+
+idStr RenderProgGeneratedFileName(const char* progName, progTarget_t target);
+void WriteParmList(idFile* file, const idList<short>* parms);
+bool ReadParmList(idFile* file, idList<short>* parms);
+void SaveGeneratedFile(const char* filename, renderProgData_t* data,
+                       unsigned int checksum);
+bool LoadGeneratedFile(const char* filename, renderProgData_t* data,
+                       unsigned int checksum);
+
+static_assert(sizeof(renderProgParms_t) == 12,
+              "render-program translation parms ABI drift");
 
 static_assert(offsetof(renderProgData_t, glState) == 0x60,
               "render-program GL-state offset drift");

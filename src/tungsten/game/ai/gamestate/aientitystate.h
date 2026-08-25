@@ -15,7 +15,8 @@ class idFaction;
 enum aiSense_t : int {
   AISENSE_HEARING = 0,
   AISENSE_SIGHT = 1,
-  AISENSE_NONE = 2
+  AISENSE_MAX = 2,
+  AISENSE_NONE = AISENSE_MAX
 };
 enum aiStimulus_t {
   AISTIM_NONE = 0,

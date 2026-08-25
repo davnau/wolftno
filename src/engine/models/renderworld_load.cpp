@@ -4,6 +4,7 @@
 #include "engine/models/renderworld_load.h"
 #include "engine/models/static/staticmodel.h"
 #include "engine/models/transparency/rendermodeltransparency.h"
+#include "engine/renderer/declmaterial.h"
 #include "engine/renderer/jobs/render/renderwalkbsp.h"
 #include "engine/renderer/renderworldcommitted.h"
 #include "shared/idlib/geometry/polytope.h"
@@ -11,6 +12,7 @@
 #include "shared/idlib/text/lexer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
@@ -47,6 +49,59 @@ void FreeNodeData(idRenderWorldCommitted* world) {
   world->areaNodeBounds = nullptr;
   world->areaNodeOcclusionIndex = nullptr;
   world->numAreaNodes = 0;
+}
+
+void AppendVirtualTexture(idList<idVirtualTexture*, 61>& textures,
+                          idVirtualTexture* texture) {
+  if (texture == nullptr)
+    return;
+  for (int index = 0; index < textures.Num(); ++index) {
+    if (textures[index] == texture)
+      return;
+  }
+  textures.Append(texture);
+}
+
+idStr MapModelName(const idStr& mapName, const char* suffix) {
+  idStr result(mapName);
+  result.StripFileExtension();
+  result.AppendPath(suffix);
+  return result;
+}
+
+struct vertexCopyEntry_t {
+  unsigned mask;
+  int size;
+};
+
+int BuildVertexCopyTable(unsigned vertexMask, vertexCopyEntry_t (&table)[8]) {
+  int count = 0;
+  if ((vertexMask & 0x20U) != 0U)
+    table[count++] = {0x20U, 8};
+  else if ((vertexMask & 0x01U) != 0U)
+    table[count++] = {0x01U, 12};
+  if ((vertexMask & 0x40U) != 0U)
+    table[count++] = {0x40U, 4};
+  else if ((vertexMask & 0x02U) != 0U)
+    table[count++] = {0x02U, 8};
+  if ((vertexMask & 0x04U) != 0U)
+    table[count++] = {0x04U, 4};
+  if ((vertexMask & 0x10U) != 0U)
+    table[count++] = {0x10U, 4};
+  if ((vertexMask & 0x08U) != 0U)
+    table[count++] = {0x08U, 4};
+  return count;
+}
+
+int VertexSizeForMask(unsigned vertexMask) {
+  return static_cast<int>(
+      4U * (vertexMask & 2U) + ((vertexMask & 1U) != 0U ? 12U : 0U) +
+      (vertexMask & 4U) + ((vertexMask >> 1U) & 4U) +
+      ((vertexMask >> 2U) & 4U) +
+      ((vertexMask & 0x20U) != 0U ? 0xFFFFFFFCU : 0U) +
+      ((vertexMask & 0x40U) != 0U ? 0xFFFFFFFCU : 0U) +
+      ((vertexMask & 0x1000U) != 0U ? 12U : 0U) +
+      ((vertexMask >> 9U) & 4U));
 }
 
 } // namespace
@@ -143,6 +198,7 @@ idBounds idRenderWorldLocal::BuildNodeBounds_r(int nodeNum, idPlane* planes,
 void idRenderWorldLocal::ParseNodes(idLexer* source) {
   source->ExpectTokenString("{");
   int nodeCount = source->ParseInt();
+  committedWorld->numAreaNodes = nodeCount;
   if (nodeCount < 0) {
     source->Error("R_ParseNodes: bad numAreaNodes");
     return;
@@ -151,7 +207,8 @@ void idRenderWorldLocal::ParseNodes(idLexer* source) {
     source->Error("R_ParseNodes: numAreaNodes exceeds %d", 8192);
     return;
   }
-  if (nodeCount == 0)
+  const bool emptyTree = nodeCount == 0;
+  if (emptyTree)
     nodeCount = 1;
   FreeNodeData(committedWorld);
   committedWorld->numAreaNodes = nodeCount;
@@ -160,7 +217,7 @@ void idRenderWorldLocal::ParseNodes(idLexer* source) {
   committedWorld->areaNodeOcclusionIndex = new int[nodeCount];
 
   auto* nodes = static_cast<areaNode_t*>(committedWorld->areaNodes);
-  if (source->PeekTokenString("}")) {
+  if (emptyTree) {
     nodes[0].plane = {0.0f, 0.0f, 1.0f, 131072.0f};
     nodes[0].children[0] = -1;
     nodes[0].children[1] = 0;
@@ -179,6 +236,7 @@ void idRenderWorldLocal::ParseNodes(idLexer* source) {
 void idRenderWorldLocal::ParseInterAreaPortals(idLexer* source) {
   source->ExpectTokenString("{");
   const int areaCount = source->ParseInt();
+  committedWorld->numWorldAreas = areaCount;
   if (areaCount < 0 || areaCount > 8192) {
     source->Error("R_ParseInterAreaPortals: bad numPortalAreas");
     return;
@@ -199,6 +257,7 @@ void idRenderWorldLocal::ParseAreas(idLexer* source) {
   committedWorld->hasWorldSurfaceOffsets = true;
   source->ExpectTokenString("{");
   const int areaCount = source->ParseInt();
+  committedWorld->numWorldAreas = areaCount;
   if (areaCount < 0 || areaCount > 8192) {
     source->Error("R_ParseAreas: bad numAreas");
     return;
@@ -244,6 +303,8 @@ void idRenderWorldLocal::ClearWorld() {
   committedWorld->binaryModelNames.Clear();
   committedWorld->binaryModelState.Clear();
   committedWorld->binaryModelHash.Clear();
+  if (loadCallbacks.setBinaryModelState != nullptr)
+    loadCallbacks.setBinaryModelState(committedWorld, "world", true, true);
   skyModel = nullptr;
 }
 
@@ -375,8 +436,7 @@ void idRenderWorldLocal::SpecificationComplete(bool preloadPageFileCache) {
   const idBounds maximumWorldBounds{{{-worldLimit, -worldLimit, -worldLimit},
                                       {worldLimit, worldLimit, worldLimit}}};
   if (committedWorld->numAreaNodes <= 0) {
-    if (committedWorld->areaNodeBounds != nullptr)
-      committedWorld->areaNodeBounds[0] = maximumWorldBounds;
+    committedWorld->areaNodeBounds[0] = maximumWorldBounds;
     if (committedWorld->numWorldAreas > 0) {
       committedWorld->worldAreaSubspaceBounds[0] = maximumWorldBounds;
       committedWorld->worldAreaGeometryBounds[0] = maximumWorldBounds;
@@ -398,9 +458,10 @@ void idRenderWorldLocal::SpecificationComplete(bool preloadPageFileCache) {
       AddBounds(worldBounds, skyModel->referenceBounds);
     if (worldBounds.b[0].x > worldBounds.b[1].x)
       worldBounds = maximumWorldBounds;
-    idPlane planes[6]{};
-    idPolytope::ConvexPolytopeFromBounds(worldBounds, planes);
-    BuildNodeBounds_r(0, planes, 6);
+    auto planes = std::make_unique<idPlane[]>(
+        static_cast<std::size_t>(committedWorld->numAreaNodes + 6));
+    idPolytope::ConvexPolytopeFromBounds(worldBounds, planes.get());
+    BuildNodeBounds_r(0, planes.get(), 6);
     int numOcclusionIndices = 0;
     auto* nodes = static_cast<areaNode_t*>(committedWorld->areaNodes);
     if (nodes[0].children[0] > 0)
@@ -430,8 +491,52 @@ void idRenderWorldLocal::SpecificationComplete(bool preloadPageFileCache) {
     --lightCount;
   renderLights.SetNum(lightCount);
 
-  if (loadCallbacks.specificationComplete != nullptr)
-    loadCallbacks.specificationComplete(this, preloadPageFileCache);
+  idStr strippedName(mapName);
+  strippedName.StripPath();
+  strippedName.StripFileExtension();
+  if (loadCallbacks.beginVirtualTextureSetup != nullptr)
+    loadCallbacks.beginVirtualTextureSetup(strippedName.data);
+
+  virtualTextures.ClearFree();
+  megaTextures.ClearFree();
+  if (loadCallbacks.virtualTextureForPageSource != nullptr) {
+    for (int modelIndex = 0; modelIndex < renderModels.Num(); ++modelIndex) {
+      const idRenderModel* model = renderModels[modelIndex];
+      if (model == nullptr)
+        continue;
+      for (int surfaceIndex = 0; surfaceIndex < model->surfaces.Num();
+           ++surfaceIndex) {
+        const idRenderModelSurface& surface = model->surfaces[surfaceIndex];
+        if (surface.geometry != nullptr && surface.material != nullptr &&
+            surface.material->pageFlavor == ID_VTF_BAKE) {
+          AppendVirtualTexture(
+              virtualTextures,
+              loadCallbacks.virtualTextureForPageSource(
+                  surface.material->pageSource));
+        }
+      }
+    }
+    for (int areaIndex = 0; areaIndex < committedWorld->numWorldAreas;
+         ++areaIndex) {
+      const worldArea_t& area = committedWorld->worldAreas[areaIndex];
+      for (int surfaceIndex = 0; surfaceIndex < area.worldSurfaces.Num();
+           ++surfaceIndex) {
+        const idRenderModelSurface& surface = area.worldSurfaces[surfaceIndex];
+        if (surface.geometry != nullptr && surface.material != nullptr &&
+            surface.material->pageFlavor == ID_VTF_BAKE) {
+          AppendVirtualTexture(
+              virtualTextures,
+              loadCallbacks.virtualTextureForPageSource(
+                  surface.material->pageSource));
+        }
+      }
+    }
+  }
+  for (int index = 0; index < virtualTextures.Num(); ++index)
+    virtualTextures[index]->SetMapName(mapName.data);
+  if (preloadPageFileCache && loadCallbacks.preloadVirtualTextures != nullptr)
+    loadCallbacks.preloadVirtualTextures(virtualTextures.list,
+                                         virtualTextures.Num());
   specificationCompleteHasBeenCalled = true;
 }
 
@@ -468,10 +573,10 @@ bool idRenderWorldLocal::ParseProc(const char* fileName) {
       const int count = source->ParseInt();
       for (int index = 0; index < count; ++index) {
         source->ReadToken(token);
-        const bool enabled = source->ParseBool();
+        source->ParseBool();
         if (loadCallbacks.setBinaryModelState != nullptr)
           loadCallbacks.setBinaryModelState(committedWorld, token.data,
-                                            enabled, true);
+                                            false, true);
       }
       source->ExpectTokenString("}");
     } else if (token == "envAreas") {
@@ -528,6 +633,216 @@ bool idRenderWorldLocal::InitFromMap(const char* name, bool comboMap,
   if (committedWorld->numWorldAreas == 0)
     ClearWorld();
 
-  return loadCallbacks.finishInitFromMap == nullptr ||
-         loadCallbacks.finishInitFromMap(this);
+  const char* worldSuffix = comboMap ? "_combo/_world.bmodel"
+                                     : "_world.bmodel";
+  const idStr mapWorldModelName = MapModelName(mapName, worldSuffix);
+  idStaticModel* generatedWorldModel = nullptr;
+  if (!committedWorld->hasWorldSurfaceOffsets) {
+    generatedWorldModel = loadCallbacks.createStaticModel != nullptr
+                              ? loadCallbacks.createStaticModel()
+                              : nullptr;
+    if (generatedWorldModel == nullptr)
+      idLib::Error("idRenderWorldLocal::InitFromMap: static model factory is unavailable");
+    generatedWorldModel->SetName(mapWorldModelName.data);
+    for (int areaIndex = 0; areaIndex < committedWorld->numWorldAreas;
+         ++areaIndex) {
+      idStr areaSuffix;
+      areaSuffix.Format(comboMap ? "_combo/_area%i.bmodel"
+                                 : "_area%i.bmodel",
+                        areaIndex);
+      const idStr areaModelName = MapModelName(mapName, areaSuffix.data);
+      idStaticModel* areaModel =
+          loadCallbacks.loadStaticModel != nullptr
+              ? loadCallbacks.loadStaticModel(areaModelName.data, false, false)
+              : nullptr;
+      if (areaModel == nullptr)
+        idLib::Error("idRenderWorldLocal::InitFromMap: couldn't load %s",
+                     areaModelName.data);
+      worldArea_t& area = committedWorld->worldAreas[areaIndex];
+      area.worldSurfaces.SetNum(areaModel->surfaces.Num());
+      area.firstSurfaceInWorldModel = generatedWorldModel->surfaces.Num();
+      for (int surfaceIndex = 0; surfaceIndex < areaModel->surfaces.Num();
+           ++surfaceIndex)
+        generatedWorldModel->surfaces.Append(areaModel->surfaces[surfaceIndex]);
+      areaModel->surfaces.num = 0;
+      if (loadCallbacks.releaseTemporaryStaticModel != nullptr)
+        loadCallbacks.releaseTemporaryStaticModel(areaModel);
+    }
+    if (loadCallbacks.finishStaticModel != nullptr)
+      loadCallbacks.finishStaticModel(generatedWorldModel, 0);
+    if (loadCallbacks.registerStaticModel != nullptr)
+      loadCallbacks.registerStaticModel(generatedWorldModel);
+  }
+
+  worldStaticModel = loadCallbacks.loadStaticModel != nullptr
+                         ? loadCallbacks.loadStaticModel(
+                               mapWorldModelName.data, true, false)
+                         : generatedWorldModel;
+  if (worldStaticModel == nullptr)
+    idLib::Error("idRenderWorldLocal::InitFromMap: couldn't load %s",
+                 mapWorldModelName.data);
+
+  int totalVertices = 0;
+  int totalIndexes = 0;
+  unsigned worldVertexMask = 0;
+  for (int areaIndex = 0; areaIndex < committedWorld->numWorldAreas;
+       ++areaIndex) {
+    worldArea_t& area = committedWorld->worldAreas[areaIndex];
+    int binaryModelId = -1;
+    for (int surfaceIndex = 0; surfaceIndex < area.worldSurfaces.Num();
+         ++surfaceIndex) {
+      const int modelSurfaceIndex =
+          area.firstSurfaceInWorldModel + surfaceIndex;
+      if (modelSurfaceIndex < 0 ||
+          modelSurfaceIndex >= worldStaticModel->surfaces.Num())
+        idLib::Error("idRenderWorldLocal::InitFromMap: invalid world surface offset");
+      const idStaticModelSurface& source =
+          worldStaticModel->surfaces[modelSurfaceIndex];
+      idRenderModelSurface& destination = area.worldSurfaces[surfaceIndex];
+      destination = static_cast<const idRenderModelSurface&>(source);
+      destination.geometryIsReference = true;
+      area.areaNum = areaIndex;
+      if (destination.geometry != nullptr) {
+        totalVertices += destination.geometry->numVerts;
+        totalIndexes += destination.geometry->numIndexes;
+        worldVertexMask |= destination.geometry->vertexMask;
+      }
+      if (binaryModelId != -3) {
+        if (binaryModelId == -1)
+          binaryModelId = destination.binaryModelId;
+        else if (destination.binaryModelId == -1)
+          binaryModelId = -3;
+        else if (binaryModelId != destination.binaryModelId)
+          binaryModelId = -2;
+      }
+    }
+    area.binaryModelId = binaryModelId == -3 ? -1 : binaryModelId;
+  }
+
+  if (comboMap) {
+    vertexCopyEntry_t copyTable[8]{};
+    const int copyEntryCount = BuildVertexCopyTable(worldVertexMask, copyTable);
+    const int vertexSize = VertexSizeForMask(worldVertexMask);
+    if (totalIndexes == 0 || totalVertices == 0)
+      idLib::Error("idRenderWorldLocal::InitFromMap: no world geometry");
+    worldVertexBuffer.AllocBufferObject(nullptr, totalVertices * vertexSize,
+                                        static_cast<int>(worldVertexMask),
+                                        BU_DYNAMIC);
+    worldIndexBuffer.AllocBufferObject(nullptr, totalIndexes * 2, BU_DYNAMIC);
+    auto* destinationVertices = static_cast<std::uint8_t*>(
+        worldVertexBuffer.MapBuffer(BM_WRITE));
+    auto* destinationIndexes = static_cast<std::uint8_t*>(
+        worldIndexBuffer.MapBuffer(BM_WRITE));
+    std::uint8_t* mappedVertices = destinationVertices;
+    std::uint8_t* mappedIndexes = destinationIndexes;
+    int vertexOffset = 0;
+    int indexOffset = 0;
+    if (mappedVertices != nullptr && mappedIndexes != nullptr) {
+      for (int areaIndex = 0; areaIndex < committedWorld->numWorldAreas;
+           ++areaIndex) {
+        worldArea_t& area = committedWorld->worldAreas[areaIndex];
+        for (int surfaceIndex = 0; surfaceIndex < area.worldSurfaces.Num();
+             ++surfaceIndex) {
+          idRenderModelSurface& surface = area.worldSurfaces[surfaceIndex];
+          idTriangles* source = surface.geometry;
+          if (source == nullptr ||
+              ((worldVertexMask & 0x20U) != 0U &&
+               (source->vertexMask & 0x20U) == 0U) ||
+              ((worldVertexMask & 0x40U) != 0U &&
+               (source->vertexMask & 0x40U) == 0U))
+            continue;
+          const int vertexBytes = vertexSize * source->numVerts;
+          const int indexBytes = 2 * source->numIndexes;
+          if (source->vertexBuffer.GetSize() == 0) {
+            idTriangles::UpdateIndexBuffer(source);
+            idTriangles::UpdateVertexBuffer(source);
+          }
+          auto* sourceVertices = static_cast<std::uint8_t*>(
+              source->vertexBuffer.MapBuffer(BM_READ));
+          auto* sourceIndexes = static_cast<std::uint8_t*>(
+              source->indexBuffer.MapBuffer(BM_READ));
+          if (sourceVertices == nullptr || sourceIndexes == nullptr)
+            continue;
+          for (int vertex = 0; vertex < source->numVerts; ++vertex) {
+            for (int entry = 0; entry < copyEntryCount; ++entry) {
+              const std::size_t fieldSize =
+                  static_cast<std::size_t>(copyTable[entry].size);
+              if ((source->vertexMask & copyTable[entry].mask) != 0U) {
+                std::memmove(mappedVertices, sourceVertices, fieldSize);
+                sourceVertices += fieldSize;
+              } else {
+                std::memset(mappedVertices, 0, fieldSize);
+              }
+              mappedVertices += fieldSize;
+            }
+          }
+          std::memmove(mappedIndexes, sourceIndexes,
+                       static_cast<std::size_t>(indexBytes));
+          mappedIndexes += indexBytes;
+          source->vertexBuffer.UnmapBuffer();
+          source->indexBuffer.UnmapBuffer();
+
+          auto* consolidated = new idTriangles{};
+          surface.geometryIsReference = false;
+          surface.geometry = consolidated;
+          consolidated->bounds = source->bounds;
+          consolidated->numIndexes = source->numIndexes;
+          consolidated->numVerts = source->numVerts;
+          consolidated->detailOffset = source->detailOffset;
+          consolidated->vsb = source->vsb;
+          consolidated->vertexBuffer.Reference(worldVertexBuffer,
+                                                vertexOffset, vertexBytes);
+          consolidated->indexBuffer.Reference(worldIndexBuffer,
+                                               indexOffset, indexBytes);
+          consolidated->vertexMask =
+              worldVertexMask ^ ((worldVertexMask ^ source->vertexMask) &
+                                 0x200U);
+          vertexOffset += vertexBytes;
+          indexOffset += indexBytes;
+        }
+      }
+    }
+    if (destinationVertices != nullptr)
+      worldVertexBuffer.UnmapBuffer();
+    if (destinationIndexes != nullptr)
+      worldIndexBuffer.UnmapBuffer();
+  }
+
+  const idStr skyModelName = MapModelName(
+      mapName, comboMap ? "_combo/sky.bmodel" : "sky.bmodel");
+  skyModel = AllocStaticModel(skyModelName.data, false);
+  if (skyModel != nullptr) {
+    skyModel->g.flags0 |= 0x14U;
+    skyModel->g.flags1 |= 0x20U;
+    skyModel->CommitThisFrame();
+    skyModel->g.modelDepthSort = MODEL_DEPTH_SORT_SKY;
+  }
+
+  idStr occlusionBaseModelName(mapName);
+  occlusionBaseModelName += "_occlusion.bmodel";
+  occlusionBaseModel = AllocStaticModel(occlusionBaseModelName.data, false);
+  if (occlusionBaseModel != nullptr) {
+    occlusionBaseModel->Commit();
+    committedWorld->occlusionBaseModel = occlusionBaseModel->committed;
+    const int modelIndex = occlusionBaseModel->GetIndex();
+    if (modelIndex >= 0 &&
+        modelIndex < committedWorld->committedRenderModels.Num())
+      committedWorld->committedRenderModels[modelIndex] =
+          occlusionBaseModel->committed;
+  }
+  if (loadCallbacks.loadGlobalShadows != nullptr)
+    loadCallbacks.loadGlobalShadows(&committedWorld->globalShadows,
+                                    mapName.data);
+  if (loadCallbacks.loadAmbientLighting != nullptr)
+    loadCallbacks.loadAmbientLighting(&committedWorld->ambientLighting,
+                                      mapName.data);
+
+  const idStr mapModelName = MapModelName(mapName, baseName.data);
+  idStr foliageFileName(mapModelName);
+  foliageFileName.SetFileExtension("bfoliage");
+  if (loadCallbacks.loadFoliageModel != nullptr)
+    loadCallbacks.loadFoliageModel(this, foliageFileName.data);
+  if (committedWorld->binaryModelNames.Num() != 0)
+    SetBinaryModelState(committedWorld->binaryModelNames[0].data, true);
+  return true;
 }

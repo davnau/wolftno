@@ -62,6 +62,10 @@ public:
   virtual bool IsOSNative() const { return false; }
   template <typename T> std::size_t ReadBig(T& value);
   template <typename T> std::size_t WriteBig(const T& value);
+  template <typename T> std::size_t ReadBigArray(T* values, int count);
+  template <typename T> std::size_t WriteBigArray(const T* values, int count);
+  std::size_t ReadString(idStr& string);
+  std::size_t WriteString(const char* string);
   std::uint32_t uniqID;
 };
 

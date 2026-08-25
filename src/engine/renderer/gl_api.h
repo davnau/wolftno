@@ -102,6 +102,52 @@ using glGetMultiQueryObjectuivAMDProc_t = void (*)(unsigned int* ids,
                                                    int count,
                                                    unsigned int parameter,
                                                    unsigned int* values);
+using glCreateShaderProc_t = unsigned int (*)(unsigned int type);
+using glShaderSourceProc_t = void (*)(unsigned int shader, int count,
+                                      const char* const* source,
+                                      const int* lengths);
+using glCompileShaderProc_t = void (*)(unsigned int shader);
+using glGetShaderivProc_t = void (*)(unsigned int shader,
+                                     unsigned int parameter, int* value);
+using glGetShaderInfoLogProc_t = void (*)(unsigned int shader, int maxLength,
+                                          int* length, char* infoLog);
+using glDeleteShaderProc_t = void (*)(unsigned int shader);
+using glCreateProgramProc_t = unsigned int (*)();
+using glDeleteProgramProc_t = void (*)(unsigned int program);
+using glProgramBinaryProc_t = void (*)(unsigned int program,
+                                       unsigned int binaryFormat,
+                                       const void* binary, int length);
+using glGetProgramivProc_t = void (*)(unsigned int program,
+                                      unsigned int parameter, int* value);
+using glAttachShaderProc_t = void (*)(unsigned int program,
+                                      unsigned int shader);
+using glBindAttribLocationProc_t = void (*)(unsigned int program,
+                                            unsigned int index,
+                                            const char* name);
+using glBindFragDataLocationProc_t = void (*)(unsigned int program,
+                                              unsigned int color,
+                                              const char* name);
+using glProgramParameteriProc_t = void (*)(unsigned int program,
+                                           unsigned int parameter,
+                                           int value);
+using glLinkProgramProc_t = void (*)(unsigned int program);
+using glDetachShaderProc_t = void (*)(unsigned int program,
+                                      unsigned int shader);
+using glGetProgramInfoLogProc_t = void (*)(unsigned int program,
+                                           int maxLength, int* length,
+                                           char* infoLog);
+using glGetProgramBinaryProc_t = void (*)(unsigned int program,
+                                          int bufferSize, int* length,
+                                          unsigned int* binaryFormat,
+                                          void* binary);
+using glGetUniformLocationProc_t = int (*)(unsigned int program,
+                                           const char* name);
+using glGetUniformBlockIndexProc_t = unsigned int (*)(unsigned int program,
+                                                       const char* name);
+using glUniformBlockBindingProc_t = void (*)(unsigned int program,
+                                             unsigned int blockIndex,
+                                             unsigned int blockBinding);
+using glUniform1iProc_t = void (*)(int location, int value);
 
 extern glBindBufferProc_t _glewBindBufferARB;
 extern glGenBuffersProc_t _glewGenBuffersARB;
@@ -147,6 +193,28 @@ extern glVertexAttribArrayProc_t _glewEnableVertexAttribArrayARB;
 extern glVertexAttribArrayProc_t _glewDisableVertexAttribArrayARB;
 extern glDrawElementsBaseVertexProc_t _glewDrawElementsBaseVertex;
 extern glGetMultiQueryObjectuivAMDProc_t glGetMultiQueryObjectuivAMD;
+extern glCreateShaderProc_t _glewCreateShader;
+extern glShaderSourceProc_t _glewShaderSource;
+extern glCompileShaderProc_t _glewCompileShader;
+extern glGetShaderivProc_t _glewGetShaderiv;
+extern glGetShaderInfoLogProc_t _glewGetShaderInfoLog;
+extern glDeleteShaderProc_t _glewDeleteShader;
+extern glCreateProgramProc_t _glewCreateProgram;
+extern glDeleteProgramProc_t _glewDeleteProgram;
+extern glProgramBinaryProc_t _glewProgramBinary;
+extern glGetProgramivProc_t _glewGetProgramiv;
+extern glAttachShaderProc_t _glewAttachShader;
+extern glBindAttribLocationProc_t _glewBindAttribLocation;
+extern glBindFragDataLocationProc_t _glewBindFragDataLocation;
+extern glProgramParameteriProc_t _glewProgramParameteri;
+extern glLinkProgramProc_t _glewLinkProgram;
+extern glDetachShaderProc_t _glewDetachShader;
+extern glGetProgramInfoLogProc_t _glewGetProgramInfoLog;
+extern glGetProgramBinaryProc_t _glewGetProgramBinary;
+extern glGetUniformLocationProc_t _glewGetUniformLocation;
+extern glGetUniformBlockIndexProc_t _glewGetUniformBlockIndex;
+extern glUniformBlockBindingProc_t _glewUniformBlockBinding;
+extern glUniform1iProc_t _glewUniform1i;
 
 extern unsigned char _GLEW_ATI_meminfo;
 extern unsigned char _GLEW_NVX_gpu_memory_info;

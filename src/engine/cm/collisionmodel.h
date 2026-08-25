@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/common/contents.h"
 #include "shared/idlib/bv/bounds.h"
 #include "shared/idlib/geometry/tracemodel.h"
 #include "shared/idlib/math/plane.h"
@@ -11,15 +12,6 @@
 #include <vector>
 
 enum cmType_t { CM_TYPE_POLYGON, CM_TYPE_SPHERE, CM_TYPE_GRID };
-
-enum cmContents_t : std::uint32_t {
-  CONTENTS_NONE = 0,
-  CONTENTS_SOLID = 1u << 0,
-  CONTENTS_BODY = 1u << 1,
-  CONTENTS_TRIGGER = 1u << 2,
-  CONTENTS_WATER = 1u << 3,
-  CONTENTS_ALL = 0xFFFFFFFFu
-};
 
 struct cmEdge_t {
   std::uint32_t vertex[2]{};
@@ -61,6 +53,7 @@ struct contactInfo_t {
   float distance{};
   std::uint32_t contents{};
   int material{};
+  int surfaceType{};
   int modelFeature{-1};
   int traceFeature{-1};
   int entityNum{-1};

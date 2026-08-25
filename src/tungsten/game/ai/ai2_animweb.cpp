@@ -223,13 +223,12 @@ std::int64_t idAI2::ForceAndChangeAnimWebState(
 
 // DIA: idAI2::GetSubWebAndStateFromAnimWebPath
 bool idAI2::GetSubWebAndStateFromAnimWebPath(const char* path,
-                                             idStr* subWebName,
-                                             idStr* stateName) {
-  if (path == nullptr || subWebName == nullptr || stateName == nullptr) {
-    return false;
-  }
+                                             idStr& subWebName,
+                                             idStr& stateName) const {
+  if (path == nullptr) return false;
   std::string normalized(path);
   std::replace(normalized.begin(), normalized.end(), '\\', '/');
+  std::replace(normalized.begin(), normalized.end(), ':', '/');
   const std::size_t stateSeparator = normalized.find_last_of('/');
   if (stateSeparator == std::string::npos || stateSeparator + 1 >= normalized.size()) {
     return false;
@@ -240,10 +239,10 @@ bool idAI2::GetSubWebAndStateFromAnimWebPath(const char* path,
   const std::size_t subWebStart =
       subWebSeparator == std::string::npos ? 0 : subWebSeparator + 1;
   if (subWebStart == stateSeparator) return false;
-  *subWebName = normalized.substr(subWebStart,
-                                  stateSeparator - subWebStart).c_str();
-  *stateName = normalized.substr(stateSeparator + 1).c_str();
-  GetSubWebName(subWebName, subWebName);
+  subWebName = normalized.substr(subWebStart,
+                                 stateSeparator - subWebStart).c_str();
+  stateName = normalized.substr(stateSeparator + 1).c_str();
+  const_cast<idAI2*>(this)->GetSubWebName(&subWebName, &subWebName);
   return true;
 }
 
@@ -276,6 +275,17 @@ const idAIAnimNodePlayback* idAI2::GetAnimForAnimWebNode(
   const int index = (subWebIndex->value + stateIndex->value) %
                     static_cast<int>(animWebState.nodeAnimations.size());
   return &animWebState.nodeAnimations[static_cast<std::size_t>(index)];
+}
+
+const idMD6Anim* idAI2::GetAnimForAnimWebNode(
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>& subWebIndex,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t>& stateIndex)
+    const {
+  if (subWebIndex.value < 0 || stateIndex.value < 0) return nullptr;
+  const int index = (subWebIndex.value + stateIndex.value) %
+                    static_cast<int>(animWebState.nodeAnimations.size());
+  return animWebState.nodeAnimations[static_cast<std::size_t>(index)]
+      .animation;
 }
 
 // DIA: idAI2::GetAnimTimeScaleForAnimWebNode

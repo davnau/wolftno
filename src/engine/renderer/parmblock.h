@@ -4,9 +4,9 @@
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/math/vector.h"
 
-// NEEDS_WORK(engine/renderer): ABI and callable surface recovered for users in
-// engine/decls. Implement from renderer/parmblock.cpp when renderer becomes the
-// active folder. No placeholder behavior is supplied here.
+// The implementation is owned by renderer/parmblock.cpp.  Keep this callable
+// surface in sync with the retail PDB: the second argument to the Get methods
+// is a parent parm block, not a pointer to a default scalar/vector value.
 
 class idFile;
 
@@ -57,22 +57,33 @@ public:
   bool operator!=(const idParmBlock& other) const { return !(*this == other); }
   void Clear();
   bool IsEqualSimple(const idParmBlock& other) const;
-  float GetFloat(const idDeclRenderParm* parm, const float* defaultValue = nullptr) const;
-  int GetInteger(const idDeclRenderParm* parm, const int* defaultValue = nullptr) const;
-  idVec4 GetVector(const idDeclRenderParm* parm, const idVec4* defaultValue = nullptr) const;
-  const idImage* GetImage(const idDeclRenderParm* parm, const idImage* defaultValue = nullptr) const;
+  float GetFloat(const idDeclRenderParm* parm,
+                 const idParmBlock* parentBlock = nullptr) const;
+  int GetInteger(const idDeclRenderParm* parm,
+                 const idParmBlock* parentBlock = nullptr) const;
+  idVec4 GetVector(const idDeclRenderParm* parm,
+                   const idParmBlock* parentBlock = nullptr) const;
+  const idImage* GetImage(const idDeclRenderParm* parm,
+                          const idParmBlock* parentBlock = nullptr) const;
   const idDeclRenderProg* GetProgram(const idDeclRenderParm* parm,
-                                     const idDeclRenderProg* defaultValue = nullptr) const;
-  const char* GetString(const idDeclRenderParm* parm, const char* defaultValue = nullptr) const;
+                                     const idParmBlock* parentBlock = nullptr) const;
+  const char* GetString(const idDeclRenderParm* parm,
+                        const idParmBlock* parentBlock = nullptr) const;
+  idStr* WriteString() const;
   void Save(idFile& file) const;
   bool Load(idFile& file);
   void RemoveRedundantOperations();
   void CopyFrom(const idParmBlock& other);
-  void AddOp(const expOp_t& operation);
+  void AddOp(const expOp_t& operation, const parmValue_t& constant);
   void ClearParm(const idDeclRenderParm* parm);
   void Append(const idParmBlock& other);
+  void SetParm(const idDeclRenderParm* parm, const parmValue_t& value);
+  void SetParm(const idDeclRenderParm* parm,
+               const idDeclRenderParm* sourceParm);
   void SetParm(const idDeclRenderParm* parm, const idVec4& value);
   void SetParm(const idDeclRenderParm* parm, float value);
+  void SetFloat(const idDeclRenderParm* parm, float value);
+  void SetVec4(const idDeclRenderParm* parm, const idVec4& value);
   void SetImage(const idDeclRenderParm* parm, const idImage* image);
 
   idList<expOp_t, 56> ops;

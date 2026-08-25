@@ -15,6 +15,7 @@ struct idEventDef;
 class idEntity;
 class idPlayer;
 class idWaypoint;
+enum aimPoint_t : int;
 
 struct idPostedEvent {
   const idEventDef* eventDefinition{nullptr};
@@ -92,6 +93,10 @@ public:
     (void)point;
     (void)force;
   }
+  virtual idVec3 GetLinearVelocity(int bodyId = 0) const {
+    (void)bodyId;
+    return {};
+  }
   virtual bool ShouldEnterDormancyImmediately() const { return false; }
 };
 
@@ -119,6 +124,12 @@ public:
   }
   virtual const void* GetAIGroupIdentity() const { return nullptr; }
   virtual bool ProvidesDynamicCover() const { return false; }
+  virtual bool IsWeaponStaticProp() const { return false; }
+  virtual bool IsDead() const { return false; }
+  virtual void GetAimPoint(aimPoint_t point, idVec3* result) const {
+    (void)point;
+    *result = physics != nullptr ? physics->GetOrigin() : idVec3{};
+  }
   virtual idVec3 GetLinearVelocity() const { return {}; }
   virtual bool ShouldLeaveDormancy() const { return leaveDormancy; }
   virtual void GetSoundTransform(idVec3* origin, idMat3* axis) const {
@@ -198,6 +209,10 @@ public:
   virtual int GetGameMsPerFrame() const { return 16; }
   virtual int GetGameMsPerRealSec() const { return 1000; }
   virtual int GetGameTimeMs() const { return GetFrameNum() * GetGameMsPerFrame(); }
+  virtual idEntity* GetEntityByNumber(int entityNumber) const {
+    (void)entityNumber;
+    return nullptr;
+  }
   virtual idRenderWorld* GetRenderWorld() const { return nullptr; }
   virtual idAASVisCache* GetAASVisCache() { return nullptr; }
   virtual idAIGameState* GetAIGameState() { return nullptr; }

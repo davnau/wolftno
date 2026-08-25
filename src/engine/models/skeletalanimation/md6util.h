@@ -5,7 +5,10 @@
 
 #include <cstddef>
 
-struct idJointMat { float mat[12]; };
+struct idJointMat {
+  float mat[12];
+  void Invert();
+};
 
 class idMD6Skel {
 public:

@@ -153,14 +153,16 @@ bool idRenderModelGodRays::UpdateInView(const idRenderView*,
   gameParmBlock.SetParm(rpGodRayViewPos.Get(), viewPosition);
   gameParmBlock.SetParm(
       rpGodRaysColor.Get(),
-      {fadeVal * color.x, fadeVal * color.y, fadeVal * color.z, coverage});
+      idVec4{fadeVal * color.x, fadeVal * color.y, fadeVal * color.z,
+             coverage});
   gameParmBlock.SetParm(rpScaleBiasSource.Get(),
-                        {sourceScaleX, sourceScaleY, ndcX, ndcY});
+                        idVec4{sourceScaleX, sourceScaleY, ndcX, ndcY});
   gameParmBlock.SetParm(
       rpScaleBiasQuad.Get(),
-      {static_cast<float>(size) / static_cast<float>(nextView->renderWidth),
-       static_cast<float>(size) / static_cast<float>(nextView->renderHeight),
-       ndcX * 0.5f + 0.5f, ndcY * 0.5f + 0.5f});
+      idVec4{
+          static_cast<float>(size) / static_cast<float>(nextView->renderWidth),
+          static_cast<float>(size) / static_cast<float>(nextView->renderHeight),
+          ndcX * 0.5f + 0.5f, ndcY * 0.5f + 0.5f});
   CommitThisFrame();
   return true;
 }

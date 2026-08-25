@@ -16,7 +16,7 @@ enum renderCapture_t : int {
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idImage;
-struct idPixelPackBuffer;
+class idPixelPackBuffer;
 class idRenderDestination;
 class idTextureSampler;
 class idTriangles;

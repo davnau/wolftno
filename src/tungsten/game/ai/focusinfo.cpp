@@ -297,7 +297,7 @@ void idFocusInfo::SetCurHeadTrackGroup(idAnimatedEntity* owner,
 
 // DIA: idFocusInfo::SetFocusEntity
 void idFocusInfo::SetFocusEntity(idAnimatedEntity* owner,
-                                 idAnimatedEntity* entity, bool keepInView,
+                                 const idEntity* entity, bool keepInView,
                                  aimPoint_t point, int duration) {
   if (!initialized) return;
   if (entity == owner) {
@@ -305,11 +305,14 @@ void idFocusInfo::SetFocusEntity(idAnimatedEntity* owner,
     return;
   }
   hasExplicitFocusPoint = false;
-  focusEntity = entity;
+  focusEntity = const_cast<idEntity*>(entity);
   keepFocusInView = keepInView;
   focusType = entity != nullptr ? AIFOCUS_ENTITY : AIFOCUS_NOTHING;
   aimPoint = point;
-  if (entity != nullptr) idealFocusPoint = entity->GetAimPoint();
+  if (const auto* animatedEntity =
+          dynamic_cast<const idAnimatedEntity*>(entity)) {
+    idealFocusPoint = animatedEntity->GetAimPoint();
+  }
   focusTimeout = duration < 0 ? -1 : FocusTime() + duration;
 }
 

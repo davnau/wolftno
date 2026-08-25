@@ -69,14 +69,12 @@ void StaticTransparencyGenJob(const staticTransparencyGenParms_t* parms) {
                               parms->lighting.primeLightDir.z};
 
   for (int quad = 0; quad < quadCount; ++quad) {
-    idVec3 center{};
     for (int corner = 0; corner < 4; ++corner) {
       const idDrawVert& input = parms->inputVerts[quad * 4 + corner];
       idTransparencyVert& output = parms->verts[quad * 4 + corner];
       const idVec3 localNormal = DecodeNormal(input);
       const idVec3 worldNormal = parms->axis * localNormal;
       output.xyz = parms->axis * input.xyz + parms->origin;
-      center += output.xyz;
 
       const float mappedS = parms->transSortScaleBias.x * input.st.x +
                             parms->transSortScaleBias.z;
@@ -97,8 +95,16 @@ void StaticTransparencyGenJob(const staticTransparencyGenParms_t* parms) {
       const float weightY = std::fabs(worldNormal.y) * 0.5f;
       const float weightZ = std::fabs(worldNormal.z) * 0.5f;
       const float primeWeight = std::fabs(primeDirection * worldNormal) * 0.5f;
-      const idVec3 color = channel01 * weightX + channel23 * weightY +
-                           channel45 * weightZ + primeColor * primeWeight;
+      const idVec3 color{
+          ((primeColor.x * primeWeight + channel01.x * weightX) +
+           channel23.x * weightY) +
+              channel45.x * weightZ,
+          ((primeColor.y * primeWeight + channel01.y * weightX) +
+           channel23.y * weightY) +
+              channel45.y * weightZ,
+          ((primeColor.z * primeWeight + channel01.z * weightX) +
+           channel23.z * weightY) +
+              channel45.z * weightZ};
       output.color[0] = ToColorByte(color.x);
       output.color[1] = ToColorByte(color.y);
       output.color[2] = ToColorByte(color.z);
@@ -109,7 +115,12 @@ void StaticTransparencyGenJob(const staticTransparencyGenParms_t* parms) {
       output.color[3] =
           ToColorByte(1.0f - fadeDistance * inverseFadeDistance);
     }
-    center *= 0.25f;
+    const idTransparencyVert* quadVertices = &parms->verts[quad * 4];
+    const idVec3 center =
+        (quadVertices[3].xyz +
+         (quadVertices[2].xyz +
+          (quadVertices[1].xyz + quadVertices[0].xyz))) *
+        0.25f;
     parms->quadDepth[quad] = parms->viewDir * (center - parms->viewOrg);
   }
   *parms->quadsUsed = quadCount;

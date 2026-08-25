@@ -74,6 +74,9 @@ public:
   static void ParseImageOpts(class idParser& parser, idImageOpts& options);
   static void MakeGeneratedName(char* binaryFileName, int maxLength,
                                 const char* imageName);
+  static void ParsePastImageLineAndMakeCanonical(class idParser& parser,
+                                                 idStr& result,
+                                                 const char* overrideOptions);
   static void WriteBinaryImage(const char* imageName, idImageOpts options,
                                const std::uint8_t* imageData,
                                std::uint32_t sourceFileTime);

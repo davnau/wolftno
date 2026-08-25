@@ -2,10 +2,6 @@
 
 #include "engine/decls/decl.h"
 
-// NEEDS_WORK(engine/renderer): declaration and ABI recovered from the retail
-// PDB. The implementation remains intentionally deferred until renderer is the
-// active recovery folder.
-
 class idImage;
 class idTextureSampler;
 class idDeclRenderProg;
@@ -27,6 +23,12 @@ enum parmType_t : int {
   PT_STRING = 13,
   PT_MAX = 14
 };
+
+static_assert(PT_VECTOR == 0 && PT_TEXTURE_MULTISAMPLE_2D == 8 &&
+                  PT_IMAGE_2D_READ == 9 && PT_IMAGE_2D_WRITE == 10 &&
+                  PT_SAMPLER == 11 && PT_PROGRAM == 12 && PT_STRING == 13 &&
+                  PT_MAX == 14,
+              "render-parm type ordering drift");
 
 enum parmCreator_t : int {
   PC_PARSED = 0,
@@ -61,7 +63,7 @@ public:
   void List() override;
   void Parse(idParser& source) override;
 
-  idImage* ParseImageLine(idParser& source);
+  idImage* ParseImageLine(idParser& source) const;
   static bool ParseVectorConstant(idParser& source, float* vector);
   void ParseValue(idParser& source, parmValue_t& value);
   void ParseStringToValue(const char* text, parmValue_t& value);
@@ -78,4 +80,10 @@ public:
 };
 
 static_assert(sizeof(parmValue_t) == 16, "parmValue_t ABI drift");
+static_assert(offsetof(idDeclRenderParm, parmIndex) == 0x50,
+              "render-parm index offset drift");
+static_assert(offsetof(idDeclRenderParm, declaredValue) == 0x60,
+              "render-parm value offset drift");
+static_assert(offsetof(idDeclRenderParm, edit) == 0x70,
+              "render-parm edit offset drift");
 static_assert(sizeof(idDeclRenderParm) == 128, "idDeclRenderParm ABI drift");

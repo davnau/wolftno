@@ -7,11 +7,39 @@ public:
   unsigned int oglSamplerState;
 };
 
+struct idTextureSamplerManagerVTable {
+  void (*destroy)(struct idTextureSamplerManager* manager);
+  void (*Init)(struct idTextureSamplerManager* manager);
+  void (*Shutdown)(struct idTextureSamplerManager* manager);
+  const idTextureSampler* (*FindSamplerByName)(
+      struct idTextureSamplerManager* manager, const char* name,
+      bool createIfMissing);
+  const char* (*GetSamplerName)(struct idTextureSamplerManager* manager,
+                               const idTextureSampler* sampler);
+  const idTextureSampler* (*CreateSampler)(
+      struct idTextureSamplerManager* manager, const void* options,
+      const char* name);
+  void (*DeleteSampler)(struct idTextureSamplerManager* manager,
+                        const idTextureSampler* sampler);
+};
+
 struct idTextureSamplerManager {
-  void* vtable;
+  const idTextureSamplerManagerVTable* vtable;
   const idTextureSampler* pointSampler;
   const idTextureSampler* pointSamplerRepeating;
   const idTextureSampler* mipMapSamplers[16];
+
+  const idTextureSampler* FindSamplerByName(const char* name,
+                                            bool createIfMissing) {
+    return vtable != nullptr && vtable->FindSamplerByName != nullptr
+               ? vtable->FindSamplerByName(this, name, createIfMissing)
+               : nullptr;
+  }
+  const char* GetSamplerName(const idTextureSampler* sampler) {
+    return vtable != nullptr && vtable->GetSamplerName != nullptr
+               ? vtable->GetSamplerName(this, sampler)
+               : nullptr;
+  }
 };
 
 extern idTextureSamplerManager* textureSamplerManager;

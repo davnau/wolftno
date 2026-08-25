@@ -68,7 +68,7 @@ idRenderModelCable::idRenderModelCable()
       diameter(1.0f), dirty(true), jobQueued(false), subdivPoints(nullptr),
       parms(nullptr), currentPointsBuffer(0), currentGeometryBuffer(0),
       pointsBuffer{}, vertexBuffer{}, indexBuffer{}, numVertices(0),
-      numIndices(0), jobDone(0) {
+      numIndices(0) {
   renderModelType = RENDERMODEL_CABLE;
   for (auto& points : pointsBuffer)
     points.ResizeForPort(32);
@@ -78,8 +78,13 @@ idRenderModelCable::~idRenderModelCable() {
   if ((static_cast<unsigned>(vertexBuffer[currentGeometryBuffer].size) &
        0x80000000u) != 0u) {
     vertexBuffer[currentGeometryBuffer].UnmapBuffer();
+  }
+  if ((static_cast<unsigned>(indexBuffer[currentGeometryBuffer].size) &
+       0x80000000u) != 0u) {
     indexBuffer[currentGeometryBuffer].UnmapBuffer();
   }
+  for (auto& points : pointsBuffer)
+    points.ClearFree();
   idMem::Singleton()->Free(subdivPoints, ALIGN_16);
   subdivPoints = nullptr;
   idMem::Singleton()->Free(parms, ALIGN_16);
@@ -189,13 +194,11 @@ void idRenderModelCable::BuildModel(const idMaterial* material_,
   diameterSubdivisions = std::clamp(diameterSubdivisions_, 3, 16);
   diameter = diameter_;
 
-  idMem::Singleton()->Free(parms, ALIGN_16);
   parms = static_cast<cableGenParms_t*>(
       idMem::Singleton()->AllocWithLocation(
           "w:\\build\\tech5\\engine\\models\\cable\\RenderModelCable.cpp(106) : TAG_RENDERMODEL",
           sizeof(cableGenParms_t), kRenderModelTag, true, ALIGN_16,
           HEAP_DEFAULTHEAP));
-  idMem::Singleton()->Free(subdivPoints, ALIGN_16);
   subdivPoints = static_cast<subdivPoint_t*>(
       idMem::Singleton()->AllocWithLocation(
           "w:\\build\\tech5\\engine\\models\\cable\\RenderModelCable.cpp(109) : TAG_RENDERMODEL",
@@ -239,6 +242,8 @@ void idRenderModelCable::BuildModel(const idMaterial* material_,
   }
 
   FreeSurfaces();
+  if ((useDeferredPosition & (deferredPositionInitialized >> 1U) & 1U) == 0U)
+    g.origin = vec3_origin;
   deferredOrigin = vec3_origin;
   auto* geometry = new (std::nothrow) idTriangles{};
   geometry->bounds = {};

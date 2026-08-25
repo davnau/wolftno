@@ -79,28 +79,6 @@ bool ReadBigMat3(idFile* file, idMat3& value) {
   return true;
 }
 
-void WriteString(idFile* file, const char* value) {
-  const int length = value != nullptr ? static_cast<int>(std::strlen(value)) : 0;
-  file->Write(&length, sizeof(length));
-  if (length > 0)
-    file->Write(value, static_cast<std::size_t>(length));
-}
-
-bool ReadString(idFile* file, idStr& value) {
-  int length = 0;
-  if (!ReadExact(file, &length, sizeof(length)) || length < 0 ||
-      length > 1024 * 1024) {
-    return false;
-  }
-  std::vector<char> text(static_cast<std::size_t>(length) + 1U, '\0');
-  if (length > 0 &&
-      !ReadExact(file, text.data(), static_cast<std::size_t>(length))) {
-    return false;
-  }
-  value = text.data();
-  return true;
-}
-
 idVec3 JointOrigin(const idJointMat& joint) {
   return {joint.mat[3], joint.mat[7], joint.mat[11]};
 }
@@ -291,10 +269,8 @@ bool idRenderModelChain::CommitSubclass() {
         transforms.list != nullptr ? transforms.list->mat : nullptr,
         transforms.Num());
     for (int surfaceIndex = 0; surfaceIndex < surfaces.Num(); ++surfaceIndex) {
-      if (surfaces[surfaceIndex].joints != nullptr) {
-        surfaces[surfaceIndex].joints->Reference(
-            &jointBuffers[currentJointBuffer], 0, transforms.Num());
-      }
+      surfaces[surfaceIndex].joints->Reference(
+          &jointBuffers[currentJointBuffer], 0, transforms.Num());
     }
 
     idVec3 minimum{1.0e30f, 1.0e30f, 1.0e30f};
@@ -339,8 +315,8 @@ void idRenderModelChain::Save(idFile* file) {
   const bool hasMorphMaterial = morphMaterial != nullptr;
   file->Write(&hasMorphMaterial, 1);
   if (hasMorphMaterial)
-    WriteString(file, morphMaterial->GetName());
-  WriteString(file, chainLinkModel.data);
+    file->WriteString(morphMaterial->GetName());
+  file->WriteString(chainLinkModel.data);
   WriteBig32(file, static_cast<std::uint32_t>(splineSettings.Num()));
   for (int index = 0; index < splineSettings.Num(); ++index) {
     WriteBigVec3(file, splineSettings[index].value);
@@ -372,23 +348,23 @@ bool idRenderModelChain::Load(idFile* file) {
   bool hasMorphMaterial = false;
   if (!ReadExact(file, &hasMorphMaterial, 1))
     return false;
-  morphMaterial = nullptr;
   if (hasMorphMaterial) {
     idStr materialName;
-    if (!ReadString(file, materialName))
+    if (file->ReadString(materialName) == 0)
       return false;
     morphMaterial = materialLookup != nullptr ? materialLookup(materialName.data)
                                               : nullptr;
   }
-  if (!ReadString(file, chainLinkModel))
+  if (file->ReadString(chainLinkModel) == 0)
     return false;
 
-  std::uint32_t valueCount = 0;
-  if (!ReadBig32(file, valueCount) || valueCount > 65536U)
+  std::uint32_t valueCountBits = 0;
+  if (!ReadBig32(file, valueCountBits))
     return false;
-  splineSettings.ClearFree();
-  splineSettings.ResizeForPort(static_cast<int>(valueCount));
-  for (std::uint32_t index = 0; index < valueCount; ++index) {
+  const int valueCount = static_cast<int>(valueCountBits);
+  if (valueCount > splineSettings.size)
+    splineSettings.ResizeForPort(valueCount);
+  for (int index = 0; index < valueCount; ++index) {
     splinePoint_t* point = splineSettings.Alloc();
     if (!ReadBigVec3(file, point->value) || !ReadBigFloat(file, point->time))
       return false;
@@ -406,16 +382,17 @@ bool idRenderModelChain::Load(idFile* file) {
   }
   BuildModel(spline);
 
-  std::uint32_t savedTransforms = 0;
-  if (!ReadBig32(file, savedTransforms))
+  std::uint32_t savedTransformBits = 0;
+  if (!ReadBig32(file, savedTransformBits))
     return false;
-  for (std::uint32_t index = 0; index < savedTransforms; ++index) {
+  const int savedTransforms = static_cast<int>(savedTransformBits);
+  for (int index = 0; index < savedTransforms; ++index) {
     idMat3 axis{};
     idVec3 origin{};
     if (!ReadBigMat3(file, axis) || !ReadBigVec3(file, origin))
       return false;
-    if (index < static_cast<std::uint32_t>(numLinks))
-      SetJoint(transforms[static_cast<int>(index)], origin, axis);
+    if (index < numLinks)
+      SetJoint(transforms[index], origin, axis);
   }
   dirtyFlags |= kTransformsDirty;
 
@@ -423,14 +400,12 @@ bool idRenderModelChain::Load(idFile* file) {
   if (!ReadExact(file, &savedMorph, 1))
     return false;
   if (savedMorph) {
-    for (std::uint32_t index = 0; index < savedTransforms; ++index) {
+    for (int index = 0; index < savedTransforms; ++index) {
       std::uint8_t amount = 0;
       if (!ReadExact(file, &amount, 1))
         return false;
-      if (numMorphVertices != 0 && index < static_cast<std::uint32_t>(numLinks)) {
-        morphMap[4 * static_cast<int>(index) * numMorphLinkVertices + 3] =
-            amount;
-      }
+      if (numMorphVertices != 0)
+        morphMap[4 * index * numMorphLinkVertices + 3] = amount;
     }
     dirtyFlags |= kMorphDirty;
   }
@@ -456,15 +431,6 @@ void idRenderModelChain::Build(const chainGenerateInfo_t& generateInfo,
 
 void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
   FreeSurfaces();
-  jointBuffers[0].FreeBufferObject();
-  morphBuffers[0].FreeBufferObject();
-  morphBuffers[1].FreeBufferObject();
-  transforms.Clear();
-  morphMap.Clear();
-  numMorphVertices = 0;
-  numMorphLinkVertices = 0;
-  currentJointBuffer = 0;
-  currentMorphBuffer = 0;
 
   idStaticModel* staticModel =
       staticModelLookup != nullptr
@@ -487,7 +453,7 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
                                 : 0.0f;
   linkSize = std::max(std::max(width, linkAdvance), std::max(depth, height));
   numLinks = 1;
-  if (curveLength > height && linkAdvance != 0.0f) {
+  if (curveLength > height) {
     numLinks =
         std::abs(static_cast<int>((curveLength - height) / linkAdvance +
                                   0.94999999f)) +
@@ -501,10 +467,8 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
        ++surfaceIndex) {
     idTriangles* copy = idTriangles::CreateStandardTriangles(
         staticModel->surfaces[surfaceIndex].geometry);
-    if (copy != nullptr) {
-      PrepareSkinning(*copy, modelBounds, genInfo.smoothSkinning);
-      maximumIndexes = std::max(maximumIndexes, copy->numIndexes);
-    }
+    PrepareSkinning(*copy, modelBounds, genInfo.smoothSkinning);
+    maximumIndexes = std::max(maximumIndexes, copy->numIndexes);
     sourceTriangles.emplace_back(copy);
   }
 
@@ -512,8 +476,7 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
                          ? std::min(256, 65536 / maximumIndexes)
                          : 0;
   numLinks = std::min(numLinks, maximumLinks);
-  if (!sourceTriangles.empty() && sourceTriangles[0] != nullptr &&
-      morphMaterial != nullptr) {
+  if (!sourceTriangles.empty() && morphMaterial != nullptr) {
     numMorphLinkVertices = sourceTriangles[0]->numVerts;
     numMorphVertices = numLinks * numMorphLinkVertices;
   }
@@ -522,7 +485,7 @@ void idRenderModelChain::BuildModel(const idCurve_NURBS<idVec3>& spline) {
     jointBuffers[0].AllocBufferObject(nullptr, numLinks);
   if (numMorphVertices > 0) {
     for (idVertexBuffer& buffer : morphBuffers) {
-      buffer.AllocBufferObject(nullptr, 4 * numMorphVertices, 4, BU_STATIC);
+      buffer.AllocBufferObject(nullptr, 4 * numMorphVertices, 4, BU_DEFAULT);
     }
     morphMap.SetNum(4 * numMorphVertices);
     for (int index = 0; index < morphMap.Num(); index += 4) {

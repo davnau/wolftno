@@ -17,6 +17,7 @@ enum bufferUsageType_t : int {
   BU_STATIC = 1,
   BU_DYNAMIC = 2,
   BU_STAGING = 3,
+  BU_STREAM = BU_STAGING,
 };
 
 void UnbindBufferObjects();

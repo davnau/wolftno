@@ -3,6 +3,9 @@
 #include "tungsten/game/ai/aitypes.h"
 #include "tungsten/game/game_runtime.h"
 #include "tungsten/game/declvoiceover.h"
+#include "engine/cm/collisionmodel.h"
+#include "engine/animation/md6.h"
+#include "engine/decls/animwebs/declanimweb.h"
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/text/atomicstring.h"
@@ -10,6 +13,7 @@
 
 #include <array>
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <functional>
 #include <initializer_list>
@@ -19,11 +23,11 @@
 #include <vector>
 
 struct idScriptAction;
-struct trace_t;
 enum fxCondition_t : int;
 class idAIVoiceController;
 class idAI2;
 class idAIOrientation;
+class idFaction;
 class idFaceMgr;
 class idPresentable;
 class idAnimWebPath;
@@ -65,6 +69,7 @@ class idComponentActionScript;
 class idFormationCoverMgr;
 class idGoreComponent;
 class idAnimator_AnimWeb;
+class idAnimator_Drone;
 class idFXManager;
 class idTreeAnimator;
 class idAnimator_Channel;
@@ -75,6 +80,10 @@ extern idCVar m_sensitivity;
 extern idCVar in_invertLook;
 extern idCVar joy_pitchSpeed;
 extern idCVar joy_yawSpeed;
+extern idCVar ai_debugAim;
+extern idCVar ai_debugLook;
+extern idCVar ai_debugMissTime;
+extern idCVar ai_debugLevel;
 class idRagdollInfo {
 public:
   int velocityTime{0};
@@ -314,7 +323,23 @@ enum walkState_t : int {
   WALKSTATE_RUNNING = 2,
 };
 enum aiFoci_t { AIFOCI_AIM, AIFOCI_LOOK, AIFOCI_NONE };
-enum aiFocus_t { AIFOCUS_NOTHING, AIFOCUS_POINT, AIFOCUS_ENTITY };
+enum aiFocus_t : int {
+  AIFOCUS_NOTHING = 0,
+  AIFOCUS_ENTITY = 1,
+  AIFOCUS_CAMERA = 2,
+  AIFOCUS_LAST_SEEN_POS = 3,
+  AIFOCUS_POS_WHEN_LAST_SEEN = 4,
+  AIFOCUS_LAST_SENSED_POS = 5,
+  AIFOCUS_POS_WHEN_LAST_SENSED = 6,
+  AIFOCUS_ENEMY_APPROACH_DIR = 7,
+  AIFOCUS_PARTIAL_SENSE = 8,
+  AIFOCUS_FRIENDLY = 9,
+  AIFOCUS_FRIENDLY_FOCUS = 10,
+  AIFOCUS_MOVE_DEST = 11,
+  AIFOCUS_LOOK_AROUND = 12,
+  AIFOCUS_SUPPRESSION_FIRE_POINT = 13,
+  AIFOCUS_MISC = 14,
+};
 enum usableState_t {
   USABLE_NONE = 0,
   USABLE_AI_TALK = 1,
@@ -430,6 +455,10 @@ class idActor : public idEntity {
 public:
   virtual void JobSync() {}
   virtual actorClass_t GetActorClass() const { return ACTORCLASS_HUMAN; }
+  virtual idFaction* GetFaction() const { return faction; }
+  void SetFactionForTest(idFaction* value) { faction = value; }
+  virtual const idVec3 GetEyeOffset() const { return eyeOffset; }
+  void SetEyeOffsetForTest(const idVec3& value) { eyeOffset = value; }
   bool IsCrouching() const { return posture == POSTURE_CROUCHED; }
   eventVoid* AnimEvent_DropWeapons(eventVoid* result);
   bool WereWeaponsDropped() const { return weaponsDropped; }
@@ -550,6 +579,7 @@ protected:
   idInventoryCollection inventory;
   idAnimator_AF articulatedFigureProperties;
   idVec3 lastEyePosition{};
+  idVec3 eyeOffset{0.0F, 0.0F, 64.0F};
   idMat3 eyeAxis{};
   idAttachmentCollection attachments;
   idList<idEntityPtr<idEntity>, 5> touching;
@@ -575,10 +605,12 @@ protected:
   int teleportCount{0};
   const idAAS2* lastAASPositionSource{nullptr};
   int aasPositionUpdateCount{0};
+  idFaction* faction{nullptr};
 };
 
 class idPlayer : public idActor {
 public:
+  actorClass_t GetActorClass() const override { return ACTORCLASS_PLAYER; }
   idFirstPersonEvent* GetCurFirstPersonEvent();
   void SetCurFirstPersonEvent(idFirstPersonEvent* value) {
     currentFirstPersonEvent = value;
@@ -613,6 +645,17 @@ public:
   bool PlayerBehavior_Takedown_IsInTakedown() const {
     return takedownInProgress;
   }
+  float CalcFov(bool weaponFov) const {
+    return weaponFov ? weaponFieldOfView : fieldOfView;
+  }
+  void SetFieldOfViewForTest(float normalFov, float weaponFov) {
+    fieldOfView = normalFov;
+    weaponFieldOfView = weaponFov;
+  }
+  idEntity* GetVehicle() const { return vehicle; }
+  void SetVehicleForTest(idEntity* value) { vehicle = value; }
+  idEntity* GetControl() const { return control; }
+  void SetControlForTest(idEntity* value) { control = value; }
 
 private:
   idFirstPersonEvent* currentFirstPersonEvent{nullptr};
@@ -625,6 +668,10 @@ private:
   bool spectating{false};
   int takedownFocusState{0};
   bool takedownInProgress{false};
+  float fieldOfView{90.0F};
+  float weaponFieldOfView{90.0F};
+  idEntity* vehicle{nullptr};
+  idEntity* control{nullptr};
 };
 
 class idTreeAnimator {
@@ -677,13 +724,52 @@ private:
   int leaveCount{0};
 };
 
+struct idRelationship {
+  enum attitude_t : int {
+    ATTITUDE_UNKNOWN = -1,
+    ATTITUDE_DESPISE = 0,
+    ATTITUDE_HATE = 1,
+    ATTITUDE_DISLIKE = 2,
+    ATTITUDE_NEUTRAL = 3,
+    ATTITUDE_LIKE = 4,
+    ATTITUDE_LOVE = 5,
+    ATTITUDE_IDOLIZE = 6,
+    ATTITUDE_MAX = 7,
+  };
+
+  enum attitudeStage_t : int {
+    ATTITUDESTAGE_OUTSIDER = 0,
+    ATTITUDESTAGE_ACCEPTED = 1,
+    ATTITUDESTAGE_HEROIC = 2,
+    ATTITUDESTAGE_NUM = 3,
+  };
+
+  static attitudeStage_t AttitudeToAttitudeStage(attitude_t attitude) {
+    if (attitude <= ATTITUDE_NEUTRAL) return ATTITUDESTAGE_OUTSIDER;
+    return attitude > ATTITUDE_LIKE ? ATTITUDESTAGE_HEROIC
+                                    : ATTITUDESTAGE_ACCEPTED;
+  }
+};
+
 class idFaction {
 public:
   const char* GetName();
   void SetName(const char* value) { name = value; }
+  idRelationship::attitude_t GetAttitudeTowards(
+      const idEntity* otherEntity) const {
+    return otherEntity == attitudeEntity ? attitude
+                                         : idRelationship::ATTITUDE_NEUTRAL;
+  }
+  void SetAttitudeTowardsForTest(
+      const idEntity* otherEntity, idRelationship::attitude_t value) {
+    attitudeEntity = otherEntity;
+    attitude = value;
+  }
 
 private:
   idStr name;
+  const idEntity* attitudeEntity{nullptr};
+  idRelationship::attitude_t attitude{idRelationship::ATTITUDE_NEUTRAL};
 };
 
 class idAI2;
@@ -1004,6 +1090,7 @@ extern const idEventDef EV_DisintigrateHide;
 extern const idEventDef EV_Hide;
 extern const idEventDef EV_Activate;
 extern const idEventDef EV_AnimWeb_Wait;
+extern const idEventDef EV_AnimWeb_BeginSyncedAnim;
 extern const idEventDef ACTION_CrouchToStandEnter;
 extern const idEventDef ACTION_StandToCrouchEnter;
 extern const idEventDef ACTION_PlayOverrideAnimEnter;
@@ -1039,6 +1126,7 @@ struct idAIScriptState {
 struct idAIAnimNodePlayback {
   int animationId{0};
   float timeScale{1.0F};
+  const idMD6Anim* animation{nullptr};
 };
 
 struct idCachedJoint {
@@ -1083,6 +1171,83 @@ class idAI2;
 
 class idInventoryItem : public idEntity {};
 
+struct testFireWeaponParms_t {
+  bool freeAmmo{false};
+  std::uint8_t recoveredPadding0[3]{};
+  float recoveredUnusedFloat0{0.99F};
+  float recoveredUnusedFloat1{0.95F};
+  float recoveredUnusedFloat2{0.8F};
+  float alwaysAimingDistance{0.0F};
+  bool useMuzzleDirForFireAxis{false};
+  bool useWeaponSpread{false};
+  bool ignoreAimFocus{false};
+  std::uint8_t recoveredPadding1{};
+};
+static_assert(offsetof(testFireWeaponParms_t, alwaysAimingDistance) == 16,
+              "test-fire weapon parms ABI drift");
+static_assert(offsetof(testFireWeaponParms_t, useMuzzleDirForFireAxis) == 20,
+              "test-fire weapon flags ABI drift");
+static_assert(sizeof(testFireWeaponParms_t) == 24,
+              "test-fire weapon parms size drift");
+
+enum testForBlockedTraceResult_t : int {
+  TEST_BLOCKED_TRACE_CLOSE = 0,
+  TEST_BLOCKED_TRACE_DISTANT = 1,
+  TEST_BLOCKED_TRACE_CLEAR = 2,
+};
+
+struct testForBlockedTraceParms_t {
+  float recoveredUnusedFraction{0.5F};
+  float maxBlockingDistance{0.0F};
+};
+static_assert(offsetof(testForBlockedTraceParms_t, maxBlockingDistance) == 4,
+              "blocked-trace parms ABI drift");
+
+struct multiHitTrace_t {
+  int numHits{0};
+  std::array<trace_t, 4> hits{};
+};
+
+class idTestFireResults {
+public:
+  idTestFireResults& operator=(const idTestFireResults&) = default;
+  int numTraces{0};
+  std::array<multiHitTrace_t, 8> multiTraces{};
+  std::array<float, 8> traceLens{};
+  bool useOverrideFxDir{false};
+
+  // Client hit-result fields share this retail type in other game modules.
+  idVec3 impact{};
+  float damage{0.0F};
+  int hitEntity{-1};
+  bool hit{false};
+};
+
+class idFireParms {
+public:
+  idFireParms() { Clear(); }
+  void Clear() {
+    weapon = nullptr;
+    start = {};
+    muzzleOffset = {};
+    fireAxis = {};
+    fireAxis[0] = {1.0F, 0.0F, 0.0F};
+    fireAxis[1] = {0.0F, 1.0F, 0.0F};
+    fireAxis[2] = {0.0F, 0.0F, 1.0F};
+    target = nullptr;
+    freeAmmo = false;
+    startTime = gameLocal != nullptr ? gameLocal->GetGameTimeMs() : 0;
+  }
+
+  idWeapon* weapon{nullptr};
+  idVec3 start{};
+  idVec3 muzzleOffset{};
+  idMat3 fireAxis{};
+  idPresentable* target{nullptr};
+  bool freeAmmo{false};
+  int startTime{0};
+};
+
 class idWeapon : public idInventoryItem {
 public:
   enum triggerState_t { TRIGGERSTATE_RELEASED, TRIGGERSTATE_PULLED };
@@ -1106,6 +1271,12 @@ public:
     muzzlePosition = position;
     muzzleAxis = axis;
     hasMuzzleTransform = true;
+  }
+  void SetMuzzleTransformFailureForTest(bool value) {
+    forceMuzzleTransformFailure = value;
+  }
+  bool ForcesMuzzleTransformFailureForTest() const {
+    return forceMuzzleTransformFailure;
   }
   void SetLaserTransform(const idVec3& position, const idMat3& axis) {
     laserPosition = position;
@@ -1144,6 +1315,8 @@ public:
   int GetLastMuzzleFlashIndex() const { return lastMuzzleFlashIndex; }
   bool UsesFireControl() const { return usesFireControl; }
   void SetUsesFireControl(bool value) { usesFireControl = value; }
+  bool ShouldAimAtHead() const { return shouldAimAtHead; }
+  void SetShouldAimAtHeadForTest(bool value) { shouldAimAtHead = value; }
   bool NeedsReload(bool secondary) const {
     return secondary ? secondaryNeedsReload : primaryNeedsReload;
   }
@@ -1215,6 +1388,55 @@ public:
   int GetAimDivergeInterval() const { return aimDivergeInterval; }
   void SetHolsterSlot(unsigned int value) { holsterSlot = value; }
   unsigned int GetHolsterSlot() const { return holsterSlot; }
+  void AddSpreadToFireAxis(const idMat3& inputAxis, aiAccuracy_t accuracy,
+                           float modifier, idMat3& outputAxis) const {
+    ++spreadCallCount;
+    lastSpreadInputAxis = inputAxis;
+    lastSpreadAccuracy = accuracy;
+    lastSpreadModifier = modifier;
+    outputAxis = hasSpreadOutput ? spreadOutputAxis : inputAxis;
+  }
+  virtual void DeferredFire(idPresentable* ownerPresentable,
+                            const idPresentable* sourcePresentable,
+                            const idVec3& muzzleWorldPosition,
+                            const idMat3& axis, idFireParms& fireParms,
+                            bool secondary) {
+    ++deferredFireCount;
+    lastDeferredOwnerPresentable = ownerPresentable;
+    lastDeferredSourcePresentable = sourcePresentable;
+    lastDeferredMuzzlePosition = muzzleWorldPosition;
+    lastDeferredFireAxis = axis;
+    lastDeferredFireParms = &fireParms;
+    lastDeferredSecondary = secondary;
+    fireParms.start = muzzleWorldPosition;
+    fireParms.fireAxis = axis;
+  }
+  void SetSpreadOutputForTest(const idMat3& value) {
+    spreadOutputAxis = value;
+    hasSpreadOutput = true;
+  }
+  void ClearSpreadOutputForTest() { hasSpreadOutput = false; }
+  int GetSpreadCallCount() const { return spreadCallCount; }
+  const idMat3& GetLastSpreadInputAxis() const { return lastSpreadInputAxis; }
+  aiAccuracy_t GetLastSpreadAccuracy() const { return lastSpreadAccuracy; }
+  float GetLastSpreadModifier() const { return lastSpreadModifier; }
+  int GetDeferredFireCount() const { return deferredFireCount; }
+  idPresentable* GetLastDeferredOwnerPresentable() const {
+    return lastDeferredOwnerPresentable;
+  }
+  const idPresentable* GetLastDeferredSourcePresentable() const {
+    return lastDeferredSourcePresentable;
+  }
+  const idVec3& GetLastDeferredMuzzlePosition() const {
+    return lastDeferredMuzzlePosition;
+  }
+  const idMat3& GetLastDeferredFireAxis() const {
+    return lastDeferredFireAxis;
+  }
+  idFireParms* GetLastDeferredFireParms() const {
+    return lastDeferredFireParms;
+  }
+  bool GetLastDeferredSecondary() const { return lastDeferredSecondary; }
 
   triggerState_t triggerState{TRIGGERSTATE_RELEASED};
   fireState_t fireState{FIRESTATE_IDLE};
@@ -1241,8 +1463,10 @@ private:
   idVec3 laserPosition{};
   idMat3 laserAxis{};
   bool hasMuzzleTransform{false};
+  bool forceMuzzleTransformFailure{false};
   bool hasLaserTransform{false};
   bool usesFireControl{true};
+  bool shouldAimAtHead{false};
   bool primaryNeedsReload{false};
   bool secondaryNeedsReload{false};
   bool reloadAllowed{true};
@@ -1262,6 +1486,19 @@ private:
   idTreeAnimator* lastMuzzleAnimator{nullptr};
   int lastMuzzleFlashIndex{-1};
   int muzzleTransformCount{0};
+  bool hasSpreadOutput{false};
+  idMat3 spreadOutputAxis{};
+  mutable int spreadCallCount{0};
+  mutable idMat3 lastSpreadInputAxis{};
+  mutable aiAccuracy_t lastSpreadAccuracy{ACCURACY_FROMSKILL};
+  mutable float lastSpreadModifier{0.0F};
+  int deferredFireCount{0};
+  idPresentable* lastDeferredOwnerPresentable{nullptr};
+  const idPresentable* lastDeferredSourcePresentable{nullptr};
+  idVec3 lastDeferredMuzzlePosition{};
+  idMat3 lastDeferredFireAxis{};
+  idFireParms* lastDeferredFireParms{nullptr};
+  bool lastDeferredSecondary{false};
 };
 
 enum class aiSubWeb_t : int {
@@ -1996,12 +2233,16 @@ public:
                                           const char* destinationSubWebName,
                                           const char* destinationStateName,
                                           const void* blendParameters);
-  bool GetSubWebAndStateFromAnimWebPath(const char* path, idStr* subWebName,
-                                        idStr* stateName);
+  bool GetSubWebAndStateFromAnimWebPath(const char* path, idStr& subWebName,
+                                        idStr& stateName) const;
   bool GetAnimWebNodeForOverride(int overrideType, idAnimWebIndex* subWebIndex,
                                  idAnimWebIndex* stateIndex);
   const idAIAnimNodePlayback* GetAnimForAnimWebNode(const idAnimWebIndex* subWebIndex,
                                          const idAnimWebIndex* stateIndex);
+  const idMD6Anim* GetAnimForAnimWebNode(
+      const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>& subWebIndex,
+      const idIndex<short, idDeclAnimWeb::invalidStateIndex_t>& stateIndex)
+      const;
   float GetAnimTimeScaleForAnimWebNode(const idAnimWebIndex* subWebIndex,
                                        const idAnimWebIndex* stateIndex);
   const idAIAnimNodePlayback* GetAnimForAnimWebNodeIndex(
@@ -2156,7 +2397,7 @@ public:
   bool ActionScriptFlagIsSet(int flags) const;
   idRecoveredValue ActivateExtendedClipModel(...);
   void ActivateStealthKillTrigger();
-  idRecoveredValue AimDebug(...);
+  void AimDebug(const char* text, int level) const;
   void AlarmNotification();
   int AlertCycleToSubWeb(int alertCycle);
   idRecoveredValue AllocPresentable(...);
@@ -2224,7 +2465,6 @@ public:
   eventVoid* Event_DetectPlayer(eventVoid* result);
   idRecoveredValue FindAutoFocus(...);
   idRecoveredValue FindAutoFocusEntity(...);
-  idRecoveredValue FindClosestFocus(...);
   const idWeapon* FindWeaponToDraw() const;
   idRecoveredValue FinishFireWeapon(...);
   idRecoveredValue FirstThink(...);
@@ -2234,17 +2474,22 @@ public:
   idAASPositionMgr* GetAASPositionMgr();
   idLegsFSM* GetActionFSM();
   int GetActionStatus() const;
-  int GetAlertCycle() const;
+  alertCycle_t GetAlertCycle() const;
   int GetAlertCycleDuration() const;
   idFiniteStateMachine* GetAlertCycleFSM();
-  bool GetAnimationDelta(const idMD6Anim* animation, idVec3* outDelta) const;
-  idRecoveredValue GetAnimationDelta(idRecoveredOverloadTag<1>);
-  idRecoveredValue GetAnimationDelta(idRecoveredOverloadTag<2>);
+  bool GetAnimationDelta(const idMD6Anim* animation, idVec3& outDelta) const;
+  bool GetAnimationDelta(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state,
+      idVec3& outDelta, bool verifyAWPath) const;
+  bool GetAnimationDelta(const idAnimWebPath& animPath, idVec3& outDelta,
+                         bool verifyAWPath) const;
   idRecoveredValue GetAnimationDeltaAndRot(...);
   idRecoveredValue GetAnimationDuration(...);
-  bool GetAnimationPathReachability(idAnimWebIndex subWeb,
-                                    idAnimWebIndex state) const;
-  idRecoveredValue GetAnimationPathReachability(idRecoveredOverloadTag<1>);
+  bool GetAnimationPathReachability(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state) const;
+  bool GetAnimationPathReachability(const idAnimWebPath& animPath) const;
   idRecoveredValue GetAnimationRot(...);
   idRecoveredValue GetAnimationRot(idRecoveredOverloadTag<1>);
   idAIVolatile::idAIAnimationInfo* GetAnimatorAnimWeb();
@@ -2269,12 +2514,12 @@ public:
   float GetEnemyLookDot(const idEntity* enemy) const;
   const aiSenseState_t* GetEnemySenseState(aiSense_t senseType) const;
   unsigned int GetEventResponseFlags();
-  idRecoveredValue GetEyeOffset(...);
+  const idVec3 GetEyeOffset() const override;
   const idDeclFacialAnimationSet* GetFacialAnimationSet() const;
   const idEntity* GetFakeEnemy() const;
   float GetFakeEnemyWeight();
-  void GetFireAtLastKnownDuration(const idWeapon* weapon, int* minimum,
-                                  int* maximum) const;
+  void GetFireAtLastKnownDuration(const idWeapon* weapon, int& minimum,
+                                  int& maximum);
   idAIHealth* GetHealthComponent();
   int GetIdleIndexForType(runIndexType_t type) const;
   inputSettings_t* GetInputSettings(inputSettings_t* result,
@@ -2283,7 +2528,10 @@ public:
   idRecoveredValue GetMeleeDirection(...);
   int GetMeleeInterval(aiMelee_t meleeType);
   idRecoveredValue GetMeleeTypeForTarget(...);
-  idRecoveredValue GetMissTimeAimPosition(...);
+  idVec3 GetMissTimeAimPosition(const idEntity* target, idVec3 fireOrigin,
+                                const idMat3& fireAxis,
+                                bool trackAlongGround,
+                                float missTimeFractionLeft) const;
   void GetModelTransform(idVec3* modelOrigin, idMat3* modelAxis) const;
   int GetModifiedSkill();
   idAIMoveState* GetMoveInterface();
@@ -2366,7 +2614,7 @@ public:
   idRecoveredValue KilledNotification(...);
   void LeaveActionNode(bool force);
   bool LKWBlind();
-  idRecoveredValue LookDebug(...);
+  void LookDebug(const char* text, int level, int duration) const;
   unsigned int MeleeMaskForTarget(const idEntity* target);
   idRecoveredValue ModifyCrosshairInfo(...);
   bool OkToLKWBlind() const;
@@ -2421,7 +2669,7 @@ public:
   void SetActionScriptFlag(int flags, bool setFlag);
   void SetAIClip();
   void SetAimFocusAimPoint(aimPoint_t point);
-  void SetAimFocusEntity(idAnimatedEntity* entity, bool keepFocusInView,
+  void SetAimFocusEntity(const idEntity* entity, bool keepFocusInView,
                          aimPoint_t aimPoint, int timeout);
   void SetAlertCycle(alertCycle_t alertCycle);
   void SetAnimWebEvent(aiAnimWeb_t web,
@@ -2445,7 +2693,7 @@ public:
   void SetIdealLookFocusPoint(const idVec3& point, int timeout,
                               aiFocus_t focusType);
   void SetLockHeadTracking(bool lock);
-  void SetLookFocusEntity(idAnimatedEntity* entity, bool keepFocusInView,
+  void SetLookFocusEntity(const idEntity* entity, bool keepFocusInView,
                           aimPoint_t aimPoint, int timeout);
   idRecoveredValue SetModel(...);
   void SetMovePushStatus(aiMovePushStatus_t newStatus,
@@ -2460,7 +2708,6 @@ public:
   void SetTakeDownWindow(bool open);
   void SetupFakePosition(const idEntity* instigator,
                          const idVec3& fakePosition, bool detected);
-  idRecoveredValue SetupRobotDead(...);
   void SetWalkState(walkState_t state);
   void SetWorldCollision(bool collideWithWorld);
   bool ShouldDeadThink();
@@ -2494,8 +2741,13 @@ public:
   void Teleport(const idVec3* origin, idAngles* angles);
   idRecoveredValue TeleportPush(...);
   bool TeslaIsActive() const;
-  idRecoveredValue TestFireWeapon(...);
-  idRecoveredValue TestForBlockedTrace(...);
+  bool TestFireWeapon(idWeapon* weapon, idFireParms& fireParms,
+                      idTestFireResults& testFireResults,
+                      const testFireWeaponParms_t& testParms);
+  testForBlockedTraceResult_t TestForBlockedTrace(
+      const idFireParms& fireParms,
+      const idTestFireResults& testFireResults,
+      const testForBlockedTraceParms_t& testParms) const;
   idRecoveredValue Think(...);
   idRecoveredValue Think_AIControl(...);
   idRecoveredValue Think_Impl(...);
@@ -2505,7 +2757,6 @@ public:
   idRecoveredValue TurretShouldFire(...);
   bool UnequipItem(idInventoryItem* item);
   void UpdateActions(int curTime);
-  idRecoveredValue UpdateAimFocus(...);
   idRecoveredValue UpdateAnimationControllers(...);
   idRecoveredValue UpdateAttachments(...);
   idRecoveredValue UpdateAvoidCharacter(...);
@@ -2553,7 +2804,11 @@ public:
                              const char* destinationStateName,
                              const char* viaSubWebName,
                              const char* viaStateName);
-  idRecoveredValue WaitForOverrideAnim(...);
+  bool WaitForOverrideAnim(idAnimWebEvent::priority_t priority,
+                           overrideAnim_t overrideAnimation,
+                           animWebEvent_t eventType, bool force,
+                           bool randomizeAnimation,
+                           const idEntity* syncedTarget);
   idRecoveredValue WaitForTraversal(...);
 
   void SetVoiceOverPlaying(bool value) { voiceOverPlaying = value; }
@@ -2610,6 +2865,25 @@ public:
     return fsmCallback.get();
   }
   idFaceMgr* GetFaceManagerForTest() const { return faceManager.get(); }
+  void SetGreetingsEnabledForTest(bool value) { greetingsEnabled = value; }
+  const std::string& GetLastLookDebugTextForTest() const {
+    return lastLookDebugText;
+  }
+  int GetLastLookDebugLevelForTest() const { return lastLookDebugLevel; }
+  int GetLastLookDebugDurationForTest() const {
+    return lastLookDebugDuration;
+  }
+  const idVec3& GetLastLookDebugPositionForTest() const {
+    return lastLookDebugPosition;
+  }
+  int GetLookDebugCountForTest() const { return lookDebugCount; }
+  void ClearLookDebugForTest() const {
+    lastLookDebugText.clear();
+    lastLookDebugLevel = 0;
+    lastLookDebugDuration = 0;
+    lastLookDebugPosition = {};
+    lookDebugCount = 0;
+  }
   int GetLastSignalForTest() const { return lastSignal; }
   int GetSignalCountForTest() const { return signalCount; }
   const idAICoreState& GetCoreState() const { return coreState; }
@@ -2649,6 +2923,57 @@ public:
   void SetTeslaEvaluationTime(int time) { teslaEvaluationTime = time; }
   int GetAIClipMask() const { return aiClipMask; }
   idAIFireControl* GetFireControl() const { return fireControl.get(); }
+  void ConfigureTestFireAimForTest(float compensationTime,
+                                   bool predictMovement,
+                                   float normalAimDot,
+                                   float upsideDownAimDot,
+                                   float gangstaPoseAimDot,
+                                   bool trackMissAlongGround) {
+    focusCompensationTime = compensationTime;
+    predictTargetMovement = predictMovement;
+    testFireAimDot = normalAimDot;
+    testFireAimDotUpsideDown = upsideDownAimDot;
+    testFireGangstaAimDot = gangstaPoseAimDot;
+    missTrackAlongGround = trackMissAlongGround;
+  }
+  void SetTestFireMuzzleContentsForTest(std::uint32_t value) {
+    testFireMuzzleContents = value;
+  }
+  void SetTestFireLinearVelocityForTest(const idVec3& value) {
+    testFireLinearVelocity = value;
+  }
+  idVec3 GetLinearVelocity() const override { return testFireLinearVelocity; }
+  void SetAimDebugEyeOffsetForTest(const idVec3& value) {
+    aimDebugEyeOffset = value;
+  }
+  void ClearAimDebugForTest() const {
+    lastAimDebugText.clear();
+    lastAimDebugLevel = 0;
+    lastAimDebugPosition = {};
+    aimDebugCount = 0;
+  }
+  const std::string& GetLastAimDebugTextForTest() const {
+    return lastAimDebugText;
+  }
+  int GetLastAimDebugLevelForTest() const { return lastAimDebugLevel; }
+  const idVec3& GetLastAimDebugPositionForTest() const {
+    return lastAimDebugPosition;
+  }
+  int GetAimDebugCountForTest() const { return aimDebugCount; }
+  void ClearMissTimeDebugForTest() const {
+    missTimeDebugPointCount = 0;
+    missTimeDebugLineCount = 0;
+    lastMissTimeDebugPoint = {};
+  }
+  int GetMissTimeDebugPointCountForTest() const {
+    return missTimeDebugPointCount;
+  }
+  int GetMissTimeDebugLineCountForTest() const {
+    return missTimeDebugLineCount;
+  }
+  const idVec3& GetLastMissTimeDebugPointForTest() const {
+    return lastMissTimeDebugPoint;
+  }
   void SetAccuracyState(int groupCondition, int editableAccuracy,
                         int skillAccuracy) {
     groupStatusCondition = groupCondition;
@@ -2903,6 +3228,9 @@ public:
                ? focusInfos[static_cast<std::size_t>(index)].get()
                : nullptr;
   }
+  void UpdateAimFocusForTest() { UpdateAimFocus(); }
+  void SetupRobotDeadForTest() { SetupRobotDead(); }
+  bool FindClosestFocusForTest() { return FindClosestFocus(); }
   int GetLookFocusTimeout() const { return lookFocusTimeout; }
   void SetActionScriptRunning(bool running) { actionScriptRunning = running; }
   void ConfigureSpeakingVoice(bool mutant, bool mood, bool lipSync,
@@ -3099,6 +3427,14 @@ public:
   void SetAnimWebDeclarationForTest(const idDeclAnimWeb* value);
   void SetAnimWebDeclarationForTest(aiAnimWeb_t web,
                                     const idDeclAnimWeb* value);
+  void SetAnimWebNodeAnimationForTest(short subWeb, short state,
+                                      const idMD6Anim* animation) {
+    if (subWeb < 0 || state < 0) return;
+    const int slot = (subWeb + state) %
+                     static_cast<int>(animWebState.nodeAnimations.size());
+    animWebState.nodeAnimations[static_cast<std::size_t>(slot)].animation =
+        animation;
+  }
   void ConfigureEmergencyCoverExitForTest(bool usesEmergencyExit,
                                           bool alreadyUsed,
                                           coverAction_t action,
@@ -3195,7 +3531,7 @@ public:
     return lastDamageSound;
   }
   bool WasDeathSoundHandledForTest() const { return deathSoundPlayed; }
-  idAnimatedEntity* GetLastLookedAtEntityForTest() const {
+  const idEntity* GetLastLookedAtEntityForTest() const {
     return lastLookedAtEntity;
   }
   int GetLastLookedAtTimeForTest() const { return lastLookedAtTime; }
@@ -3205,6 +3541,31 @@ public:
     robotDeathSetup = deathSetupValue;
     robotTimeToCritical = timeToCriticalValue;
     droneLastDamageTick = lastDamageTickValue;
+  }
+  void ConfigureRobotDeathForTest(bool deathSetupValue,
+                                  float timeToCriticalValue,
+                                  float timeCriticalToExplodeValue,
+                                  float stopEffectsDelayValue,
+                                  bool usesDroneValue) {
+    robotDeathSetup = deathSetupValue;
+    robotTimeToCritical = timeToCriticalValue;
+    robotTimeCriticalToExplode = timeCriticalToExplodeValue;
+    robotStopEffectsDelay = stopEffectsDelayValue;
+    usesDrone = usesDroneValue;
+  }
+  bool IsRobotDeathSetupForTest() const { return robotDeathSetup; }
+  int GetRobotCriticalTimestampForTest() const {
+    return robotCriticalTimestamp;
+  }
+  int GetRobotExplodeTimestampForTest() const {
+    return robotExplodeTimestamp;
+  }
+  int GetRobotDeadTimestampForTest() const { return robotDeadTimestamp; }
+  idFXManager* GetRobotDeathFXManagerForTest() const {
+    return robotDeathFXManager.get();
+  }
+  idAnimator_Drone* GetRobotDeathDroneAnimatorForTest() const {
+    return robotDeathDroneAnimator.get();
   }
   void ConfigureDeathSync(bool enabled, bool blockerA, bool blockerB) {
     deathSyncEnabled = enabled;
@@ -3228,6 +3589,9 @@ private:
   eventVoid* RecordAnimEvent(const char* eventName, eventVoid* result);
   eventVoid* RecordGameEvent(const char* eventName, eventVoid* result);
   idRecoveredValue RecordCoreCall(const char* methodName);
+  void UpdateAimFocus();
+  void SetupRobotDead();
+  bool FindClosestFocus();
 
   idAIScriptProxy scriptProxy;
   bool voiceOverPlaying{false};
@@ -3265,6 +3629,22 @@ private:
   bool fireActionScriptRunning{false};
   bool fireShouldHold{false};
   float fireMissTime{-1.0F};
+  float focusCompensationTime{-1.0F};
+  bool predictTargetMovement{false};
+  float testFireAimDot{0.8F};
+  float testFireAimDotUpsideDown{0.8F};
+  float testFireGangstaAimDot{0.8F};
+  bool missTrackAlongGround{false};
+  std::uint32_t testFireMuzzleContents{0};
+  idVec3 testFireLinearVelocity{};
+  idVec3 aimDebugEyeOffset{};
+  mutable std::string lastAimDebugText;
+  mutable int lastAimDebugLevel{0};
+  mutable idVec3 lastAimDebugPosition{};
+  mutable int aimDebugCount{0};
+  mutable int missTimeDebugPointCount{0};
+  mutable int missTimeDebugLineCount{0};
+  mutable idVec3 lastMissTimeDebugPoint{};
   float secondaryFireRange{-1.0F};
   idEntity* currentInteraction{nullptr};
   idStr interactionActionScript;
@@ -3449,10 +3829,17 @@ private:
   bool hasPainJointGroup{false};
   idStr painJointGroupName;
   int damageSoundStartCount{0};
-  idAnimatedEntity* lastLookedAtEntity{nullptr};
+  const idEntity* lastLookedAtEntity{nullptr};
   int lastLookedAtTime{-1};
   bool robotDeathSetup{false};
   float robotTimeToCritical{0.0F};
+  float robotTimeCriticalToExplode{0.0F};
+  float robotStopEffectsDelay{0.0F};
+  int robotCriticalTimestamp{0};
+  int robotExplodeTimestamp{0};
+  int robotDeadTimestamp{0};
+  std::unique_ptr<idFXManager> robotDeathFXManager;
+  std::unique_ptr<idAnimator_Drone> robotDeathDroneAnimator;
   int droneLastDamageTick{0};
   bool deathSyncEnabled{false};
   std::array<idTrajectory_Parabolic, 4> trajectories;
@@ -3504,6 +3891,12 @@ private:
   bool usesEmergencyCoverExit{false};
   bool allowHostileStance{false};
   coverOrientation_t coverOrientation{COVERORIENT_NONE};
+  bool greetingsEnabled{false};
+  mutable std::string lastLookDebugText;
+  mutable int lastLookDebugLevel{0};
+  mutable int lastLookDebugDuration{0};
+  mutable idVec3 lastLookDebugPosition{};
+  mutable int lookDebugCount{0};
 };
 
 extern idCVar ai_forceWalk;

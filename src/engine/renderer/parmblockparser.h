@@ -1,6 +1,7 @@
 #pragma once
 
 #include "parmblock.h"
+#include "shared/idlib/containers/BitArray.h"
 
 #include <cstddef>
 
@@ -8,17 +9,6 @@
 // consumers. Its expression parser belongs to renderer/parmblockparser.cpp and
 // is intentionally deferred until that folder is reconstructed.
 class idParser;
-
-class idBitArray {
-public:
-  idBitArray() : buffer(nullptr), bits(0), memTag(0), free(false) {}
-  ~idBitArray();
-
-  unsigned char* buffer;
-  std::size_t bits;
-  short memTag;
-  bool free;
-};
 
 class idParmBlockParser {
 public:
@@ -31,5 +21,4 @@ public:
   parmValue_t defaultConstant;
 };
 
-static_assert(sizeof(idBitArray) == 24, "idBitArray ABI drift");
 static_assert(sizeof(idParmBlockParser) == 56, "idParmBlockParser ABI drift");

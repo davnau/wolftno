@@ -3,6 +3,7 @@
 // NEEDS_WORK(engine/renderer): PDB-derived image-manager boundary used by SWF.
 
 #include "engine/renderer/image.h"
+#include "shared/idlib/containers/BitArray.h"
 
 class idImageManager {
 public:
@@ -14,7 +15,7 @@ public:
   idImage* borderedPointWhiteImage{};
   idImage* blackImage{};
   idImage* ps3ReplacementImage{};
-  struct transSortImageAtlas_t* transSortImageAtlas{};
+  class idImageAtlas* transSortImageAtlas{};
   textureFilter_t textureMinFilter{};
   textureFilter_t textureMaxFilter{};
   textureFilter_t textureMipFilter{};
@@ -22,14 +23,31 @@ public:
   float textureLODBias{};
 };
 
-struct transSortImageAtlas_t {
-  std::uint8_t recoveredPrefix[20]{};
+class idImageAtlas {
+public:
+  int ATLAS_WIDTH_BITS{};
+  int ATLAS_HEIGHT_BITS{};
+  int ATLAS_MIP_LEVELS{};
+  int ATLAS_TILE_WIDTH_BITS{};
+  int ATLAS_TILE_HEIGHT_BITS{};
   int ATLAS_WIDTH{};
   int ATLAS_HEIGHT{};
+  int ATLAS_TILE_WIDTH{};
+  int ATLAS_TILE_HEIGHT{};
+  int ATLAS_TILES_WIDE{};
+  int ATLAS_TILES_HIGH{};
+  int ATLAS_TILES{};
+  idBitArray tileAlloc;
+  idImage* atlas{};
 };
 
 static_assert(offsetof(idImageManager, transSortImageAtlas) == 40,
               "idImageManager transparency atlas offset drift");
 static_assert(sizeof(idImageManager) == 72, "idImageManager ABI drift");
+static_assert(offsetof(idImageAtlas, tileAlloc) == 0x30,
+              "idImageAtlas tile allocator offset drift");
+static_assert(offsetof(idImageAtlas, atlas) == 0x48,
+              "idImageAtlas image offset drift");
+static_assert(sizeof(idImageAtlas) == 0x50, "idImageAtlas ABI drift");
 
 extern idImageManager* globalImages;

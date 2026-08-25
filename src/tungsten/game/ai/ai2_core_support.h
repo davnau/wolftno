@@ -367,6 +367,10 @@ public:
     return lastChangeInterruptBlend;
   }
   int GetLastChangeFlagsForTest() const { return lastChangeFlags; }
+  void SetSelect01ForTest(float value) { select01 = value; }
+  float GetSelect01ForTest() const { return select01; }
+  void SetMeleeAttackForTest(float value) { meleeAttack = value; }
+  float GetMeleeAttackForTest() const { return meleeAttack; }
 
 private:
   const idDeclAnimWeb* declaration{nullptr};
@@ -413,6 +417,8 @@ private:
   int lastChangeInterruptPath{-1};
   int lastChangeInterruptBlend{-1};
   int lastChangeFlags{-1};
+  float select01{0.0F};
+  float meleeAttack{0.0F};
 };
 
 struct idAI2::idAIVolatile::idAIDeath {
@@ -557,6 +563,22 @@ private:
 class idAnimator_Drone {
 public:
   ~idAnimator_Drone();
+  void Update(idAI2* ai, const idMat3& axis, const idVec3& velocity) {
+    lastAI = ai;
+    lastAxis = axis;
+    lastVelocity = velocity;
+    ++updateCount;
+  }
+  int GetUpdateCountForTest() const { return updateCount; }
+  idAI2* GetLastAIForTest() const { return lastAI; }
+  const idMat3& GetLastAxisForTest() const { return lastAxis; }
+  const idVec3& GetLastVelocityForTest() const { return lastVelocity; }
+
+private:
+  idAI2* lastAI{nullptr};
+  idMat3 lastAxis{};
+  idVec3 lastVelocity{};
+  int updateCount{0};
 };
 
 class idAnimatorParms_AnimWeb {
@@ -699,15 +721,38 @@ public:
                         const idVec3& eyePosition, const idVec3& debugOffset);
   void Update(idAnimatedEntity* owner, idAnimator_TrackerBase* parentTracker);
   void SetCurHeadTrackGroup(idAnimatedEntity* owner, int trackGroupIndex);
-  void SetFocusEntity(idAnimatedEntity* owner, idAnimatedEntity* entity,
+  void SetFocusEntity(idAnimatedEntity* owner, const idEntity* entity,
                       bool keepInView, aimPoint_t point, int duration);
 
   bool IsInitialized() const { return initialized; }
   bool IsTrackingEnabled() const { return enableTracking; }
   bool IsTrackingLocked() const { return lockTracking; }
   const idVec3& GetIdealFocusPoint() const { return idealFocusPoint; }
+  const idVec3& GetCurrentFocusPoint() const { return currentFocusPoint; }
+  void SetCurrentFocusPointForTest(const idVec3& value) {
+    currentFocusPoint = value;
+  }
+  void SetIdealFocusPoint(const idVec3& value) {
+    idealFocusPoint = value;
+  }
+  void SetIdealFocusPointForTest(const idVec3& value) {
+    SetIdealFocusPoint(value);
+  }
   idEntity* GetFocusEntity() const { return focusEntity; }
   int GetFocusTimeout() const { return focusTimeout; }
+  bool GetKeepFocusInViewForTest() const { return keepFocusInView; }
+  aimPoint_t GetAimPointSelection() const { return aimPoint; }
+  aimPoint_t GetAimPointForTest() const { return GetAimPointSelection(); }
+  aiFocus_t GetFocusType() const { return focusType; }
+  aiFocus_t GetFocusTypeForTest() const { return GetFocusType(); }
+  const idVec3& GetOffset() const { return offset; }
+  const idVec3& GetOffsetForTest() const { return GetOffset(); }
+  bool HasExplicitFocusPoint() const { return hasExplicitFocusPoint; }
+  bool HasExplicitFocusPointForTest() const {
+    return HasExplicitFocusPoint();
+  }
+  void SetFocusType(aiFocus_t value) { focusType = value; }
+  void SetOffset(const idVec3& value) { offset = value; }
   int GetCurrentAnimatorIndex() const { return curAnimatorIndex; }
   int GetTrackingParmsIndex() const { return trackingParmsIndex; }
   int GetUpdateCount() const { return updateCount; }
@@ -732,6 +777,7 @@ private:
   const idDeclTrackingParms* declTrackingParms{nullptr};
   idEntity* focusEntity{nullptr};
   idVec3 idealFocusPoint{};
+  idVec3 currentFocusPoint{};
   idVec3 offset{};
   int defaultHeadTrackGroup{-1};
   int curAnimatorIndex{1};
@@ -939,6 +985,11 @@ public:
     lastStopImmediate = immediate;
     ++stopCount;
   }
+  void StopAllFX(int gameTime, bool immediate) {
+    lastStopAllTime = gameTime;
+    lastStopAllImmediate = immediate;
+    ++stopAllCount;
+  }
   const idVec3& GetExternalPosition() const { return externalPosition; }
   const idMat3& GetExternalRotation() const { return externalRotation; }
   bool HasExternalPositionAndRotation() const {
@@ -946,6 +997,7 @@ public:
   }
   int GetStartCount() const { return startCount; }
   int GetStopCount() const { return stopCount; }
+  int GetStopAllCount() const { return stopAllCount; }
   const idVec3& GetLastStartPosition() const { return lastStartPosition; }
   const idMat3& GetLastStartAxis() const { return lastStartAxis; }
   int GetLastStartTime() const { return lastStartTime; }
@@ -953,6 +1005,8 @@ public:
   int GetLastStopTime() const { return lastStopTime; }
   int GetLastStopCondition() const { return lastStopCondition; }
   bool GetLastStopImmediate() const { return lastStopImmediate; }
+  int GetLastStopAllTime() const { return lastStopAllTime; }
+  bool GetLastStopAllImmediate() const { return lastStopAllImmediate; }
   void SetNextStartHandle(int value) { nextStartHandle = value; }
 
 private:
@@ -966,8 +1020,11 @@ private:
   int lastStopTime{-1};
   int lastStopCondition{0};
   bool lastStopImmediate{false};
+  int lastStopAllTime{-1};
+  bool lastStopAllImmediate{false};
   int startCount{0};
   int stopCount{0};
+  int stopAllCount{0};
   int nextStartHandle{1};
 };
 

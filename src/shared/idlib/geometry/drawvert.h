@@ -15,6 +15,7 @@ struct idDrawVert {
   std::uint8_t color[4];
   static std::uint16_t CompressWeightsToBytes(const std::uint8_t* weights);
   const idVec3 GetBiTangentRaw() const;
+  void SetBiTangent(const idVec3& tangentDirection);
 };
 
 static_assert(sizeof(compressedWeights_t) == 2, "compressedWeights_t ABI drift");

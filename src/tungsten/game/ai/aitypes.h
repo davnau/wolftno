@@ -1,6 +1,6 @@
 #pragma once
 
-enum aimPoint_t {
+enum aimPoint_t : int {
   AIMPOINT_ORIGIN = 0,
   AIMPOINT_HEAD = 1,
   AIMPOINT_TORSO = 2,

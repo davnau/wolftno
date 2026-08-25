@@ -362,8 +362,19 @@ struct idRenderWorldRuntimeCallbacks {
       const char* areaName, const char* envDeclPath, const char* worldName,
       const char* userEnvMap, const idVec3&, const idColor&, const idVec2&,
       const idVec2&) = nullptr;
-  void (*specificationComplete)(idRenderWorldLocal*, bool preloadPageFileCache) = nullptr;
-  bool (*finishInitFromMap)(idRenderWorldLocal*) = nullptr;
+  void (*beginVirtualTextureSetup)(const char* strippedMapName) = nullptr;
+  idVirtualTexture* (*virtualTextureForPageSource)(int pageSource) = nullptr;
+  void (*preloadVirtualTextures)(idVirtualTexture* const* textures,
+                                 int numTextures) = nullptr;
+  idStaticModel* (*createStaticModel)() = nullptr;
+  idStaticModel* (*loadStaticModel)(const char* name, bool makeDefault,
+                                    bool forceReload) = nullptr;
+  void (*finishStaticModel)(idStaticModel*, int flags) = nullptr;
+  void (*registerStaticModel)(idStaticModel*) = nullptr;
+  void (*releaseTemporaryStaticModel)(idStaticModel*) = nullptr;
+  void (*loadGlobalShadows)(idGlobalShadows*, const char* mapName) = nullptr;
+  void (*loadAmbientLighting)(idAmbientLighting*, const char* mapName) = nullptr;
+  bool (*loadFoliageModel)(idRenderWorldLocal*, const char* fileName) = nullptr;
 };
 
 void SetRenderWorldRuntimeCallbacks(const idRenderWorldRuntimeCallbacks& callbacks);

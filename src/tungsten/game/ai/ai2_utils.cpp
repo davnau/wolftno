@@ -68,6 +68,7 @@ bool idAI2::GetMuzzleTransform(idWeapon* weapon, idVec3* muzzlePosition,
   if (weapon == nullptr || muzzlePosition == nullptr || muzzleAxis == nullptr) {
     return false;
   }
+  if (weapon->ForcesMuzzleTransformFailureForTest()) return false;
   if (weapon->QueryMuzzleTransform(muzzlePosition, muzzleAxis)) return true;
   *muzzlePosition = EntityOrigin(*this);
   *muzzleAxis = *GetPresentableAxis();

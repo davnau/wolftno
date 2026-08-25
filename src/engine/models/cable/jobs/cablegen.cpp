@@ -15,13 +15,18 @@ idVec3 Position(const idVec4& point) {
   return {point.x, point.y, point.z};
 }
 
-float Length(const idVec3& vector) {
-  return std::sqrt(std::max(vector.LengthSqr(),
-                            std::numeric_limits<float>::min()));
+float SplineLength(const idVec3& vector) {
+  return std::max(
+      std::sqrt(std::max(vector.LengthSqr(),
+                         std::numeric_limits<float>::min())),
+      std::numeric_limits<float>::epsilon());
 }
 
 idVec3 Normalize(const idVec3& vector) {
-  return vector * (1.0f / Length(vector));
+  const float inverseLength =
+      1.0f / std::sqrt(std::max(vector.LengthSqr(),
+                                std::numeric_limits<float>::min()));
+  return vector * inverseLength;
 }
 
 idVec3 Hermite(const idVec3& start, const idVec3& end,
@@ -71,9 +76,9 @@ void GenCable(const cableGenParms_t* parms) {
     const idVec3 end = Position(parms->points[std::min(segment + 1, segmentCount)]);
     const idVec3 following =
         Position(parms->points[std::min(segment + 2, segmentCount)]);
-    const float previousLength = Length(start - previous);
-    const float segmentLength = Length(end - start);
-    const float followingLength = Length(following - end);
+    const float previousLength = SplineLength(start - previous);
+    const float segmentLength = SplineLength(end - start);
+    const float followingLength = SplineLength(following - end);
 
     cablePoints[generatedPointCount++] = start;
     if (segmentLength > 1.0f) {

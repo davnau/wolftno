@@ -14,8 +14,8 @@
 
 #include <cstdint>
 
-struct idConstantBuffer;
-struct idJointBuffer;
+class idConstantBuffer;
+class idJointBuffer;
 class idMaterial;
 class idParmBlock;
 class idRenderModelUpdateTools;

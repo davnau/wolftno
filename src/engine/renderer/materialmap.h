@@ -8,6 +8,8 @@
 struct idVirtualImageFile {
   idAtomicString fileName;
   unsigned timeStamp{};
+
+  bool NeedsReload();
 };
 
 struct idMaterialMapping {
@@ -28,6 +30,7 @@ struct idMaterialMapping {
 
 class idMaterialMap {
 public:
+  idMaterialMap();
   bool GetImageDimensions(int* imageWidth, int* imageHeight) const;
 
   idStr name;

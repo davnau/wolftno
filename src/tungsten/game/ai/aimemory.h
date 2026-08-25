@@ -42,6 +42,9 @@ struct idDeclAIBehavior {
   float longMeleeDist{0.0F};
   float movingMeleeDist{0.0F};
   float meleeHeight{0.0F};
+  float aimOffset{0.0F};
+  bool canGreetHumans{false};
+  bool canGreetPlayers{false};
 };
 
 class idInfoPath : public idEntity {
@@ -110,6 +113,13 @@ private:
 
 class idAIMemory {
 public:
+  enum aiMemoryAnimAfterOverride : int {
+    AIMEMORY_ANIMAFTER_OVERRIDE_DEFAULT = 0,
+    AIMEMORY_ANIMAFTER_OVERRIDE_IDLE = 1,
+    AIMEMORY_ANIMAFTER_OVERRIDE_RUN = 2,
+    AIMEMORY_ANIMAFTER_OVERRIDE_CURRENT = 3,
+  };
+
   struct idScenePointList {
     void Clear();
     idList<idEntityPtr<idScenePoint>, 5> scenePointList;
@@ -175,6 +185,7 @@ public:
   const idEntity* GetEnemy() const;
   const idEntity* GetFriendly() const;
   const idEntity* GetFriendlyBlocker() const;
+  const idEntity* GetCurrentNeutral() const { return currentNeutral; }
   idEntity* GetLastAttacker() const;
   idRecoveredValue ShouldAvoid(...);
   idRecoveredValue SetAvoidEntity(...);
@@ -188,6 +199,7 @@ public:
   void SetEnemy(idEntity* value) { currentEnemy = value; }
   void SetFriendly(idEntity* value) { currentFriendly = value; }
   void SetFriendlyBlocker(idEntity* value) { friendlyBlocker = value; }
+  void SetCurrentNeutral(idEntity* value) { currentNeutral = value; }
   void SetLastAttacker(idEntity* value) { lastAttacker = value; }
   void SetSoundAlarmTime(int value) { timeToSoundAlarm = value; }
   void SetEnemyTrailUpdatePeriod(int value) { enemyTrailUpdatePeriod = value; }
@@ -227,6 +239,14 @@ public:
   idScenePoint* GetCurScenePointForTest() const { return curScenePoint; }
   void SetEmergencyCoverExit(bool value) { emergencyCoverExit = value; }
   bool HasEmergencyCoverExit() const { return emergencyCoverExit; }
+  void SetAnimAfterOverride(aiMemoryAnimAfterOverride value) {
+    animAfterOverride = value;
+  }
+  aiMemoryAnimAfterOverride GetAnimAfterOverride() const {
+    return animAfterOverride;
+  }
+  void SetGangstaPoseEnabled(bool value) { enableGangstaPose = value; }
+  bool IsGangstaPoseEnabled() const { return enableGangstaPose; }
 
   const idEntity* scriptedAggroEntity{nullptr};
   float scriptedAggression{0.0F};
@@ -272,6 +292,7 @@ private:
   idEntity* currentEnemy{nullptr};
   idEntity* currentFriendly{nullptr};
   idEntity* friendlyBlocker{nullptr};
+  idEntity* currentNeutral{nullptr};
   int lastDamageTime{-1};
   const idInfoPath* currentPath{nullptr};
   const idInfoPath* nextPath{nullptr};
@@ -290,4 +311,7 @@ private:
   idEntity* actionEntity{nullptr};
   idAIPos lastSafeEnemyPos{};
   bool emergencyCoverExit{false};
+  aiMemoryAnimAfterOverride animAfterOverride{
+      AIMEMORY_ANIMAFTER_OVERRIDE_DEFAULT};
+  bool enableGangstaPose{false};
 };
