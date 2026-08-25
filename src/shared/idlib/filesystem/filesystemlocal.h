@@ -20,6 +20,7 @@ public:
   virtual void ClearZipCache() {}
   virtual idFile* OpenFileRead(const char* path) = 0;
   virtual idFile* OpenFileWrite(const char* path) = 0;
+  virtual idFile* OpenFileAppend(const char* path, fsPath_t basePath) = 0;
   virtual bool ReadFile(const char* path, std::vector<std::uint8_t>& data) = 0;
   virtual bool WriteFile(const char* path, const void* data, std::size_t size) = 0;
   virtual bool FileExists(const char* path) const = 0;
@@ -100,6 +101,7 @@ public:
   void Shutdown() override;
   idFile* OpenFileRead(const char* path) override;
   idFile* OpenFileWrite(const char* path) override;
+  idFile* OpenFileAppend(const char* path, fsPath_t basePath) override;
   bool ReadFile(const char* path, std::vector<std::uint8_t>& data) override;
   bool WriteFile(const char* path, const void* data, std::size_t size) override;
   bool FileExists(const char* path) const override;

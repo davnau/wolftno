@@ -12,7 +12,26 @@ enum aiMelee_t : int {
   AIMELEE_MOVING_FORWARD = 0x2000,
 };
 
+enum aiItemSelect_t : int {
+  AIITEMSELECT_NONE = 0,
+  AIITEMSELECT_GRENADE = 1,
+  AIITEMSELECT_DUAL_MUTANT = 2,
+  AIITEMSELECT_CLUB_MUTANT = 3,
+  AIITEMSELECT_SCOOP_MUTANT = 4,
+  AIITEMSELECT_LARGE_RANGED_MUTANT = 5,
+  AIITEMSELECT_HEAVY_BANDIT = 6,
+  AIITEMSELECT_PIPE_BANDIT = 7,
+  AIITEMSELECT_IMP = 8,
+  AIITEMSELECT_MAX = 9,
+};
+
 struct idDeclAIBehavior {
+  struct dodging_t {
+    float sidestepDistance{0.0F};
+    float diveDistance{0.0F};
+  } dodging;
+  std::array<aiItemSelect_t, 2> itemSelect{};
+  float muzzleTraceClearOffset{0.0F};
   struct damageBehaviors_t {
     float movingPainSpeed{0.0F};
     float movingDeathSpeed{0.0F};
@@ -299,6 +318,13 @@ public:
     numShotsThisPullBlockedConsecutive = consecutive;
   }
   const idAIPos& GetLastSafeEnemyPos() const { return lastSafeEnemyPos; }
+  const idAIPos& GetCurrentEnemySuspectedPos() const {
+    return currentEnemySuspectedPos;
+  }
+  void SetCurrentEnemySuspectedPos(const idVec3& value, bool valid) {
+    currentEnemySuspectedPos.pos = value;
+    currentEnemySuspectedPos.valid = valid;
+  }
   void SetLastSafeEnemyPos(const idVec3& value) {
     lastSafeEnemyPos.pos = value;
     lastSafeEnemyPos.valid = true;
@@ -437,4 +463,5 @@ private:
   bool enemyPosInsideAAS{false};
   int currentFriendlyBlockerTime{-1};
   bool currentFriendlyLOSBlocker{false};
+  idAIPos currentEnemySuspectedPos{};
 };

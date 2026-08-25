@@ -65,6 +65,7 @@ public:
   bool IsHidden()const{return hidden;} bool IsDeleted()const{return deleted;} int NumFX()const{return static_cast<int>(effects.size());} int GetPresentCount()const{return presentCount;}
   std::uint32_t GetClipModelContents()const{return clipInfo.contents;}
   int GetEntityNumber()const{return entityNumber;}
+  const idMat3& GetAxis() const { return axis; }
   float GetFloatParmForTest(const std::string& name) const {
     const auto found = floatParms.find(name);
     return found != floatParms.end() ? found->second : 0.0F;

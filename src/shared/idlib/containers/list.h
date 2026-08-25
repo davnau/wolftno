@@ -149,8 +149,8 @@ public:
   __forceinline bool ResizeForPort(int newSize) { return Resize(newSize); }
 
 private:
-  // Public in the retail template surface; recovered compilands explicitly
-  // instantiate Resize for selected element/tag combinations.
+  // Recovered compilands explicitly instantiate Resize for selected
+  // element/tag combinations; private access is part of its MSVC ABI name.
   bool Resize(int newSize) {
     if (newSize <= 0) {
       ClearFree();

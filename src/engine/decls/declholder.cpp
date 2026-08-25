@@ -4,6 +4,7 @@
 #include "declholder.h"
 #include "declskins.h"
 #include "declswfresource.h"
+#include "engine/models/particles/declparticle.h"
 
 idDeclInfoTemplate<idDeclEntityDef> idDeclEntityDef::resourceList(
     "entityDef", "idDeclEntityDef", "def", false);
@@ -30,6 +31,8 @@ idDeclInfoTemplate<idDeclEnv> idDeclEnv::resourceList(
     "env", "idDeclEnv", "env", false);
 idDeclInfoTemplate<idDeclAF> idDeclAF::resourceList(
     "af", "idDeclAF", "af", false);
+idDeclInfoTemplate<idDeclParticle> idDeclParticle::resourceList(
+    "particle", "idDeclParticle", "prt", false);
 
 idDeclInfo* idDeclEnv::GetDeclInfo() { return &resourceList; }
 

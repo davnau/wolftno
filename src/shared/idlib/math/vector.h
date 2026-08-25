@@ -94,7 +94,8 @@ inline idVec3 operator*(float scale, const idVec3& vector) {
   return vector * scale;
 }
 
-struct idVec4 {
+class idVec4 {
+public:
   float x;
   float y;
   float z;

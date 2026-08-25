@@ -5,6 +5,8 @@
 // renderer/renderthread.cpp and will be reconstructed with that file.
 
 #include "shared/idlib/parallelism/thread.h"
+#include "engine/renderer/jobs/render/graphicsapiwrapper.h"
+#include "engine/renderer/rendersystem_runtime.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,18 +19,19 @@ enum renderMode_t : int {
   RENDER_MODE_BINK = 4,
 };
 
-struct wrapperStats_t {
-  std::uint8_t recovered[36];
-};
-
 class idRenderThread : public idSysThread {
 public:
+  idRenderThread();
+  ~idRenderThread() override;
   int Run() override;
+  void RenderFrameInternal(renderMode_t mode, void* deviceContext,
+                           bool swapBuffers, bool forceVSync);
+  void SetLoadingIconInfo(float posX, float posY, float scale, float speed);
 
   void* hdc;
   renderMode_t renderMode;
   renderMode_t renderModeBeforeSync;
-  std::uint8_t committedRenderFrameInfo[632];
+  idRenderFrameInfoCommitted committedRenderFrameInfo;
   void* frameState;
   wrapperStats_t wrapperStatsFull;
   wrapperStats_t wrapperStatsExcludingFullScreenGuis;

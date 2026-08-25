@@ -58,7 +58,10 @@ public:
   idRenderSystemLocal()
       : drawsMetric(idStr(), idStr()), trisMetric(idStr(), idStr()),
         vertsMetric(idStr(), idStr()) {}
+#else
+  idRenderSystemLocal();
 #endif
+  ~idRenderSystemLocal() override;
 
   void Init() override;
   void Init2() override;
@@ -69,9 +72,33 @@ public:
   void SwapBuffers(void*, bool) override;
   int GetWidth() override;
   int GetHeight() override;
+  bool IsFullscreen() override;
+  bool IgnoreSizeMessages() override;
+  stereoRenderMode_t GetStereoRenderMode() override;
   float GetPixelAspect() override;
+  void SetGamma(std::uint16_t*, std::uint16_t*, std::uint16_t*) override;
   int GetNumMultisamples() override;
+  int GetMaxSupportedMultisamples() override;
+  bool GetUsingSMP() override;
+  idThreadGraphicsContext* AllocThreadGraphicsContext() override;
+  void DestroyThreadGraphicsContext(idThreadGraphicsContext*) override;
+  void WindowSizeDragged(int, int) override;
   bool WindowChangeMultisamples(int, bool) override;
+  bool EnumerateModes(int, int*, int*, int*) override;
+  void (*ExtensionPointer(const char*))() override;
+  void SetPixelFormat(void*) override;
+  void ShowGameWindow() override;
+  void HideGameWindow() override;
+  void GoWindowed() override;
+  void GoFullScreen() override;
+  void SetStudioMode(bool) override;
+  void InitContext() override;
+  void Restart() override;
+  void* GetGameWindow() override;
+  bool MakeCurrent(void*) override;
+  int GetCurrentMonitor() override;
+  int GetNumMonitors() override;
+  void GetMonitorSize(int, int*, int*) override;
   void BeginBinkVideo(void* hdc, const idVideoDesc* videoDesc,
                       videoFlags_t videoFlags, void* xAudioHardware,
                       std::int16_t soundSystemSpeakerMask,
@@ -87,6 +114,29 @@ public:
   bool HasRenderFlag(int renderFlag) override;
   bool CanThreadContinue() override;
   void RestartFromLoading() override;
+  void AllowBackgroundSwaps(bool allow) override;
+  void BeginAutomaticBackgroundSwaps(void* hdc, bool showLoadingIcon,
+                                     bool showOldFrame) override;
+  void EndAutomaticBackgroundSwaps() override;
+  void SetLoadingIconInfo(float posX, float posY, float scale, float speed,
+                          bool render) override;
+  idRenderWorld* AllocRenderWorld(const char* mapName, bool comboMap,
+                                  bool toolMap) override;
+  void FreeRenderWorld(idRenderWorld* world) override;
+  void RegenerateReferences() override;
+  void InhibitEndFrameRendering(int change) override;
+  bool IsEndFrameRenderingInhibited() override;
+  int GetNumRenderWorlds() override { return worlds.Num(); }
+  idRenderWorld* RenderWorldForIndex(int index) override;
+  bool IsAutomaticBackgroundSwapsEnabled() override;
+  bool SwapTearAvailable() override;
+  std::int64_t GetFreeVRamAtInit() override;
+  void ClearOutOfMemory() override;
+  bool CheckOutOfMemory() override;
+  void SetBlackLevel(float blackLevel) override;
+  float GetScreenAspect() override;
+  void LogMetrics();
+  void PrintStatistics();
   bool WaitForNextVideoFrame(bool isRenderThread);
   unsigned GetBinkWidth() const;
   unsigned GetBinkHeight() const;
@@ -94,6 +144,8 @@ public:
   void UpdateBinkTextures();
   void RestartRenderThread(void* hdc);
   void PreliminaryRenderSetup();
+  void CreateMainThreadContext();
+  void CreateRenderThreadContext();
   void StartRenderThread();
   void ShutdownSystem();
   void SetColorMappings(float gamma, float brightness, float blackLevel);

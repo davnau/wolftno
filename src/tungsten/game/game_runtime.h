@@ -283,6 +283,12 @@ protected:
   unsigned int entityFlags{0};
 };
 
+class idSoundWorld {
+public:
+  virtual ~idSoundWorld() = default;
+  virtual bool Trace(const idVec3& from, const idVec3& to) = 0;
+};
+
 class idGameLocal {
 public:
   virtual ~idGameLocal() = default;
@@ -412,6 +418,14 @@ public:
     (void)handle;
     (void)color;
   }
+  virtual bool GetTrackAASPos(const idAAS2* aas,
+                              const idVec3& position) const {
+    (void)aas;
+    (void)position;
+    return false;
+  }
+  virtual idSoundWorld* GetSoundWorld() const { return nullptr; }
+  virtual int GetMapNameLength() const { return 0; }
   void AddDyingAI(idEntity* entity) {
     if (entity == nullptr) return;
     for (int i = 0; i < dyingAI.Num(); ++i)

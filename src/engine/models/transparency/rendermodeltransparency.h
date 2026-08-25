@@ -27,6 +27,13 @@ public:
                                   idTransparencyVert*& verts,
                                   float*& quadDepths, int*& quadsUsed,
                                   bool hasEmissivePass);
+  static bool AllocateUnsortedQuadSegment(int numQuads,
+                                          idTransparencyVert*& verts,
+                                          int& indexOffset, int& vertCount);
+
+  static int mappedBufferIndex;
+  static idVertexBuffer vertexBufferUnsorted[3];
+  static idIndexBuffer indexBufferUnsorted;
 
   std::uint8_t recoveredTransparencyState[48]{};
   visibleInfluenceSpheres_t* visibleInfluenceSpheres{};

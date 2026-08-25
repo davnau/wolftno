@@ -25,12 +25,28 @@ enum particleCalcType_t : std::int32_t {
   NUM_PARTICLE_CALC_TYPES = 8,
 };
 
+enum particleEditCalcType_t : std::int32_t {
+  PARTICLE_EDIT_CALC_NONE = 0,
+  PARTICLE_EDIT_CALC_CONSTANT = 1,
+  PARTICLE_EDIT_CALC_MINMAX = 2,
+  PARTICLE_EDIT_CALC_CURVE = 3,
+  PARTICLE_EDIT_CALC_CURVE_SCALE_BIAS = 4,
+  PARTICLE_EDIT_CALC_CURVE_VARIANCE_MOD_CONSTANT = 5,
+  PARTICLE_EDIT_CALC_CURVE_MOD_CURVE = 6,
+  PARTICLE_EDIT_CALC_CURVE_ADD_CURVE = 7,
+  PARTICLE_EDIT_CALC_PARAMETRIC_EVAL = 8,
+  PARTICLE_EDIT_CALC_PARAMETRIC_INTEGRATE = 9,
+  PARTICLE_EDIT_CALC_PARAMETRIC_INTEGRATE_MINMAX = 10,
+  NUM_PARTICLE_EDIT_CALC_TYPES = 11,
+};
+
 class idRandom2 {
 public:
   std::uint32_t seed;
 };
 
-struct idParticleParm {
+class idParticleParm {
+public:
   float val0;
   float val1;
   float variance;
@@ -40,6 +56,9 @@ struct idParticleParm {
 
   float Compute(const idLookupTable* tables, float frac,
                 idRandom2& random) const;
+  float GetMaxParmVal(const idLookupTable* tables) const;
+  void SetCalcTypeFromEditType(particleEditCalcType_t editType);
+  particleEditCalcType_t GetEditCalcType() const;
 
 private:
   float EvalGeneric(float min, float max, idRandom2& rnd) const;
@@ -155,8 +174,8 @@ public:
   struct prtLODParms_t {
     float sizeScale;
     float lerpAmount;
-    std::uint16_t radius;
-    std::uint16_t totalParticles;
+    std::int16_t radius;
+    std::int16_t totalParticles;
   };
   struct prtStageProperties_t {
     const idMaterial* material;

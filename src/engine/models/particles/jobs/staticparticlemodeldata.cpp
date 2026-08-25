@@ -288,16 +288,19 @@ bool idStaticParticleModelData::Generate() {
   idList<int, 5> orderedIndices;
   for (int vertexIndex = 0; vertexIndex < geometry->numVerts;
        ++vertexIndex) {
+    idDrawVert canonicalVertex{};
+    canonicalVertex.xyz = sourceVertices[vertexIndex].xyz;
+    canonicalVertex.st = sourceVertices[vertexIndex].st;
+    std::memset(canonicalVertex.color, 0xff, sizeof(canonicalVertex.color));
     int uniqueIndex = -1;
     for (int index = 0; index < uniqueVertices.Num(); ++index) {
-      if (SameParticleVertex(sourceVertices[vertexIndex],
-                             uniqueVertices[index])) {
+      if (SameParticleVertex(canonicalVertex, uniqueVertices[index])) {
         uniqueIndex = index;
         break;
       }
     }
     if (uniqueIndex < 0)
-      uniqueIndex = uniqueVertices.Append(sourceVertices[vertexIndex]);
+      uniqueIndex = uniqueVertices.Append(canonicalVertex);
     vertexRemap.Append(uniqueIndex);
   }
   for (int index = 0; index < geometry->numIndexes; ++index)

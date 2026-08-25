@@ -68,17 +68,31 @@ bool idAI2::GetMuzzleTransform(idWeapon* weapon, idVec3* muzzlePosition,
   if (weapon == nullptr || muzzlePosition == nullptr || muzzleAxis == nullptr) {
     return false;
   }
+  return static_cast<const idAI2*>(this)->GetMuzzleTransform(
+      weapon, *muzzlePosition, *muzzleAxis);
+}
+
+bool idAI2::GetMuzzleTransform(idWeapon* weapon, idVec3& muzzlePosition,
+                               idMat3& muzzleAxis) const {
+  if (weapon == nullptr) return false;
   if (weapon->ForcesMuzzleTransformFailureForTest()) return false;
-  if (weapon->QueryMuzzleTransform(muzzlePosition, muzzleAxis)) return true;
-  *muzzlePosition = EntityOrigin(*this);
-  *muzzleAxis = *GetPresentableAxis();
+  if (weapon->QueryMuzzleTransform(&muzzlePosition, &muzzleAxis)) return true;
+  muzzlePosition = EntityOrigin(*this);
+  muzzleAxis = *GetPresentableAxis();
   return true;
 }
 
 // DIA: idAI2::GetMuzzlePosition
 bool idAI2::GetMuzzlePosition(idWeapon* weapon, idVec3* muzzlePosition) {
+  if (muzzlePosition == nullptr) return false;
+  return static_cast<const idAI2*>(this)->GetMuzzlePosition(
+      weapon, *muzzlePosition);
+}
+
+bool idAI2::GetMuzzlePosition(idWeapon* weapon,
+                              idVec3& muzzlePosition) const {
   idMat3 unusedAxis{};
-  return GetMuzzleTransform(weapon, muzzlePosition, &unusedAxis);
+  return GetMuzzleTransform(weapon, muzzlePosition, unusedAxis);
 }
 
 // DIA: idAI2::GetLaserSightTransform

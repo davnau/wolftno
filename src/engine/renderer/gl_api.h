@@ -204,6 +204,16 @@ using glCompressedTexImage2DProc_t = void (*)(
 using glTexImage2DMultisampleProc_t = void (*)(
     unsigned int target, int samples, int internalFormat, int width,
     int height, unsigned char fixedSampleLocations);
+using glActiveTextureProc_t = void (*)(unsigned int texture);
+using glGetStringiProc_t = const unsigned char* (*)(unsigned int name,
+                                                    unsigned int index);
+using glDebugMessageCallbackProc_t = void (*)(
+    void (*callback)(unsigned int, unsigned int, unsigned int, unsigned int,
+                     int, const char*, const void*),
+    const void* userParam);
+using glDebugMessageControlProc_t = void (*)(
+    unsigned int source, unsigned int type, unsigned int severity, int count,
+    const unsigned int* ids, unsigned char enabled);
 
 extern glBindBufferProc_t _glewBindBufferARB;
 extern glGenBuffersProc_t _glewGenBuffersARB;
@@ -291,6 +301,10 @@ extern glCompressedTexImage3DProc_t _glewCompressedTexImage3DARB;
 extern glTexImage3DProc_t _glewTexImage3D;
 extern glCompressedTexImage2DProc_t _glewCompressedTexImage2DARB;
 extern glTexImage2DMultisampleProc_t _glewTexImage2DMultisample;
+extern glActiveTextureProc_t _glewActiveTextureARB;
+extern glGetStringiProc_t _glewGetStringi;
+extern glDebugMessageCallbackProc_t _glewDebugMessageCallbackARB;
+extern glDebugMessageControlProc_t _glewDebugMessageControlARB;
 
 extern unsigned char _GLEW_ATI_meminfo;
 extern unsigned char _GLEW_NVX_gpu_memory_info;
@@ -302,6 +316,9 @@ unsigned int GL_GetError();
 void GL_CheckErrors(bool force);
 
 extern "C" void glBindTexture(unsigned int target, unsigned int texture);
+extern "C" unsigned int glGetError();
+extern "C" const unsigned char* glGetString(unsigned int name);
+extern "C" void glGetIntegerv(unsigned int parameter, int* values);
 extern "C" void glFlush();
 extern "C" void glFinish();
 extern "C" void glFrontFace(unsigned int mode);

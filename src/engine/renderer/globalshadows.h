@@ -8,6 +8,8 @@
 class idCVar;
 
 struct shadowMapCPU_t {
+  float ShadowSample(const idVec3& worldPoint) const;
+
   int width;
   std::uint16_t* map;
   idRenderMatrix mvp;

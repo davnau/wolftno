@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tungsten/game/ai/aitypes.h"
+#include "tungsten/game/ai/aivisibility.h"
 #include "tungsten/game/game_runtime.h"
 #include "tungsten/game/declvoiceover.h"
 #include "engine/cm/collisionmodel.h"
@@ -102,6 +103,7 @@ extern idCVar ai_forceInjury;
 extern idCVar ai_searchToStimDist;
 extern idCVar ai_debugOrientation;
 extern idCVar ai_debugPerception;
+extern idCVar ai_debugDodge;
 extern idCVar ai_showFOV;
 extern idCVar ai_useAimTracker;
 extern idCVar ai_useLookTracker;
@@ -2731,8 +2733,60 @@ public:
   };
 
   struct idVisibilityObscurity {
-    idRecoveredValue GetDestination(...);
-    idRecoveredValue Update(...);
+    enum obscurity_t : int {
+      OBSCURITY_UNKNOWN = 0,
+      OBSCURITY_PATH_BLOCKED = 1,
+      OBSCURITY_PATH_OPEN_WITH_OBSCURITY = 2,
+      OBSCURITY_PATH_OPEN_WITH_COVER = 3,
+      OBSCURITY_PATH_OPEN_AND_ENEMY_VISIBLE = 4,
+      OBSCURITY_NUM = 5,
+    };
+
+    enum obscurityTest_t : int {
+      OBSCURITYTEST_MUZZLE_POS = 0,
+      OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT = 1,
+      OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT = 2,
+      OBSCURITYTEST_HALF_HEIGHT_NEAR_LEFT = 3,
+      OBSCURITYTEST_HALF_HEIGHT_NEAR_RIGHT = 4,
+      OBSCURITYTEST_FULL_HEIGHT_FORWARD = 5,
+      OBSCURITYTEST_FULL_HEIGHT_BACK = 6,
+      OBSCURITYTEST_NUM = 7,
+    };
+
+    enum obscurityQuery_t : int {
+      OBSCURITYQUERY_CROUCH_COVER = 0,
+      OBSCURITYQUERY_DODGE_LEFT = 1,
+      OBSCURITYQUERY_DIVE_LEFT = 2,
+      OBSCURITYQUERY_DODGE_RIGHT = 3,
+      OBSCURITYQUERY_DIVE_RIGHT = 4,
+      OBSCURITYQUERY_DIVE_FWD = 5,
+      OBSCURITYQUERY_DIVE_BACK = 6,
+      OBSCURITYQUERY_MAX = 7,
+    };
+
+    idVec3 GetDestination(const idAI2* ai,
+                          obscurityTest_t obscurityTest) const;
+    void Update(idAI2* ai);
+
+    obscurity_t GetObscurityForTest(obscurityTest_t test) const {
+      return visibilityObscurity[static_cast<std::size_t>(test)];
+    }
+    const std::array<idClipQuery, OBSCURITYQUERY_MAX>&
+    GetClipQueriesForTest() const {
+      return clipQuery;
+    }
+    int GetLastSubmitFrameForTest() const { return lastSubmitFrame; }
+    void SetLastSubmitFrameForTest(int value) { lastSubmitFrame = value; }
+    bool HasAnyCoverForTest() const { return anyCover; }
+    bool HasAnyClearLanesForTest() const { return anyClearLanes; }
+    bool IsValidForTest() const { return valid; }
+
+    std::array<idClipQuery, OBSCURITYQUERY_MAX> clipQuery{};
+    std::array<obscurity_t, OBSCURITYTEST_NUM> visibilityObscurity{};
+    int lastSubmitFrame{-1};
+    bool anyCover{false};
+    bool anyClearLanes{false};
+    bool valid{false};
   };
 
   idAI2();
@@ -3211,6 +3265,9 @@ public:
   bool GetMuzzleTransform(idWeapon* weapon, idVec3* muzzlePosition,
                           idMat3* muzzleAxis);
   bool GetMuzzlePosition(idWeapon* weapon, idVec3* muzzlePosition);
+  bool GetMuzzleTransform(idWeapon* weapon, idVec3& muzzlePosition,
+                          idMat3& muzzleAxis) const;
+  bool GetMuzzlePosition(idWeapon* weapon, idVec3& muzzlePosition) const;
   bool GetLaserSightTransform(idWeapon* weapon, idVec3* laserPosition,
                               idMat3* laserAxis);
   static void TargetMovingPoint(const idVec3* launchPoint, float launchSpeed,
@@ -3259,7 +3316,8 @@ public:
   idRecoveredValue ApplyWaterEffects(...);
   bool AwareOfEnemy() const;
   void BeginSync();
-  idRecoveredValue CalcMovementTurnRate(...);
+  float CalcMovementTurnRate(const idVec3* idealDirection,
+                             const idVec3* currentDirection);
   float CalcTurnRadius(float speed, float turnRate);
   idRecoveredValue CanBeTakenDown(...);
   bool CanFireRobot(int currentTime);
@@ -3271,7 +3329,7 @@ public:
   idRecoveredValue CheckForGore(...);
   bool CheckForGoreByName(const idAtomicString* goreName);
   bool CheckForOneShotKill(idEntity* attacker);
-  idRecoveredValue CheckForSuspectedToTrailUpdate(...);
+  bool CheckForSuspectedToTrailUpdate(int currentTime, bool force);
   idRecoveredValue CheckPain(...);
   void ClearAIClip();
   void ClearAimFocus();
@@ -3398,7 +3456,7 @@ public:
   float GetSpotGainedFireTime() const;
   float GetSpotLostFireTime() const;
   int GetSpottedDuration(const idEntity* enemy, int currentTime) const;
-  idRecoveredValue GetSuspectedEnemyPos_PushedIntoAAS(...);
+  bool GetSuspectedEnemyPos_PushedIntoAAS(idVec3* aiPosition);
   bool GetTakedownName(const idList<idStr, 5>* takedownList,
                        idStr* takedownName);
   int GetTauntInterval();
@@ -3753,10 +3811,7 @@ public:
     hasFriendlyBlockerBindAnimation = value;
   }
   void SetCurrentEnemySuspectedPositionForTest(const idVec3& value,
-                                               bool valid) {
-    currentEnemySuspectedPosition.pos = value;
-    currentEnemySuspectedPosition.valid = valid;
-  }
+                                               bool valid);
   idAnimator_Drone* GetHoldFireDroneAnimatorForTest() const {
     return robotDeathDroneAnimator.get();
   }
@@ -4019,6 +4074,7 @@ public:
   }
   void UpdateTravelFlagsForTest() { UpdateTravelFlags(); }
   std::uint32_t GetTravelFlagsForTest() const { return aasTravelFlags; }
+  void SetTravelFlagsForTest(std::uint32_t value) { aasTravelFlags = value; }
   const std::string& GetLastTravelDebugTextForTest() const {
     return lastTravelDebugText;
   }
@@ -4085,6 +4141,16 @@ public:
                                           maximumTurnRate};
     aiConstants->movement.relaxedTurnRateScale = relaxedScale;
     aiConstants->movement.allowStrafing = strafingAllowed;
+  }
+  void ConfigureMovementTurnRateForTest(float minimumSpeed,
+                                        float maximumSpeed,
+                                        float minimumTurnRate,
+                                        float maximumTurnRate,
+                                        float relaxedScale) {
+    aiConstants->movement.moveSpeed = {minimumSpeed, maximumSpeed};
+    aiConstants->movement.moveTurnRate = {minimumTurnRate,
+                                          maximumTurnRate};
+    aiConstants->movement.relaxedTurnRateScale = relaxedScale;
   }
   void ConfigureBodyRotationForTest(bool enabled, bool suppressed) {
     bodyRotationEnabled = enabled;
@@ -4858,6 +4924,9 @@ public:
     GetAFMutable()->ConfigureSyncBlockers(blockerA, blockerB);
   }
   void SetBehaviorDeclaration(const idDeclAIBehavior* value);
+  const idDeclAIBehavior* GetBehaviorDeclarationForTest() const {
+    return behaviorDeclaration;
+  }
   void ConfigureMeleeIntervals(int minimumClose, int maximumClose,
                                int minimumMedium, int maximumMedium,
                                int minimumLong, int maximumLong) {
@@ -4870,6 +4939,8 @@ public:
   }
 
 private:
+  friend class idCheckSurroundingsState;
+
   void OnAIEvent_Voice(const idAIEventVoice* event);
   void OnAIEvent_Footstep(const idAIEventSound* event);
   void OnAIEvent_Gunfire(const idAIEventSound* event);

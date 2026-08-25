@@ -6,7 +6,7 @@ class idRenderFrameInfo;
 class idRenderModel;
 class idRenderVideoOverlay;
 class idRenderWorld;
-class idThreadGraphicsContext;
+struct idThreadGraphicsContext;
 struct idVideoDesc;
 struct renderView_t;
 

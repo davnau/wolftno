@@ -1,4 +1,5 @@
 #include "tungsten/game/ai/aaspositionmgr.h"
+#include "engine/aas2file/aas2file.h"
 
 #include <limits>
 
@@ -10,6 +11,34 @@ constexpr idColor kDebugYellow{1.0F, 1.0F, 0.0F, 1.0F};
 constexpr idColor kDebugWhite{1.0F, 1.0F, 1.0F, 1.0F};
 
 }  // namespace
+
+bool idAAS2::TraceFloor(aas2TraceFloor_t* trace, const idVec3& start,
+                        int startAreaNum, const idVec3& end,
+                        int travelFlags, bool allowFloorNormalChange,
+                        bool ignoreGravityDirectionDistance,
+                        bool ignoreSameArea) const {
+  (void)start;
+  (void)startAreaNum;
+  (void)travelFlags;
+  (void)allowFloorNormalChange;
+  (void)ignoreGravityDirectionDistance;
+  (void)ignoreSameArea;
+  if (trace != nullptr) {
+    trace->fraction = 1.0F;
+    trace->endPos = end;
+  }
+  return false;
+}
+
+bool idAAS2::PushPointIntoNearestAreaNum(int* areaNum,
+                                         idVec3& point) const {
+  if (areaNum == nullptr) return false;
+  const std::uint16_t resolvedArea = PointAreaNum(0, point);
+  *areaNum = static_cast<int>(resolvedArea);
+  if (resolvedArea == 0) return false;
+  PushPointIntoAreaNum(resolvedArea, point);
+  return true;
+}
 
 // DIA: idAASPosition::GetAreaNum
 int idAASPosition::GetAreaNum() const {

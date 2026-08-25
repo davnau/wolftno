@@ -33,6 +33,17 @@ idFile* idFileSystemLocal::OpenFileWrite(const char* path) {
   }
   return file;
 }
+idFile* idFileSystemLocal::OpenFileAppend(const char* path, fsPath_t) {
+  const idStr os = BuildOSPath(path);
+  std::error_code error;
+  std::filesystem::create_directories(std::filesystem::path(os.data).parent_path(), error);
+  auto* file = new idFile_Permanent(path, os.data, FS_APPEND, true);
+  if (!file->IsOpen()) {
+    delete file;
+    return nullptr;
+  }
+  return file;
+}
 bool idFileSystemLocal::ReadFile(const char* path, std::vector<std::uint8_t>& data) {
   std::unique_ptr<idFile> file(OpenFileRead(path));
   if (!file)

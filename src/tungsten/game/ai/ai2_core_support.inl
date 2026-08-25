@@ -58,15 +58,6 @@ idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb(
       initialSubWebName(initialSubWebName_),
       curTime(curTime_) {}
 idAnimatorParms_AnimWeb::~idAnimatorParms_AnimWeb() = default;
-RECOVERED_METHOD(idCheckSurroundingsState, CanUse)
-RECOVERED_METHOD(idCheckSurroundingsState, FindBestLookInterestPoint)
-RECOVERED_METHOD(idCheckSurroundingsState, FindNetDirectionInterest)
-RECOVERED_METHOD(idCheckSurroundingsState, GetLookedAtElapsedTime)
-RECOVERED_METHOD(idCheckSurroundingsState, SetLastLookedAtTime)
-RECOVERED_METHOD(idCheckSurroundingsState, TraceVector)
-RECOVERED_METHOD(idCheckSurroundingsState, Update)
-RECOVERED_METHOD(idCheckSurroundingsState, UpdateDirectionDistanceExponent)
-RECOVERED_METHOD(idCheckSurroundingsState, UpdateLookInterests)
 idFSMCallback::~idFSMCallback() = default;
 idFSMManager::idFSMStack::idFSMStack() = default;
 idFSMManager::~idFSMManager() = default;

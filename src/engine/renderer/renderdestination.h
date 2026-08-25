@@ -65,6 +65,7 @@ extern idRenderDestination* renderDestScaledFeedback;
 extern idRenderDestination* renderDestScaledDepth;
 extern idRenderDestination* renderDestScaledColor2;
 extern idRenderDestination* renderDestScaledColor;
+extern idRenderDestination* renderDestNative;
 
 static_assert(offsetof(idRenderDestination, targetWidth) == 0x04,
               "render-destination width offset drift");

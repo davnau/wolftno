@@ -6,6 +6,7 @@
 #include <cstdint>
 
 struct aas2Cover_t;
+struct aas2TraceFloor_t;
 
 class idAAS2 {
 public:
@@ -29,6 +30,13 @@ public:
     (void)maxHeight;
     return PointAreaNum(tree, origin);
   }
+  virtual bool TraceFloor(aas2TraceFloor_t* trace, const idVec3& start,
+                          int startAreaNum, const idVec3& end,
+                          int travelFlags, bool allowFloorNormalChange,
+                          bool ignoreGravityDirectionDistance,
+                          bool ignoreSameArea) const;
+  virtual bool PushPointIntoNearestAreaNum(int* areaNum,
+                                           idVec3& point) const;
 };
 
 class idAASPosition {

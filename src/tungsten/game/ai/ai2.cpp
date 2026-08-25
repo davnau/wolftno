@@ -15,6 +15,7 @@
 #include "tungsten/game/ai/encountergroupmanager.h"
 #include "tungsten/game/animation/facemgr.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
+#include "engine/aas2file/aas2file.h"
 #include "engine/animation/md6.h"
 #include "engine/decls/animwebs/declanimweb.h"
 #include "engine/framework/keyinput.h"
@@ -210,6 +211,20 @@ constexpr std::array<overrideWebInfo_t, 110> overrideWebInfo{{
     {aiSubWeb_t::overrideAnimation, "divecover", aiSubWeb_t::combat, "run"},
     {aiSubWeb_t::max, "", aiSubWeb_t::max, ""},
 }};
+
+const std::array<idVec3, 8>& GetCheckSurroundingsDirections() {
+  static const std::array<idVec3, 8> directions = [] {
+    std::array<idVec3, 8> values{};
+    constexpr float directionStep = 6.2831855F * 0.125F;
+    for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+      const float angle = static_cast<float>(i) * directionStep;
+      values[static_cast<std::size_t>(i)] =
+          {std::cos(angle), std::sin(angle), 0.0F};
+    }
+    return values;
+  }();
+  return directions;
+}
 
 idVec3 NormalizedOrZero(const idVec3& value) {
   const float lengthSquared = value.LengthSqr();
@@ -411,6 +426,13 @@ void idAI2::SetBehaviorDeclaration(const idDeclAIBehavior* value) {
   behaviorDeclaration = value;
   movementBehaviorRunsFacingForward =
       value != nullptr && value->movementBehaviors.runFacingForward;
+}
+
+void idAI2::SetCurrentEnemySuspectedPositionForTest(const idVec3& value,
+                                                     bool valid) {
+  currentEnemySuspectedPosition.pos = value;
+  currentEnemySuspectedPosition.valid = valid;
+  memory->SetCurrentEnemySuspectedPos(value, valid);
 }
 
 void idAI2::SetActionScriptRunning(bool running) {
@@ -1671,7 +1693,45 @@ void idAI2::LookDebug(const char* text, int level, int duration) const {
 // DIA: idAI2::Debug_ScenePoints
 idRecoveredValue idAI2::Debug_ScenePoints(...) { return RecordCoreCall("Debug_ScenePoints"); }
 // DIA: idAI2::idVisibilityObscurity::GetDestination
-idRecoveredValue idAI2::idVisibilityObscurity::GetDestination(...) { return {}; }
+idVec3 idAI2::idVisibilityObscurity::GetDestination(
+    const idAI2* ai, obscurityTest_t obscurityTest) const {
+  const idDeclAIBehavior* decl = ai->GetBehaviorDeclarationForTest();
+  const float sidestepDistance = decl->dodging.sidestepDistance;
+  const float diveDistance = decl->dodging.diveDistance;
+  const idVec3 origin = ai->GetPhysics()->GetOrigin();
+  const idMat3& axis = *ai->GetPresentableAxis();
+
+  switch (obscurityTest) {
+    case OBSCURITYTEST_MUZZLE_POS: {
+      idVec3 result = origin + ai->GetEyeOffset() * 0.75F;
+      idWeapon* weapon = ai->GetEquippedWeapon();
+      const aiItemSelect_t itemSelect = decl->itemSelect[1];
+      idVec3 muzzlePosition;
+      if (weapon != nullptr &&
+          itemSelect != AIITEMSELECT_LARGE_RANGED_MUTANT &&
+          itemSelect != AIITEMSELECT_SCOOP_MUTANT &&
+          ai->GetMuzzlePosition(weapon, muzzlePosition)) {
+        result = muzzlePosition;
+        result.z += decl->muzzleTraceClearOffset;
+      }
+      return result;
+    }
+    case OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT:
+      return origin + axis[1] * diveDistance;
+    case OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT:
+      return origin - axis[1] * diveDistance;
+    case OBSCURITYTEST_HALF_HEIGHT_NEAR_LEFT:
+      return origin + axis[1] * sidestepDistance;
+    case OBSCURITYTEST_HALF_HEIGHT_NEAR_RIGHT:
+      return origin - axis[1] * sidestepDistance;
+    case OBSCURITYTEST_FULL_HEIGHT_FORWARD:
+      return origin + axis[0] * diveDistance;
+    case OBSCURITYTEST_FULL_HEIGHT_BACK:
+      return origin - axis[0] * diveDistance;
+    default:
+      return {};
+  }
+}
 // DIA: idAI2::CanTaunt
 bool idAI2::CanTaunt() const {
   return (tauntDodgeFlags & 0x200) != 0 &&
@@ -1968,9 +2028,124 @@ void idAI2::StopWeaponFX(fxCondition_t condition) {
   }
 }
 // DIA: idCheckSurroundingsState::UpdateLookInterests
+void idCheckSurroundingsState::UpdateLookInterests(const idAI2* ai) {
+  idMat3 eyeAxis;
+  ai->GetEyeAxis(&eyeAxis);
+
+  constexpr float velocityScale = 0.03F;
+  const idVec3 scaledVelocity =
+      ai->GetPhysics()->GetLinearVelocity(0) * velocityScale;
+  const float scaledSpeedSquared = scaledVelocity.LengthSqr();
+  if (scaledSpeedSquared > 0.001F) {
+    const float inverseSpeed =
+        1.0F / std::sqrt(std::fmax(
+                   scaledSpeedSquared,
+                   idMath::FLT_SMALLEST_NON_DENORMAL));
+    const idVec3 velocityDirection = scaledVelocity * inverseSpeed;
+    if ((eyeAxis[0] * velocityDirection) <= 0.85000002F) {
+      lookForwardInterest += 0.1F;
+    } else {
+      lookForwardInterest -= 0.1F;
+      if (lookForwardInterest < 0.0F) lookForwardInterest = 0.0F;
+    }
+  }
+
+  const auto& directions = GetCheckSurroundingsDirections();
+  for (int i = 0; i < static_cast<int>(directions.size()); ++i) {
+    const idVec3& direction = directions[static_cast<std::size_t>(i)];
+    const float velocityInterest = direction * scaledVelocity;
+    const float forwardDot = direction * eyeAxis[0];
+    if (forwardDot > 0.0F) {
+      lookInterest[static_cast<std::size_t>(i)] =
+          std::fmax(0.0F,
+                    lookInterest[static_cast<std::size_t>(i)] -
+                        forwardDot * forwardDot * 0.03F);
+    }
+
+    if (ai_debugLook.valueInteger >= 3 &&
+        ai_debugLevel.valueInteger > 0) {
+      idVec3 from;
+      const_cast<idAI2*>(ai)->GetEyePos(&from);
+      constexpr float debugDistance = 1.3333334F * 2.0F * 12.0F;
+      const float netInterest =
+          velocityInterest + lookInterest[static_cast<std::size_t>(i)];
+      const idVec3 to = from + direction * (netInterest * debugDistance);
+      gameLocal->GetRenderWorld()->GetRenderDebug()->DebugArrow(
+          idColor::colorGreen, from, to, 5.0F, 50, false);
+    }
+  }
+}
 // DIA: idCheckSurroundingsState::FindNetDirectionInterest
+float idCheckSurroundingsState::FindNetDirectionInterest(
+    const idAI2* ai, const idVec3& testDirection) const {
+  constexpr float velocityScale = 0.03F;
+  const idVec3 scaledVelocity =
+      ai->GetPhysics()->GetLinearVelocity(0) * velocityScale;
+
+  float netInterest = 0.0F;
+  const auto& directions = GetCheckSurroundingsDirections();
+  for (int i = 0; i < static_cast<int>(directions.size()); ++i) {
+    const idVec3& direction = directions[static_cast<std::size_t>(i)];
+    const float directionDot = direction * testDirection;
+    if (directionDot > 0.0F) {
+      const float weight = std::fmax(0.0F,
+                                     directionDot * directionDot);
+      netInterest +=
+          weight * ((direction * scaledVelocity) +
+                    lookInterest[static_cast<std::size_t>(i)]);
+    }
+  }
+  return netInterest;
+}
 // DIA: idCheckSurroundingsState::GetLookedAtElapsedTime
+int idCheckSurroundingsState::GetLookedAtElapsedTime(
+    const idEntity* entity) const {
+  const idSpawnId spawnID{
+      entity != nullptr ? entity->GetEntityNumber() : 0x1fff};
+  for (int i = 0; i < static_cast<int>(lookedAtEntitySpawnIDs.size()); ++i) {
+    if (lookedAtEntitySpawnIDs[static_cast<std::size_t>(i)].value ==
+        spawnID.value) {
+      const int elapsed =
+          gameLocal->GetGameTimeMs() -
+          lookedAtEntitiesTime[static_cast<std::size_t>(i)];
+      return elapsed > 10000 ? 10000 : elapsed;
+    }
+  }
+  return 10000;
+}
 // DIA: idCheckSurroundingsState::SetLastLookedAtTime
+void idCheckSurroundingsState::SetLastLookedAtTime(
+    const idEntity* entity, int setTime) {
+  const idSpawnId spawnID{
+      entity != nullptr ? entity->GetEntityNumber() : 0x1fff};
+  for (int i = 0; i < static_cast<int>(lookedAtEntitySpawnIDs.size()); ++i) {
+    if (lookedAtEntitySpawnIDs[static_cast<std::size_t>(i)].value ==
+        spawnID.value) {
+      lookedAtEntitiesTime[static_cast<std::size_t>(i)] = setTime;
+      return;
+    }
+  }
+
+  int replacementIndex = 0;
+  int oldestTime = lookedAtEntitiesTime[0];
+  if (lookedAtEntitySpawnIDs[0].value != 0x1fff) {
+    for (int i = 1; i < static_cast<int>(lookedAtEntitySpawnIDs.size()); ++i) {
+      if (lookedAtEntitySpawnIDs[static_cast<std::size_t>(i)].value ==
+          0x1fff) {
+        replacementIndex = i;
+        break;
+      }
+      if (lookedAtEntitiesTime[static_cast<std::size_t>(i)] < oldestTime) {
+        replacementIndex = i;
+        oldestTime = lookedAtEntitiesTime[static_cast<std::size_t>(i)];
+      }
+    }
+  }
+  lookedAtEntitySpawnIDs[static_cast<std::size_t>(replacementIndex)] =
+      spawnID;
+  lookedAtEntitiesTime[static_cast<std::size_t>(replacementIndex)] =
+      setTime;
+}
 // DIA: `idAI2::FindClosestFocus'::`2'::idLookDebug::~idLookDebug
 // DIA: idAI2::SetSpeakingVO
 void idAI2::SetSpeakingVO() {
@@ -2838,7 +3013,76 @@ idRecoveredValue idAI2::TeleportPush(...) { return RecordCoreCall("TeleportPush"
 // DIA: idAI2::SpawnFlareEffect
 idRecoveredValue idAI2::SpawnFlareEffect(...) { return RecordCoreCall("SpawnFlareEffect"); }
 // DIA: idCheckSurroundingsState::TraceVector
+bool idCheckSurroundingsState::TraceVector(const idAI2* ai,
+                                           const idVec3& from,
+                                           const idVec3& to) const {
+  idSoundWorld* soundWorld = gameLocal->GetSoundWorld();
+  if (soundWorld == nullptr) return false;
+
+  bool visible = !soundWorld->Trace(from, to);
+  if (visible) {
+    trace_t trace;
+    visible = idAIVisibility::TraceVisible(
+        gameLocal->GetAIGameState(), from, to,
+        idSpawnId{ai->GetEntityNumber()}, idSpawnId{0}, &trace, false);
+  }
+
+  if (ai_debugLook.valueInteger >= 3 &&
+      ai_debugLevel.valueInteger > 0) {
+    constexpr idVec4 colorWhite{1.0F, 1.0F, 1.0F, 1.0F};
+    gameLocal->GetRenderWorld()->GetRenderDebug()->DebugArrow(
+        visible ? colorWhite : static_cast<const idVec4&>(idColor::colorBlack),
+        from, to, 5.0F, 100, false);
+  }
+  return visible;
+}
 // DIA: idCheckSurroundingsState::UpdateDirectionDistanceExponent
+int idCheckSurroundingsState::UpdateDirectionDistanceExponent(
+    int directionToTrace, const idAI2* ai) {
+  idMat3 eyeAxis;
+  ai->GetEyeAxis(&eyeAxis);
+
+  const std::size_t directionIndex =
+      static_cast<std::size_t>(directionToTrace);
+  const int previousExponent = distanceExponent[directionIndex];
+  int candidateExponent = std::min(previousExponent + 1, 15);
+  int updatedExponent = previousExponent;
+  const auto& directions = GetCheckSurroundingsDirections();
+  const idVec3& direction = directions[directionIndex];
+
+  constexpr float checkDotThreshold = -1.0F;
+  if (checkDotThreshold <= (eyeAxis[0] * direction)) {
+    idVec3 eyePosition;
+    const_cast<idAI2*>(ai)->GetEyePos(&eyePosition);
+    eyePosition += ai->GetPhysics()->GetLinearVelocity(0);
+
+    const float distanceBase =
+        std::sqrt(std::fmax(2.0F,
+                            idMath::FLT_SMALLEST_NON_DENORMAL));
+    const auto traceExponent = [&](int exponent) {
+      const float distance =
+          std::pow(distanceBase, static_cast<float>(exponent)) *
+          10.0F * 1.3333334F * 12.0F;
+      return TraceVector(ai, eyePosition,
+                         eyePosition + direction * distance);
+    };
+
+    if (traceExponent(candidateExponent)) {
+      updatedExponent = candidateExponent;
+      candidateExponent = std::min(candidateExponent + 1, 15);
+      if (traceExponent(candidateExponent)) {
+        updatedExponent = candidateExponent;
+      }
+    } else if (traceExponent(previousExponent)) {
+      updatedExponent = previousExponent;
+    } else {
+      updatedExponent = std::max(0, previousExponent - 1);
+    }
+  }
+
+  distanceExponent[directionIndex] = updatedExponent;
+  return updatedExponent - previousExponent;
+}
 // DIA: idAI2::UpdateActions
 void idAI2::UpdateActions(int curTime) {
   actionFSM->Update(true, curTime, nullptr);
@@ -3258,7 +3502,31 @@ idRecoveredValue idAI2::GetMeleeTypeForTarget(...) { return RecordCoreCall("GetM
 // DIA: idAI2::HandleAffirmativeResponse
 idRecoveredValue idAI2::HandleAffirmativeResponse(...) { return RecordCoreCall("HandleAffirmativeResponse"); }
 // DIA: idAI2::GetSuspectedEnemyPos_PushedIntoAAS
-idRecoveredValue idAI2::GetSuspectedEnemyPos_PushedIntoAAS(...) { return RecordCoreCall("GetSuspectedEnemyPos_PushedIntoAAS"); }
+bool idAI2::GetSuspectedEnemyPos_PushedIntoAAS(idVec3* aiPosition) {
+  const idAIPos originalPosition = memory->GetCurrentEnemySuspectedPos();
+  if (!originalPosition.valid) return false;
+
+  int areaNum = 0;
+  *aiPosition = originalPosition.pos;
+  const idVec3 originalPoint = *aiPosition;
+  const idAAS2* currentAAS = GetAAS();
+  if (!currentAAS->PushPointIntoNearestAreaNum(&areaNum, *aiPosition)) {
+    return areaNum != 0;
+  }
+
+  const idEntity* enemy = memory->GetEnemy();
+  if (dynamic_cast<const idPlayer*>(enemy) != nullptr) {
+    const idVec3 pushedDelta = *aiPosition - originalPoint;
+    constexpr float kAASPushIntoRange = 52.0F;
+    if (std::sqrt(pushedDelta.x * pushedDelta.x +
+                  pushedDelta.y * pushedDelta.y) > kAASPushIntoRange &&
+        gameLocal->GetTrackAASPos(currentAAS, *aiPosition)) {
+      memory->SetLastSafeEnemyPos(*aiPosition);
+      memory->SetEnemyPosInsideAASForTest(false);
+    }
+  }
+  return true;
+}
 // DIA: idAI2::AwareOfEnemy
 bool idAI2::AwareOfEnemy() const { return currentEnemy != nullptr; }
 // DIA: idAI2::IsBlockedByFriendly
@@ -7381,7 +7649,256 @@ void idAI2::Debug_Perception() {
   }
 }
 // DIA: idAI2::idVisibilityObscurity::Update
-idRecoveredValue idAI2::idVisibilityObscurity::Update(...) { return {}; }
+void idAI2::idVisibilityObscurity::Update(idAI2* ai) {
+  const idDeclAIBehavior* decl = ai->GetBehaviorDeclarationForTest();
+  const aiSenseState_t* enemySense = ai->GetEnemySenseState(AISENSE_MAX);
+  if (enemySense == nullptr) return;
+
+  constexpr float kUnitsPerInch = 1.33333337F;
+  idVec3 enemySource = enemySense->GetConfirmedPhysicalSafe()->eyePos;
+  enemySource.z -= (kUnitsPerInch * 0.5F) * 12.0F;
+
+  const idAASPosition& aasPosition =
+      ai->GetAASPositionMgr()->GetAASPosition(ai->GetAAS(), ai);
+  aas2TraceFloor_t floorTrace{};
+
+  idVec3 fullHeight = ai->GetEyeOffset();
+  idWeapon* weapon = ai->GetEquippedWeapon();
+  idVec3 muzzlePosition;
+  if (weapon != nullptr && ai->GetMuzzlePosition(weapon, muzzlePosition)) {
+    fullHeight = muzzlePosition - ai->GetPhysics()->GetOrigin();
+    fullHeight.z += decl->muzzleTraceClearOffset;
+  }
+
+  const idVec3 halfHeightDestination =
+      GetDestination(ai, OBSCURITYTEST_MUZZLE_POS);
+  const idVec3 origin = ai->GetPhysics()->GetOrigin();
+  const idMat3& axis = *ai->GetPresentableAxis();
+  const float sidestepDistance = decl->dodging.sidestepDistance;
+  const float diveDistance = decl->dodging.diveDistance;
+
+  const idVec3 leftDodgeDestination =
+      origin + axis[1] * sidestepDistance;
+  const idVec3 leftDiveDestination = origin + axis[1] * diveDistance;
+  const idVec3 leftNearCoverDestination =
+      leftDodgeDestination + fullHeight;
+  const idVec3 leftFarCoverDestination = leftDiveDestination + fullHeight;
+
+  const idVec3 rightDodgeDestination =
+      origin - axis[1] * sidestepDistance;
+  const idVec3 rightDiveDestination = origin - axis[1] * diveDistance;
+  const idVec3 rightNearCoverDestination =
+      rightDodgeDestination + fullHeight;
+  const idVec3 rightFarCoverDestination = rightDiveDestination + fullHeight;
+
+  const idVec3 forwardDiveDestination = origin + axis[0] * diveDistance;
+  const idVec3 forwardCoverDestination =
+      forwardDiveDestination + fullHeight;
+  const idVec3 backwardDiveDestination = origin - axis[0] * diveDistance;
+  const idVec3 backwardCoverDestination =
+      backwardDiveDestination + fullHeight;
+
+  const int currentFrame = gameLocal->GetFrameNum();
+  if (lastSubmitFrame != currentFrame - 1) {
+    lastSubmitFrame = currentFrame;
+    const idSpawnId ignoreId{ai->GetEntityNumber()};
+    const std::array<idVec3, OBSCURITYQUERY_MAX> queryStarts{{
+        halfHeightDestination,
+        leftNearCoverDestination,
+        leftFarCoverDestination,
+        rightNearCoverDestination,
+        rightFarCoverDestination,
+        forwardCoverDestination,
+        backwardCoverDestination,
+    }};
+    for (int query = 0; query < OBSCURITYQUERY_MAX; ++query) {
+      idAIVisibility::TraceVisible_Submit(
+          queryStarts[static_cast<std::size_t>(query)], enemySource,
+          ignoreId, false, &clipQuery[static_cast<std::size_t>(query)]);
+    }
+    return;
+  }
+
+  visibilityObscurity.fill(OBSCURITY_UNKNOWN);
+  const idEntity* enemy = ai->GetMemory().GetEnemy();
+  const idSpawnId destinationId{
+      enemy != nullptr ? enemy->GetEntityNumber() : 0x1fff};
+  idAIGameState* gameState = gameLocal->GetAIGameState();
+  auto resolveObscurity = [&](obscurityQuery_t query) {
+    trace_t visibilityTrace{};
+    if (idAIVisibility::TraceVisible_Resolve(
+            gameState, destinationId,
+            &clipQuery[static_cast<std::size_t>(query)],
+            &visibilityTrace)) {
+      return OBSCURITY_PATH_OPEN_AND_ENEMY_VISIBLE;
+    }
+    return visibilityTrace.fraction <= 0.5F
+               ? OBSCURITY_PATH_OPEN_WITH_COVER
+               : OBSCURITY_PATH_OPEN_WITH_OBSCURITY;
+  };
+
+  visibilityObscurity[OBSCURITYTEST_MUZZLE_POS] =
+      resolveObscurity(OBSCURITYQUERY_CROUCH_COVER);
+
+  const idAAS2* aas = aasPosition.GetAAS();
+  if (aas != nullptr) {
+    const int areaNum = aasPosition.GetAreaNum();
+    const int maskedTravelFlags =
+        static_cast<int>(ai->GetTravelFlagsForTest() & 0xFE78FFFFU);
+    const int rawTravelFlags =
+        static_cast<int>(ai->GetTravelFlagsForTest());
+    auto traceFloor = [&](const idVec3& destination, int travelFlags) {
+      aas->TraceFloor(&floorTrace, origin, areaNum, destination, travelFlags,
+                      false, true, true);
+      return floorTrace.fraction;
+    };
+
+    if (traceFloor(leftDodgeDestination, maskedTravelFlags) < 1.0F) {
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_LEFT] =
+          OBSCURITY_PATH_BLOCKED;
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT] =
+          OBSCURITY_PATH_BLOCKED;
+    } else {
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_LEFT] =
+          resolveObscurity(OBSCURITYQUERY_DODGE_LEFT);
+      if (traceFloor(leftDiveDestination, maskedTravelFlags) < 1.0F) {
+        visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT] =
+            OBSCURITY_PATH_BLOCKED;
+      } else {
+        visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT] =
+            resolveObscurity(OBSCURITYQUERY_DIVE_LEFT);
+      }
+    }
+
+    if (traceFloor(rightDodgeDestination, rawTravelFlags) < 1.0F) {
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_RIGHT] =
+          OBSCURITY_PATH_BLOCKED;
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT] =
+          OBSCURITY_PATH_BLOCKED;
+    } else {
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_RIGHT] =
+          resolveObscurity(OBSCURITYQUERY_DODGE_RIGHT);
+      if (traceFloor(rightDiveDestination, maskedTravelFlags) < 1.0F) {
+        visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT] =
+            OBSCURITY_PATH_BLOCKED;
+      } else {
+        visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT] =
+            resolveObscurity(OBSCURITYQUERY_DIVE_RIGHT);
+      }
+    }
+
+    if (traceFloor(forwardDiveDestination, maskedTravelFlags) < 1.0F) {
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_FORWARD] =
+          OBSCURITY_PATH_BLOCKED;
+    } else {
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_FORWARD] =
+          resolveObscurity(OBSCURITYQUERY_DIVE_FWD);
+    }
+
+    if (traceFloor(backwardDiveDestination, maskedTravelFlags) < 1.0F) {
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_BACK] =
+          OBSCURITY_PATH_BLOCKED;
+    } else {
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_BACK] =
+          resolveObscurity(OBSCURITYQUERY_DIVE_BACK);
+    }
+  }
+
+  valid = true;
+  if (ai_debugDodge.GetInteger() < 2 || ai_debugLevel.GetInteger() <= 0) {
+    return;
+  }
+
+  constexpr idVec4 colorYellow{1.0F, 1.0F, 0.0F, 1.0F};
+  constexpr idVec4 colorOrange{1.0F, 0.5F, 0.0F, 1.0F};
+  constexpr idVec4 colorGreen{0.0F, 1.0F, 0.0F, 1.0F};
+  constexpr idVec4 colorRed{1.0F, 0.0F, 0.0F, 1.0F};
+  auto obscurityColor = [&](obscurity_t obscurity) -> const idVec4& {
+    if (obscurity <= OBSCURITY_PATH_OPEN_WITH_OBSCURITY) {
+      return colorYellow;
+    }
+    if (obscurity == OBSCURITY_PATH_OPEN_WITH_COVER) return colorOrange;
+    return colorGreen;
+  };
+
+  idRenderDebug* renderDebug =
+      gameLocal->GetRenderWorld()->GetRenderDebug();
+  renderDebug->DebugLine(
+      obscurityColor(visibilityObscurity[OBSCURITYTEST_MUZZLE_POS]),
+      halfHeightDestination, enemySource, 1500, true);
+
+  const obscurity_t leftDodge =
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_LEFT];
+  const obscurity_t leftDive =
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_LEFT];
+  if (leftDodge <= OBSCURITY_PATH_BLOCKED) {
+    renderDebug->DebugLine(colorRed, origin, leftDodgeDestination, 1500,
+                           true);
+  } else {
+    renderDebug->DebugLine(obscurityColor(leftDodge),
+                           leftNearCoverDestination, enemySource, 1500,
+                           true);
+    if (leftDive <= OBSCURITY_PATH_BLOCKED) {
+      renderDebug->DebugLine(colorYellow, origin, leftDodgeDestination,
+                             1500, true);
+    } else {
+      renderDebug->DebugLine(colorGreen, origin, leftDiveDestination, 1500,
+                             true);
+      renderDebug->DebugLine(obscurityColor(leftDive),
+                             leftFarCoverDestination, enemySource, 1500,
+                             true);
+    }
+  }
+
+  const obscurity_t rightDodge =
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_NEAR_RIGHT];
+  const obscurity_t rightDive =
+      visibilityObscurity[OBSCURITYTEST_HALF_HEIGHT_FAR_RIGHT];
+  if (rightDodge <= OBSCURITY_PATH_BLOCKED) {
+    renderDebug->DebugLine(colorRed, origin, rightDodgeDestination, 1500,
+                           true);
+  } else {
+    renderDebug->DebugLine(obscurityColor(rightDodge),
+                           rightNearCoverDestination, enemySource, 1500,
+                           true);
+    if (rightDive <= OBSCURITY_PATH_BLOCKED) {
+      renderDebug->DebugLine(colorYellow, origin, rightDodgeDestination,
+                             1500, true);
+    } else {
+      renderDebug->DebugLine(colorGreen, origin, rightDiveDestination,
+                             1500, true);
+      renderDebug->DebugLine(obscurityColor(rightDive),
+                             rightFarCoverDestination, enemySource, 1500,
+                             true);
+    }
+  }
+
+  const obscurity_t forward =
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_FORWARD];
+  if (forward <= OBSCURITY_PATH_BLOCKED) {
+    renderDebug->DebugLine(colorRed, origin, forwardDiveDestination, 1500,
+                           true);
+  } else {
+    renderDebug->DebugLine(colorGreen, origin, forwardDiveDestination, 1500,
+                           true);
+    renderDebug->DebugLine(obscurityColor(forward),
+                           forwardCoverDestination, enemySource, 1500,
+                           true);
+  }
+
+  const obscurity_t backward =
+      visibilityObscurity[OBSCURITYTEST_FULL_HEIGHT_BACK];
+  if (backward <= OBSCURITY_PATH_BLOCKED) {
+    renderDebug->DebugLine(colorRed, origin, backwardDiveDestination, 1500,
+                           true);
+  } else {
+    renderDebug->DebugLine(colorGreen, origin, backwardDiveDestination,
+                           1500, true);
+    renderDebug->DebugLine(obscurityColor(backward),
+                           backwardCoverDestination, enemySource, 1500,
+                           true);
+  }
+}
 // DIA: idAI2::ShouldReloadWeapon
 bool idAI2::ShouldReloadWeapon(idWeapon* weapon, bool secondary) {
   if (weapon == nullptr ||
@@ -7392,7 +7909,7 @@ bool idAI2::ShouldReloadWeapon(idWeapon* weapon, bool secondary) {
   if (loadedFraction >= 1.0F) return false;
   if (loadedFraction <= 0.0F) return true;
 
-  const idEntity* enemy = currentEnemy;
+  const idEntity* enemy = memory->GetEnemy();
   if (enemy != nullptr) {
     if (safeReloadFraction < loadedFraction) return false;
     const int currentTime = gameLocal->GetGameTimeMs();
@@ -7404,12 +7921,186 @@ bool idAI2::ShouldReloadWeapon(idWeapon* weapon, bool secondary) {
   return true;
 }
 // DIA: idAI2::CheckForSuspectedToTrailUpdate
-idRecoveredValue idAI2::CheckForSuspectedToTrailUpdate(...) { return RecordCoreCall("CheckForSuspectedToTrailUpdate"); }
+bool idAI2::CheckForSuspectedToTrailUpdate(int currentTime, bool force) {
+  const idEntity* enemy = memory->GetEnemy();
+  const aiSenseState_t* enemySense = GetEnemySenseState(AISENSE_MAX);
+  if (enemy == nullptr || enemySense == nullptr ||
+      currentTime - enemySense->lastConfirmedStimTime < 1000) {
+    return false;
+  }
+
+  idVec3 suspectedEnemyPosition;
+  idAIPos oldestTrailPosition;
+  if (!GetSuspectedEnemyPos_PushedIntoAAS(&suspectedEnemyPosition) ||
+      !memory->GetOldestTrailPos(&oldestTrailPosition) ||
+      worldState->StateForEntity(enemy) == nullptr) {
+    return false;
+  }
+
+  const float updateDistance = actorPerceptionRadius * 0.5F;
+  if (force ||
+      (suspectedEnemyPosition - GetPhysics()->GetOrigin()).Length() <=
+          updateDistance) {
+    memory->ClearOldestTrailPos();
+    idAILogic logic(this);
+    logic.spawnId = {GetEntityNumber()};
+    logic.curEnemyId = {enemy->GetEntityNumber()};
+    logic.SetGameState(gameLocal->GetAIGameState());
+    worldState->AddEntityStateFakePosition(
+        gameLocal->GetAIGameState(), &logic, {enemy->GetEntityNumber()},
+        AISTIM_HEARING, 1.0F, {enemy->GetEntityNumber()},
+        oldestTrailPosition.pos);
+    if (GetAlertCycle() < ALERTCYCLE_COMBAT) {
+      localVoiceController->PlayVoice(this, AIVOICE_SEARCH_CONTINUE);
+    }
+  }
+  return true;
+}
 // DIA: idAI2::CalcMovementTurnRate
-idRecoveredValue idAI2::CalcMovementTurnRate(...) { return RecordCoreCall("CalcMovementTurnRate"); }
+float idAI2::CalcMovementTurnRate(const idVec3* idealDirection,
+                                  const idVec3* currentDirection) {
+  (void)idealDirection;
+  (void)currentDirection;
+
+  float speedFraction = 0.0F;
+  float speed;
+  if (ai_forceMoveSpeed.GetFloat() == 0.0F) {
+    const idVec3 velocity = GetPhysics()->GetLinearVelocity(0);
+    speed = std::sqrt(std::fmax(velocity.LengthSqr(),
+                                idMath::FLT_SMALLEST_NON_DENORMAL));
+  } else {
+    speed = ai_forceMoveSpeed.GetFloat();
+  }
+
+  const auto& movement = aiConstants->movement;
+  const float speedRange =
+      movement.moveSpeed.maximum - movement.moveSpeed.minimum;
+  const float adjustedSpeed =
+      std::fmax(0.0F, speed - movement.moveSpeed.minimum);
+  if (speedRange != 0.0F) {
+    speedFraction = std::fmin(1.0F, adjustedSpeed / speedRange);
+  }
+
+  float turnRate;
+  if (ai_forceTurnRate.GetInteger() != 0) {
+    turnRate =
+        (ai_maxTurnRate.GetFloat() - ai_minTurnRate.GetFloat()) *
+            speedFraction +
+        ai_minTurnRate.GetFloat();
+  } else {
+    turnRate =
+        (movement.moveTurnRate.maximum - movement.moveTurnRate.minimum) *
+            speedFraction +
+        movement.moveTurnRate.minimum;
+  }
+
+  bool hasValidControllingPlayer = false;
+  if (controllingPlayer != nullptr && gameLocal != nullptr) {
+    const int entityNumber = controllingPlayer->GetEntityNumber();
+    hasValidControllingPlayer =
+        entityNumber >= 0 &&
+        gameLocal->GetEntityByNumber(entityNumber) == controllingPlayer;
+  }
+  if (!hasValidControllingPlayer &&
+      aiEventState.alertCycle <= ALERTCYCLE_RELAXED) {
+    return turnRate * movement.relaxedTurnRateScale;
+  }
+  return turnRate;
+}
 // DIA: idCheckSurroundingsState::CanUse
+bool idCheckSurroundingsState::CanUse(const idAI2* ai) const {
+  idPlayer* controllingPlayer = ai->GetControllingPlayer();
+  bool hasValidControllingPlayer = false;
+  if (controllingPlayer != nullptr && gameLocal != nullptr) {
+    const int playerEntityNumber = controllingPlayer->GetEntityNumber();
+    hasValidControllingPlayer =
+        playerEntityNumber >= 0 &&
+        gameLocal->GetEntityByNumber(playerEntityNumber) ==
+            controllingPlayer;
+  }
+
+  if (hasValidControllingPlayer ||
+      ai->GetAIEventState().alertCycle > ALERTCYCLE_SEARCH ||
+      ai->GetActorClass() != ACTORCLASS_HUMAN) {
+    return false;
+  }
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  return currentTime - ai->alertCycleTimestamp > 500;
+}
 // DIA: idCheckSurroundingsState::FindBestLookInterestPoint
+float idCheckSurroundingsState::FindBestLookInterestPoint(
+    const idAI2* ai, idVec3& lookTo) const {
+  if (!CanUse(ai)) return 0.0F;
+
+  idPresentable* presentable = ai->presentable;
+  if (presentable == nullptr) {
+    idAI2* mutableAI = const_cast<idAI2*>(ai);
+    mutableAI->ownedEffectsPresentable = std::make_unique<idPresentable>();
+    presentable = mutableAI->ownedEffectsPresentable.get();
+    mutableAI->presentable = presentable;
+    if (ai->GetPhysics() != nullptr) {
+      presentable->SetOrigin(ai->GetPhysics()->GetOrigin());
+    }
+    presentable->SetAxis(*ai->GetPresentableAxis());
+  }
+
+  const idMat3& presentableAxis = presentable->GetAxis();
+
+  float bestInterest = -1.0F;
+  int bestDirection = 0;
+  int forwardDirection = -1;
+  float bestForwardDot = -1.0F;
+  const auto& directions = GetCheckSurroundingsDirections();
+  for (int i = 0; i < static_cast<int>(directions.size()); ++i) {
+    const idVec3& direction = directions[static_cast<std::size_t>(i)];
+    const float forwardDot = direction * presentableAxis[0];
+    if (forwardDot >= -0.05F) {
+      if (forwardDot > bestForwardDot) {
+        forwardDirection = i;
+        bestForwardDot = forwardDot;
+      }
+      const float interest = FindNetDirectionInterest(ai, direction);
+      if (interest > bestInterest) {
+        bestDirection = i;
+        bestInterest = interest;
+      }
+    }
+  }
+
+  constexpr float unitsPerInch5 = 1.3333334F;
+  const float distance =
+      std::pow(std::sqrt(std::fmax(2.0F,
+                                   idMath::FLT_SMALLEST_NON_DENORMAL)),
+               static_cast<float>(
+                   distanceExponent[static_cast<std::size_t>(bestDirection)])) *
+      10.0F * unitsPerInch5 * 12.0F;
+  lookTo = directions[static_cast<std::size_t>(bestDirection)] * distance;
+  return bestDirection == forwardDirection ? 0.0F : bestInterest;
+}
 // DIA: idCheckSurroundingsState::Update
+void idCheckSurroundingsState::Update(const idAI2* ai) {
+  if (!CanUse(ai)) return;
+
+  const int directionToTrace = nextDirectionToTrace;
+  if ((gameLocal->GetMapNameLength() + ai->GetEntityNumber()) % 4 == 0) {
+    const idVec3 velocity = ai->GetPhysics()->GetLinearVelocity(0);
+    if (velocity.LengthSqr() > 0.1F) {
+      int updated = UpdateDirectionDistanceExponent(directionToTrace, ai);
+      if (updated == 1) updated = 0;
+      lookInterest[static_cast<std::size_t>(directionToTrace)] =
+          std::fmax(0.0F,
+                    static_cast<float>(updated) +
+                        lookInterest[static_cast<std::size_t>(
+                            directionToTrace)]);
+    }
+
+    ++nextDirectionToTrace;
+    if (nextDirectionToTrace == 8) nextDirectionToTrace = 0;
+  }
+
+  UpdateLookInterests(ai);
+}
 // DIA: idAI2::FindAutoFocusEntity
 idRecoveredValue idAI2::FindAutoFocusEntity(...) { return RecordCoreCall("FindAutoFocusEntity"); }
 // DIA: `idAI2::FindAutoFocusEntity'::`1'::dtor$0

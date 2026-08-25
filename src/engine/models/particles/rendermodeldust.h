@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/models/particles/jobs/dustgen.h"
+#include "engine/models/particles/declparticle.h"
 #include "engine/models/rendermodel.h"
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
@@ -9,31 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 
-class idDeclTable;
-class idParticleStageImposter;
-class idPartImposterData;
 class idRenderView;
 class idRenderModelUpdateTools;
-
-class idDeclParticle {
-public:
-  const idLookupTable* GetTables() const;
-
-  std::uint8_t recoveredDecl[80]{};
-  idList<idParticleStage*, 79> stages;
-  idList<idAtomicString, 79> stageNames;
-  idList<idAtomicString, 79> stageInheritNames;
-  idList<const idDeclTable*, 79> tableDecls;
-  idList<idLookupTable, 79> tables;
-  idList<idParticleStageImposter*, 79> imposters;
-  idList<idPartImposterData*, 79> imposterData;
-  idBounds bounds{};
-  float maxSystemDuration{};
-  float lodRadius{};
-  bool usesWind{};
-  bool mergeSurfaces{};
-  std::uint8_t recoveredTail[6]{};
-};
 
 class idRenderModelDust final : public idRenderModel {
 public:
@@ -61,14 +38,6 @@ public:
 extern idCVar r_useDustGenJobs;
 extern idCVar r_skipDust;
 
-static_assert(sizeof(idDeclParticle) == 288,
-              "idDeclParticle ABI drift");
-static_assert(offsetof(idDeclParticle, stages) == 80,
-              "idDeclParticle stages offset drift");
-static_assert(offsetof(idDeclParticle, tables) == 176,
-              "idDeclParticle tables offset drift");
-static_assert(offsetof(idDeclParticle, bounds) == 248,
-              "idDeclParticle bounds offset drift");
 static_assert(offsetof(idRenderModelDust, numParticles) == 2176,
               "idRenderModelDust particle count offset drift");
 static_assert(offsetof(idRenderModelDust, particles) == 2184,

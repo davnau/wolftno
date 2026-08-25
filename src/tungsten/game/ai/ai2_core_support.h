@@ -1355,15 +1355,68 @@ protected:
 
 class idCheckSurroundingsState {
 public:
-  idRecoveredValue CanUse(...);
-  idRecoveredValue FindBestLookInterestPoint(...);
-  idRecoveredValue FindNetDirectionInterest(...);
-  idRecoveredValue GetLookedAtElapsedTime(...);
-  idRecoveredValue SetLastLookedAtTime(...);
-  idRecoveredValue TraceVector(...);
-  idRecoveredValue Update(...);
-  idRecoveredValue UpdateDirectionDistanceExponent(...);
-  idRecoveredValue UpdateLookInterests(...);
+  bool CanUse(const idAI2* ai) const;
+  float FindBestLookInterestPoint(const idAI2* ai, idVec3& lookTo) const;
+  int GetLookedAtElapsedTime(const idEntity* entity) const;
+  void SetLastLookedAtTime(const idEntity* entity, int setTime);
+  void Update(const idAI2* ai);
+  void SetDistanceExponentForTest(int index, int value) {
+    distanceExponent[static_cast<std::size_t>(index)] = value;
+  }
+  void SetLookInterestForTest(int index, float value) {
+    lookInterest[static_cast<std::size_t>(index)] = value;
+  }
+  float FindNetDirectionInterestForTest(
+      const idAI2* ai, const idVec3& testDirection) const {
+    return FindNetDirectionInterest(ai, testDirection);
+  }
+  bool TraceVectorForTest(const idAI2* ai, const idVec3& from,
+                          const idVec3& to) const {
+    return TraceVector(ai, from, to);
+  }
+  int UpdateDirectionDistanceExponentForTest(int directionToTrace,
+                                             const idAI2* ai) {
+    return UpdateDirectionDistanceExponent(directionToTrace, ai);
+  }
+  void UpdateLookInterestsForTest(const idAI2* ai) {
+    UpdateLookInterests(ai);
+  }
+  int GetDistanceExponentForTest(int index) const {
+    return distanceExponent[static_cast<std::size_t>(index)];
+  }
+  float GetLookInterestForTest(int index) const {
+    return lookInterest[static_cast<std::size_t>(index)];
+  }
+  float GetLookForwardInterestForTest() const {
+    return lookForwardInterest;
+  }
+  void SetLookForwardInterestForTest(float value) {
+    lookForwardInterest = value;
+  }
+  int GetNextDirectionToTraceForTest() const {
+    return nextDirectionToTrace;
+  }
+  void SetNextDirectionToTraceForTest(int value) {
+    nextDirectionToTrace = value;
+  }
+
+private:
+  bool TraceVector(const idAI2* ai, const idVec3& from,
+                   const idVec3& to) const;
+  int UpdateDirectionDistanceExponent(int directionToTrace,
+                                      const idAI2* ai);
+  void UpdateLookInterests(const idAI2* ai);
+  float FindNetDirectionInterest(const idAI2* ai,
+                                 const idVec3& testDirection) const;
+
+  float lookForwardInterest{100.0F};
+  std::array<int, 8> distanceExponent{};
+  std::array<float, 8> lookInterest{};
+  int nextDirectionToTrace{0};
+  std::array<idSpawnId, 4> lookedAtEntitySpawnIDs{{
+      idSpawnId{0x1fff}, idSpawnId{0x1fff}, idSpawnId{0x1fff},
+      idSpawnId{0x1fff}}};
+  std::array<int, 4> lookedAtEntitiesTime{};
 };
 
 using idRotationTrackerRange = idRotationTracker::range_t;
