@@ -226,7 +226,7 @@ public:
 
   void FreeData() override;
   void Parse(idParser& source) override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   int GetMaxDuration(fxCondition_t startCondition = FX_NONE) const;
   int GetMaxFadeOutTime(fxCondition_t startCondition = FX_NONE) const;

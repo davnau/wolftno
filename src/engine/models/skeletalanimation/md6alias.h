@@ -10,6 +10,7 @@ using idMD6AliasAnimCompatible = bool (*)(const idMD6Anim* animation,
 
 void SetMD6AliasAnimLoad(idMD6AliasAnimLoad load);
 void SetMD6AliasAnimCompatible(idMD6AliasAnimCompatible compatible);
+extern bool forceIdListsToReallocateEveryAppend;
 
 template <>
 bool idList<idMD6AliasEntry, 19>::Resize(int newSize);

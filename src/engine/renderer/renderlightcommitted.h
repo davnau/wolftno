@@ -47,7 +47,7 @@ private:
   idRenderLightCommitted();
   idRenderLightCommitted(const idRenderLightCommitted&) = delete;
   idRenderLightCommitted& operator=(const idRenderLightCommitted&) = delete;
-  ~idRenderLightCommitted();
+  ~idRenderLightCommitted() noexcept(false);
 };
 
 static_assert(offsetof(idRenderLightCommitted, r) == 0x18,

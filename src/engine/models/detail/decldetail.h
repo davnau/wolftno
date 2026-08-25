@@ -11,7 +11,7 @@ public:
   idDeclDetail();
 
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
 
   idAtomicString modelName;

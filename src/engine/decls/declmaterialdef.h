@@ -7,7 +7,7 @@ class idDeclRenderProg;
 class idDeclMaterialDef final : public idDeclTypeInfo {
 public:
   idDeclMaterialDef();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idStr desc;
   const idDeclRenderProg* interactionProg;

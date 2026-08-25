@@ -24,7 +24,7 @@ struct slowmoParms_t {
 
 class idDeclGameTime final : public idDeclTypeInfo {
 public:
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   slowmoParms_t slowmoParms;
   static idDeclInfoTemplate<idDeclGameTime> resourceList;
 };
@@ -53,7 +53,7 @@ public:
   };
 
   idDeclDestructiblePieceInfo();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   idList<pieceInfo_t> destructiblePieceInfo;
   idList<obliterateInfo_t> obliterateInfo;
   static idDeclInfoTemplate<idDeclDestructiblePieceInfo> resourceList;
@@ -63,7 +63,7 @@ class idDeclDragJoints final : public idDeclTypeInfo {
 public:
   idDeclDragJoints();
   ~idDeclDragJoints() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   float ghostJointDistance;
   float maxBend;
   float downHillPitchAdjust;
@@ -77,7 +77,7 @@ public:
 class idDeclFreezeJoints final : public idDeclTypeInfo {
 public:
   idDeclFreezeJoints();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   idList<idJointName> joints;
   static idDeclInfoTemplate<idDeclFreezeJoints> resourceList;
 };
@@ -102,7 +102,7 @@ public:
 
   idDeclPonytail();
   ~idDeclPonytail() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   const idDeclMD6* modelDef;
   idAtomicString tagName;
   idList<idPonytailJointInfo, 30> jointInfo;
@@ -292,7 +292,7 @@ public:
   };
   idDeclVehicleProps();
   ~idDeclVehicleProps() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
 
   cameraPlacement_t camera, camera2;

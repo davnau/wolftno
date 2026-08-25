@@ -9,4 +9,4 @@ idDeclGlass::idDeclGlass()
       decalClipAlpha{0, 128}, playerClip(false), monsterClip(false), floor(false), unbreakable(false) {
   resourceListPtr = &resourceList;
 }
-idDeclInfo* idDeclGlass::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclGlass::GetDeclInfo() const { return &resourceList; }

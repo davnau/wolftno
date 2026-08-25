@@ -4,4 +4,4 @@ idDeclInfoTemplate<idDeclModelLOD> idDeclModelLOD::resourceList("modelLOD", "idD
 
 idDeclModelLOD::idDeclModelLOD() : fade(0.25f) { resourceListPtr = &resourceList; }
 void idDeclModelLOD::FreeData() { LODs.Clear(); }
-idDeclInfo* idDeclModelLOD::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclModelLOD::GetDeclInfo() const { return &resourceList; }

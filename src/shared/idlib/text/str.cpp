@@ -43,6 +43,14 @@ std::string NormalizeExtension(const char* extension) {
 }
 } // namespace
 
+va::va(const char* format, ...) {
+  std::va_list arguments;
+  va_start(arguments, format);
+  idStr::vsnPrintf(buffer, static_cast<int>(sizeof(buffer)), format,
+                   arguments);
+  va_end(arguments);
+}
+
 const idVec4& idStr::ColorForIndex(char index) {
   static const idVec4 colors[16] = {
       {0, 0, 0, 1},          {1, 0, 0, 1},       {0, 1, 0, 1},       {1, 1, 0, 1},

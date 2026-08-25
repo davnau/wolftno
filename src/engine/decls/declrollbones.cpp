@@ -7,6 +7,6 @@ idDeclRollBones::idDeclRollBones() {
   resourceListPtr = &resourceList;
 }
 
-idDeclInfo* idDeclRollBones::GetDeclInfo() {
+idDeclInfo* idDeclRollBones::GetDeclInfo() const {
   return &resourceList;
 }

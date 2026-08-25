@@ -167,7 +167,7 @@ idDeclAnimWeb::idDeclAnimWeb()
 
 idDeclAnimWeb::~idDeclAnimWeb() { FreeData(); }
 const char* idDeclAnimWeb::DefaultDefinition() const { return "{\n\tprops {\n\t}\nstates {\n\t}\n\tsubWebs {\n\t}\n}\n"; }
-idDeclInfo* idDeclAnimWeb::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclAnimWeb::GetDeclInfo() const { return &resourceList; }
 
 void idDeclAnimWeb::FreeData() {
   for (int i = 0; i < nodes.Num(); ++i) delete nodes[i];

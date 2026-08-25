@@ -55,7 +55,7 @@ public:
   virtual void WriteResourceFile();
   virtual idResourceList* GetResourceList() const;
   virtual void Print();
-  virtual void List();
+  virtual void List() const;
 
   void SetName(const char* resourceName);
   const char* GetName() const;
@@ -211,10 +211,10 @@ public:
   void LoadResource() override;
   bool ReloadIfStale() override;
   void WriteResourceFile() override;
-  void List() override;
+  void List() const override;
   virtual std::uint32_t GetDeclTimestamp();
   virtual void ReParse(bool fromDisk);
-  virtual idDeclInfo* GetDeclInfo() = 0;
+  virtual idDeclInfo* GetDeclInfo() const = 0;
   virtual bool RebuildTextSource();
   virtual bool SetImplicitText();
   virtual const char* DefaultDefinition() const;
@@ -268,7 +268,7 @@ public:
   idDeclTypeInfo();
   ~idDeclTypeInfo() override;
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   bool RebuildTextSource() override;
   void SetState(idDeclTypeInfo* empty);

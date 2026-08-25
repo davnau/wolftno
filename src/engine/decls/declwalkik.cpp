@@ -34,6 +34,6 @@ void idDeclWalkIK::FreeData() {
   checkFeetForSolids = false;
 }
 
-idDeclInfo* idDeclWalkIK::GetDeclInfo() {
+idDeclInfo* idDeclWalkIK::GetDeclInfo() const {
   return &resourceList;
 }

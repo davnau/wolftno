@@ -121,21 +121,21 @@ void TriangleStripper(const std::uint16_t* indexes, unsigned int numIndexes,
     oldOrder.data[index] = indexes[index];
     maximumIndex = std::max(maximumIndex, oldOrder.data[index]);
   }
-  ForsythResultOwner reordered;
-  reordered.data = reorderForsyth(oldOrder.data, indexCount / 3,
-                                  maximumIndex + 1);
-  if (!reordered.data) {
-    reordered.data = static_cast<int*>(idMem::Singleton()->AllocWithLocation(
+  int* reordered =
+      reorderForsyth(oldOrder.data, indexCount / 3, maximumIndex + 1);
+  if (!reordered) {
+    reordered = static_cast<int*>(idMem::Singleton()->AllocWithLocation(
         "w:\\build\\tech5\\shared\\idlib\\Heap.h(76) : TAG_NEW",
         sizeof(int) * static_cast<std::size_t>(indexCount), TAG_NEW, false,
         ALIGN_16, HEAP_DEFAULTHEAP));
     for (int index = 0; index < indexCount; ++index)
-      reordered.data[index] = indexes[index];
+      reordered[index] = indexes[index];
   }
   idList<std::uint16_t, 5> triangleIndexes;
   triangleIndexes.ResizeForPort(indexCount);
   for (int index = 0; index < indexCount; ++index)
-    triangleIndexes.Append(static_cast<std::uint16_t>(reordered.data[index]));
+    triangleIndexes.Append(static_cast<std::uint16_t>(reordered[index]));
   InOrderTriangleStripper(triangleIndexes.list, triangleIndexes.num,
                           stripIndexes);
+  idMem::Singleton()->Free(reordered, ALIGN_16);
 }

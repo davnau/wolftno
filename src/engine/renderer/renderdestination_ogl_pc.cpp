@@ -7,6 +7,7 @@
 #include "shared/idlib/text/str.h"
 
 #include <cstddef>
+#include <intrin.h>
 
 namespace {
 
@@ -29,18 +30,12 @@ constexpr unsigned int gl_renderTarget_0[4] = {
 
 }  // namespace
 
-// The shipping build retains the status dispatch even though every case is a
-// no-op. The observable contract is the framebuffer-status query itself.
-static void CheckFrameBuffer() {
-  const unsigned int status =
+static unsigned int CheckFrameBuffer() {
+  unsigned int status =
       _glewCheckFramebufferStatusEXT(GL_FRAMEBUFFER_VALUE);
-  if (status == GL_FRAMEBUFFER_COMPLETE_VALUE || status == 0) {
-    return;
-  }
-  switch (status) {
-    default:
-      return;
-  }
+  if (status != GL_FRAMEBUFFER_COMPLETE_VALUE && status != 0)
+    status -= GL_FRAMEBUFFER_COMPLETE_VALUE + 1;
+  return status;
 }
 
 idRenderDestination::idRenderDestination()
@@ -83,6 +78,7 @@ void idRenderDestination::CreateFromImages(idImage* color, idImage* depth,
   GL_CheckErrors(false);
   if (color == nullptr && depth == nullptr && stencil == nullptr) {
     idLib::Error("idRenderDestination::CreateFromImages: no images specified");
+    __debugbreak();
   }
 
   // Retail selects dimensions from color first, otherwise depth. A
@@ -180,8 +176,7 @@ void idRenderDestination::Create(const char* name, int width, int height,
       textureClass == TC_FLOAT_RGBA_DEPTH ||
       textureClass == TC_FLOAT16_RGBA_DEPTH) {
     options.format = FMT_DEPTH;
-    va depthName{};
-    idStr::snPrintf(depthName.buffer, sizeof(depthName.buffer), "%s_d", name);
+    va depthName("%s_d", name);
     depth = globalImages->ScratchImage(depthName.buffer, options);
     GL_CheckErrors(false);
   }

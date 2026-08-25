@@ -9,6 +9,8 @@
 enum utf8Encoding_t { UTF8_INVALID, UTF8_ASCII, UTF8_ENCODED };
 
 struct va {
+  va() : buffer{} {}
+  va(const char* format, ...);
   char buffer[16384];
   operator const char*() const { return buffer; }
 };

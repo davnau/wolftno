@@ -8,13 +8,13 @@ idDeclInfoTemplate<idDeclDetail> idDeclDetail::resourceList(
 idCVar r_skipDetail("r_skipDetail", "0", CVAR_BOOL,
                     "Completely disable detail model");
 
-void idDeclFoliage::List() { idDecl::List(); }
+void idDeclFoliage::List() const { idDecl::List(); }
 
 const char* idDeclDetail::DefaultDefinition() const {
   return "{\n\tmodel\t_default\n}\n";
 }
 
-idDeclInfo* idDeclDetail::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclDetail::GetDeclInfo() const { return &resourceList; }
 
 idDeclDetail::idDeclDetail()
     : modelName(""), colorVariance{1.0f, 1.0f, 1.0f} {}

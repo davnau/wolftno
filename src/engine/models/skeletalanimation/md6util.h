@@ -12,7 +12,7 @@ struct idJointMat {
 
 class idMD6Skel {
 public:
-  int GetJointIndex(const char* jointName) const;
+  idJointIndex_t GetJointIndex(const char* jointName) const;
   const void* data = nullptr;
   idList<idAtomicString, 5> jointNames;
   idAtomicString name;
@@ -21,21 +21,25 @@ public:
 using idMD6UtilAnimWebLookup = const idDeclAnimWeb* (*)(const char*);
 using idMD6UtilDeclLookup = const idDeclMD6* (*)(const char*);
 using idMD6UtilDecodeFrame = void (*)(const idMD6Model*, const idMD6Anim*,
-                                      float, float, idJointMat*, std::size_t);
+                                      int, int, idJointMat*, std::size_t);
 void SetMD6UtilAnimWebLookup(idMD6UtilAnimWebLookup lookup);
 void SetMD6UtilDeclLookup(idMD6UtilDeclLookup lookup);
 void SetMD6UtilDecodeFrame(idMD6UtilDecodeFrame decode);
+void SetMD6UtilGameTimePerSecond(int ticksPerSecond);
+
+using idMD6UtilModelIndex =
+    idIndex<std::int16_t, idDeclAnimWeb::invalidModelIndex_t>;
 
 class idMD6Util {
 public:
   struct animDelta_t { idVec3 deltaTranslation; idMat3 deltaAxis; };
   class idJointCache {
   public:
-    idJointCache(idAnimWebPath* webPath, int frameNum);
+    idJointCache(const idAnimWebPath& webPath, int frameNum);
     bool GetDelta(animDelta_t* delta, const char* jointName,
                   const char* refJointName);
-    void UpdateCache();
-    void Set(const idDeclAnimWeb* webRef, idAnimWebPath* webPath, int frameNum);
+    void Set(const idDeclAnimWeb* webRef, const idAnimWebPath& webPath,
+             int frameNum);
 
     idJointMat jointMatrices[256];
     const idDeclAnimWeb* webRef;
@@ -43,15 +47,20 @@ public:
     const idMD6Anim* md6anim;
     int frameNum;
     bool validJointCache;
+
+  private:
+    void UpdateCache();
   };
 
-  static const idMD6Anim* FindMD6Anim(
-      const idDeclAnimWeb* webRef, idAnimWebPath* webPath,
-      const idDeclMD6* declMD6, animWebModelIndex_t modelIndex,
+  static __declspec(noinline) const idMD6Anim* FindMD6Anim(
+      const idDeclAnimWeb* webRef, const idAnimWebPath& webPath,
+      const idDeclMD6* declMD6, idMD6UtilModelIndex modelIndex,
       bool loadAnim);
 };
 
 static_assert(sizeof(idJointMat) == 48, "idJointMat ABI drift");
+static_assert(sizeof(idJointIndex_t) == 2, "idJointIndex_t ABI drift");
+static_assert(sizeof(idMD6UtilModelIndex) == 2, "model index ABI drift");
 static_assert(sizeof(idMD6Util::animDelta_t) == 48, "animDelta_t ABI drift");
 static_assert(sizeof(idMD6Util::idJointCache) == 12320, "idJointCache ABI drift");
 static_assert(offsetof(idMD6Util::idJointCache, webRef) == 12288, "webRef ABI drift");

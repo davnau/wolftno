@@ -1398,7 +1398,7 @@ private:
 
 class idAnimStack;
 
-class idMD6Blend {
+class idAI2CoreMD6Blend {
 public:
   enum blendOp_t : int {
     BLENDOP_REPLACE = 0,
@@ -1414,8 +1414,8 @@ public:
 class idAnimatorParms_AnimWeb {
 public:
   idAnimatorParms_AnimWeb(idAnimStack* animStack, const char* name,
-                          idMD6Blend::blendOp_t blendOp,
-                          idMD6Blend::originBlend_t originBlend,
+                          idAI2CoreMD6Blend::blendOp_t blendOp,
+                          idAI2CoreMD6Blend::originBlend_t originBlend,
                           md6WeightGroup_t weightGroup,
                           md6WeightGroup_t filterGroup, float alpha,
                           const idDeclAnimWeb* webDecl,
@@ -1425,8 +1425,10 @@ public:
 
   idAnimStack* animStack{nullptr};
   idStr name;
-  idMD6Blend::blendOp_t blendOp{idMD6Blend::BLENDOP_REPLACE};
-  idMD6Blend::originBlend_t originBlend{idMD6Blend::ORIGINBLEND_DEFAULT};
+  idAI2CoreMD6Blend::blendOp_t blendOp{
+      idAI2CoreMD6Blend::BLENDOP_REPLACE};
+  idAI2CoreMD6Blend::originBlend_t originBlend{
+      idAI2CoreMD6Blend::ORIGINBLEND_DEFAULT};
   md6WeightGroup_t weightGroup{MD6_WEIGHTGROUP_ALL};
   md6WeightGroup_t filterGroup{MD6_WEIGHTGROUP_ALL};
   float alpha{0.0F};
@@ -1686,6 +1688,10 @@ public:
     aimTracker.SetConstraints(radians, radians);
   }
   int GetKickCount() const { return wanderingAim.kickCount; }
+  void DivergeAim(idAI2* owner) { wanderingAim.Diverge(owner); }
+  int GetWanderingAimLastTimeForTest() const {
+    return wanderingAim.lastTime;
+  }
   int GetInitCountForTest() const { return initCount; }
   idAnimator_TrackerBase* GetAnimator(int index) const {
     return index >= 0 && index < 2 ? animators[index] : nullptr;

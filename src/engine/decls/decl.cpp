@@ -120,7 +120,7 @@ bool idResource::ReloadIfStale() { return false; }
 void idResource::WriteResourceFile() {}
 idResourceList* idResource::GetResourceList() const { return resourceListPtr; }
 void idResource::Print() { idLib::Printf("%s", name.str); }
-void idResource::List() { idLib::Printf("%s", name.str); }
+void idResource::List() const { idLib::Printf("%s", name.str); }
 
 void idResource::SetName(const char* resourceName) {
   name.Set(resourceName);
@@ -287,7 +287,7 @@ void idDecl::MakeDefault() {
     SetResourceError("defaulted '%s'", name.str);
 }
 
-void idDecl::List() {
+void idDecl::List() const {
   idLib::Printf("%s %s %i\n", name.str, GetFileName(), GetLineNum());
 }
 

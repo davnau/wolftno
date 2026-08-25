@@ -107,6 +107,7 @@ public:
   enum invalidSubWebIndex_t : int { INVALID_SUBWEB_INDEX = -1 };
   enum invalidStateIndex_t : int { INVALID_STATE_INDEX = -1 };
   enum invalidNodeIndex_t : int { INVALID_NODE_INDEX = -1 };
+  enum invalidModelIndex_t : int { INVALID_MODEL_INDEX = -1 };
 
   using stateList_t = animWebStateList_t;
   struct idStateInfo { idAtomicString name; };
@@ -142,7 +143,7 @@ public:
   idDeclAnimWeb();
   ~idDeclAnimWeb() override;
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   void FreeData() override;
   std::uint64_t Size() const override;
@@ -195,7 +196,7 @@ public:
   idDeclAnimSubWeb();
   ~idDeclAnimSubWeb() override;
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   void FreeData() override;
   animWebNodeIndex_t AddNode(animWebSubWebIndex_t subWeb,const idDeclAnimWeb::stateList_t& states);

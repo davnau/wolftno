@@ -274,7 +274,7 @@ idDeclAF::~idDeclAF() {
   DeletePointerList(constraints);
 }
 
-idDeclInfo* idDeclAF::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclAF::GetDeclInfo() const { return &resourceList; }
 
 void idDeclAF::FreeData() {
   modified = false;

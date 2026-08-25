@@ -1,12 +1,14 @@
 #include "engine/models/renderworld.h"
 
+#include "shared/idlib/containers/heaparray.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 #include "shared/idlib/math/mathlib.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <vector>
+#include <new>
+#include <type_traits>
 
 // Owned by renderer/rendersystem.cpp in the retail image.
 extern idCVar r_debugArrowStep;
@@ -58,59 +60,6 @@ float WrappedCos(float angle) {
   return std::cos(angle);
 }
 
-float Cos16Retail(float angle) {
-  if (angle < 0.0f || angle >= kTwoPi)
-    angle -= std::floor(angle * 0.15915494f) * kTwoPi;
-
-  float sign = 1.0f;
-  if (angle >= idMath::PI) {
-    if (angle > 4.712389f) {
-      angle -= kTwoPi;
-    } else {
-      sign = -1.0f;
-      angle = idMath::PI - angle;
-    }
-  } else if (angle > 1.5707964f) {
-    sign = -1.0f;
-    angle = idMath::PI - angle;
-  }
-
-  const float square = angle * angle;
-  return (((((0.0000247609f - square * 0.0000002605f) * square -
-              0.0013888397f) *
-                 square +
-             0.041666642f) *
-                square -
-            0.5f) *
-               square +
-           1.0f) *
-          sign;
-}
-
-float Sin16Retail(float angle) {
-  angle -= std::floor(angle / idMath::TWO_PI) * idMath::TWO_PI;
-  if (angle >= idMath::PI) {
-    if (angle > idMath::PI * 1.5f) {
-      angle -= idMath::TWO_PI;
-    } else {
-      angle = idMath::PI - angle;
-    }
-  } else if (angle > idMath::PI * 0.5f) {
-    angle = idMath::PI - angle;
-  }
-
-  const float square = angle * angle;
-  return (((((0.0000027526f - square * 0.0000000239f) * square -
-             0.000198409f) *
-                square +
-            0.0083333319f) *
-               square -
-           0.16666667f) *
-              square +
-          1.0f) *
-         angle;
-}
-
 idVec3 TransformPointRetail(const idVec3& point, const idVec3& origin,
                             const idMat3& axis) {
   return {point.y * axis.mat[1].x + point.x * axis.mat[0].x +
@@ -146,6 +95,213 @@ void BoundsPoints(const idBounds& bounds, idVec3 points[8]) {
 }
 
 } // namespace
+
+// This debug switch is owned by idlib in the retail image.  Keeping it as an
+// external dependency preserves the idList::Append contract and the retail
+// RenderDebug.obj dependency surface.
+extern bool forceIdListsToReallocateEveryAppend;
+
+template <typename T>
+__declspec(noinline) void* idListArrayResize(void* oldPointer, int oldNum,
+                                             int newNum, memTag_t tag,
+                                             bool zeroBuffer) {
+  T* oldList = static_cast<T*>(oldPointer);
+  T* replacement = nullptr;
+
+  if (newNum > 0) {
+    const char* location =
+        zeroBuffer
+            ? "w:\\build\\tech5\\shared\\idlib\\containers/List.h(27) : tag"
+            : "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag";
+    replacement = static_cast<T*>(idMem::Singleton()->AllocWithLocation(
+        location, sizeof(T) * static_cast<std::size_t>(newNum), tag,
+        zeroBuffer, ALIGN_16, HEAP_DEFAULTHEAP));
+    if (replacement == nullptr)
+      return nullptr;
+
+    if constexpr (!std::is_trivially_default_constructible_v<T>) {
+      for (int index = 0; index < newNum; ++index)
+        new (&replacement[index]) T;
+    }
+
+    const int copyCount = (std::min)(oldNum, newNum);
+    for (int index = 0; index < copyCount; ++index)
+      replacement[index] = oldList[index];
+  }
+
+  if constexpr (!std::is_trivially_destructible_v<T>) {
+    for (int index = 0; index < oldNum; ++index)
+      oldList[index].~T();
+  }
+  idMem::Singleton()->Free(oldList, ALIGN_16);
+  return replacement;
+}
+
+#define DEFINE_RENDER_DEBUG_TRIVIAL_RESIZE(ElementType)                       \
+  template <>                                                                \
+  __declspec(noinline) bool idList<ElementType, 3>::Resize(int newSize) {     \
+    if (newSize <= 0) {                                                       \
+      if (listStatic == 0 || listStatic == 2) {                               \
+        if (list != nullptr)                                                  \
+          idMem::Singleton()->Free(list, ALIGN_16);                           \
+        list = nullptr;                                                       \
+        size = 0;                                                             \
+      }                                                                       \
+      num = 0;                                                                \
+      return true;                                                            \
+    }                                                                         \
+    if (newSize == size || listStatic != 0)                                   \
+      return true;                                                            \
+    list = static_cast<ElementType*>(idListArrayResize<ElementType>(          \
+        list, size, newSize, static_cast<memTag_t>(memTag), false));          \
+    if (list == nullptr)                                                      \
+      return false;                                                           \
+    size = newSize;                                                           \
+    num = (std::min)(num, newSize);                                           \
+    return true;                                                              \
+  }
+
+DEFINE_RENDER_DEBUG_TRIVIAL_RESIZE(debugLine_t)
+DEFINE_RENDER_DEBUG_TRIVIAL_RESIZE(debugBounds_t)
+
+#undef DEFINE_RENDER_DEBUG_TRIVIAL_RESIZE
+
+template <>
+__declspec(noinline) bool idList<debugText_t, 3>::Resize(int newSize) {
+  if (newSize <= 0) {
+    if (listStatic == 0 || listStatic == 2) {
+      if (list != nullptr)
+        idMem::Singleton()->Free(list, ALIGN_16);
+      list = nullptr;
+      size = 0;
+    }
+    num = 0;
+    return true;
+  }
+  if (newSize == size || listStatic != 0)
+    return true;
+
+  debugText_t* oldList = list;
+  debugText_t* replacement =
+      static_cast<debugText_t*>(idMem::Singleton()->AllocWithLocation(
+          "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag",
+          sizeof(debugText_t) * static_cast<std::size_t>(newSize),
+          static_cast<memTag_t>(memTag), false, ALIGN_16, HEAP_DEFAULTHEAP));
+  if (replacement != nullptr) {
+    const int copyCount = (std::min)(size, newSize);
+    for (int index = 0; index < copyCount; ++index)
+      replacement[index] = oldList[index];
+    idMem::Singleton()->Free(oldList, ALIGN_16);
+  }
+  list = replacement;
+  if (list == nullptr)
+    return false;
+  size = newSize;
+  num = (std::min)(num, newSize);
+  return true;
+}
+
+template <>
+__declspec(noinline) bool idList<debugPolygon_t, 3>::Resize(int newSize) {
+  if (newSize <= 0) {
+    if (listStatic == 0 || listStatic == 2) {
+      if (list != nullptr) {
+        for (int index = 0; index < size; ++index)
+          list[index].~debugPolygon_t();
+        idMem::Singleton()->Free(list, ALIGN_16);
+      }
+      list = nullptr;
+      size = 0;
+    }
+    num = 0;
+    return true;
+  }
+  if (newSize == size || listStatic != 0)
+    return true;
+
+  list = static_cast<debugPolygon_t*>(idListArrayResize<debugPolygon_t>(
+      list, size, newSize, static_cast<memTag_t>(memTag), false));
+  if (list == nullptr)
+    return false;
+  size = newSize;
+  num = (std::min)(num, newSize);
+  return true;
+}
+
+#define DEFINE_RENDER_DEBUG_APPEND(ElementType)                               \
+  template <>                                                                \
+  __declspec(noinline) int idList<ElementType, 3>::Append(                    \
+      const ElementType& value) {                                             \
+    if (list == nullptr) {                                                    \
+      const int initialSize = granularity > 0 ? granularity : 1;              \
+      if (!Resize(initialSize))                                               \
+        return -1;                                                            \
+    }                                                                         \
+    if (num == size) {                                                        \
+      int newSize;                                                            \
+      if (forceIdListsToReallocateEveryAppend) {                              \
+        newSize = size + 1;                                                   \
+      } else if (granularity != 0) {                                          \
+        const int candidate = size + granularity;                             \
+        newSize = candidate - candidate % granularity;                        \
+      } else if (size <= 0x3fffffff) {                                        \
+        newSize = size * 2;                                                   \
+        if (newSize == 0)                                                     \
+          newSize = 1;                                                        \
+      } else {                                                                \
+        newSize = 0x7fffffff;                                                 \
+      }                                                                       \
+      if (!Resize(newSize))                                                   \
+        return -1;                                                            \
+    }                                                                         \
+    if (num >= size)                                                          \
+      return num - 1;                                                         \
+    list[num] = value;                                                        \
+    return num++;                                                             \
+  }
+
+DEFINE_RENDER_DEBUG_APPEND(debugLine_t)
+DEFINE_RENDER_DEBUG_APPEND(debugBounds_t)
+DEFINE_RENDER_DEBUG_APPEND(debugText_t)
+DEFINE_RENDER_DEBUG_APPEND(debugPolygon_t)
+
+#undef DEFINE_RENDER_DEBUG_APPEND
+
+template void* idListArrayResize<debugLine_t>(void*, int, int, memTag_t,
+                                               bool);
+template void* idListArrayResize<debugBounds_t>(void*, int, int, memTag_t,
+                                                 bool);
+template void* idListArrayResize<debugPolygon_t>(void*, int, int, memTag_t,
+                                                  bool);
+
+float idMath::Cos16(float angle) {
+  if (angle < 0.0f || angle >= kTwoPi)
+    angle -= std::floor(angle * 0.15915494f) * kTwoPi;
+
+  float sign = 1.0f;
+  if (angle >= idMath::PI) {
+    if (angle > 4.712389f) {
+      angle -= kTwoPi;
+    } else {
+      sign = -1.0f;
+      angle = idMath::PI - angle;
+    }
+  } else if (angle > 1.5707964f) {
+    sign = -1.0f;
+    angle = idMath::PI - angle;
+  }
+
+  const float square = angle * angle;
+  return (((((0.0000247609f - square * 0.0000002605f) * square -
+              0.0013888397f) *
+                 square +
+             0.041666642f) *
+                square -
+            0.5f) *
+               square +
+           1.0f) *
+          sign;
+}
 
 void idRenderDebugLocal::DebugArrow3(const idVec4& color,
                                      const idVec3& start,
@@ -382,8 +538,8 @@ void idRenderDebugLocal::DebugCone(const idVec4& color,
   if (radius1 == 0.0f) {
     for (int degrees = 20; degrees <= 360; degrees += 20) {
       const float angle = static_cast<float>(degrees) * kDegreesToRadians;
-      const idVec3 radial = -secondAxis * Cos16Retail(angle) +
-                            firstAxis * Sin16Retail(angle);
+      const idVec3 radial = -secondAxis * idMath::Cos16(angle) +
+                            firstAxis * idMath::Sin16(angle);
       const idVec3 second = secondCenter + radial * radius2;
       DebugLine(color, previousSecond, second, lifetime, depthTest);
       DebugLine(color, second, apex, lifetime, depthTest);
@@ -395,8 +551,8 @@ void idRenderDebugLocal::DebugCone(const idVec4& color,
   idVec3 previousFirst = apex - secondAxis * radius1;
   for (int degrees = 20; degrees <= 360; degrees += 20) {
     const float angle = static_cast<float>(degrees) * kDegreesToRadians;
-    const idVec3 radial = -secondAxis * Cos16Retail(angle) +
-                          firstAxis * Sin16Retail(angle);
+    const idVec3 radial = -secondAxis * idMath::Cos16(angle) +
+                          firstAxis * idMath::Sin16(angle);
     const idVec3 first = apex + radial * radius1;
     const idVec3 second = secondCenter + radial * radius2;
     DebugLine(color, previousFirst, first, lifetime, depthTest);
@@ -424,8 +580,8 @@ void idRenderDebugLocal::DebugCone(const idVec4& color,
   idVec3 previous = center - secondAxis * radius;
   for (int degrees = 20; degrees <= 360; degrees += 20) {
     const float rotation = static_cast<float>(degrees) * kDegreesToRadians;
-    const idVec3 radial = -secondAxis * Cos16Retail(rotation) +
-                          firstAxis * Sin16Retail(rotation);
+    const idVec3 radial = -secondAxis * idMath::Cos16(rotation) +
+                          firstAxis * idMath::Sin16(rotation);
     const idVec3 point = center + radial * radius;
     DebugLine(color, previous, point, lifetime, depthTest);
     DebugLine(color, point, apex, lifetime, depthTest);
@@ -568,16 +724,19 @@ void idRenderDebugLocal::DebugSphere(const idVec4& color,
                                      const idSphere& sphere, int sectors,
                                      int lifetime, bool depthTest) {
   const int angleStep = 360 / sectors;
-  std::vector<idVec3> lastArray(
-      static_cast<std::size_t>(sectors),
-      idVec3{sphere.origin.x, sphere.origin.y,
-             sphere.origin.z + sphere.radius});
+  idHeapArray<idVec3> lastArray;
+  lastArray.Alloc(static_cast<unsigned int>(sectors));
+  const idVec3 northPole{sphere.origin.x, sphere.origin.y,
+                         sphere.origin.z + sphere.radius};
+  for (int index = 0; index < sectors; ++index) {
+    lastArray.buffer[index] = northPole;
+  }
 
   for (int latitude = angleStep; latitude <= 360; latitude += angleStep) {
     const float latitudeRadians =
         static_cast<float>(latitude) * kDegreesToRadians;
-    const float latitudeSin = Sin16Retail(latitudeRadians);
-    const float latitudeCos = Cos16Retail(latitudeRadians);
+    const float latitudeSin = idMath::Sin16(latitudeRadians);
+    const float latitudeCos = idMath::Cos16(latitudeRadians);
     idVec3 last{sphere.origin.x,
                 sphere.origin.y + sphere.radius * latitudeSin,
                 sphere.origin.z + sphere.radius * latitudeCos};
@@ -589,14 +748,14 @@ void idRenderDebugLocal::DebugSphere(const idVec4& color,
           static_cast<float>(longitude) * kDegreesToRadians;
       const idVec3 point{
           sphere.origin.x +
-              Sin16Retail(longitudeRadians) * sphere.radius * latitudeSin,
+              idMath::Sin16(longitudeRadians) * sphere.radius * latitudeSin,
           sphere.origin.y +
-              Cos16Retail(longitudeRadians) * sphere.radius * latitudeSin,
+              idMath::Cos16(longitudeRadians) * sphere.radius * latitudeSin,
           last.z};
       DebugLine(color, last, point, lifetime, depthTest);
-      DebugLine(color, last, lastArray[static_cast<std::size_t>(index)],
+      DebugLine(color, last, lastArray.buffer[index],
                 lifetime, depthTest);
-      lastArray[static_cast<std::size_t>(index)] = last;
+      lastArray.buffer[index] = last;
       last = point;
     }
   }
@@ -744,8 +903,7 @@ void idRenderDebugLocal::DebugFilledPolygon(const idVec4& color,
                                             int lifetime, bool depthTest) {
   debugPolygon_t polygon{};
   polygon.rgb = color;
-  for (int index = 0; index < winding.GetNumPoints(); ++index)
-    polygon.winding.AddPoint(winding[index]);
+  polygon.winding = winding;
   polygon.depthTest = depthTest;
   polygon.lifeTime = DebugLifetime(lifetime);
   debugPolygons.Append(polygon);

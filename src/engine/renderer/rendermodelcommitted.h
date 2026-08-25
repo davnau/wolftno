@@ -23,7 +23,7 @@ private:
 public:
 #endif
   idRenderModelCommitted();
-  ~idRenderModelCommitted();
+  ~idRenderModelCommitted() noexcept(false);
 
 public:
   void LocalPointToGlobal(const idVec3& in, idVec3& out) const;

@@ -13,7 +13,7 @@ public:
   const char* DefaultDefinition() const override;
   void FreeData() override;
   void Parse(idParser& source) override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idParmBlock parmBlock;
   idAtomicString parentDeclName;

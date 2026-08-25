@@ -79,8 +79,8 @@ public:
   const char* DefaultDefinition() const override;
   bool ReloadIfStale() override;
   void Print() override;
-  void List() override;
-  idDeclInfo* GetDeclInfo() override;
+  void List() const override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   void FreeData() override;
 

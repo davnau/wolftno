@@ -6,7 +6,7 @@
 #include <cstdint>
 
 class idAnimWebScalar;
-struct idMD6Node;
+class idMD6Node;
 struct idScalarMemBlock {
   idScalarMemBlock() : floats(nullptr), num(0) {}
   ~idScalarMemBlock() { Free(); }

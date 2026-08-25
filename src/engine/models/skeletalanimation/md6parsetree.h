@@ -6,20 +6,32 @@
 #include <cstdint>
 
 struct frameSetData_t {
-  std::uint16_t firstOffsets[4];
-  std::uint16_t rangeOffsets[4];
-  std::uint16_t bitsOffsets[4];
-  std::uint16_t nextOffsets[4];
+  std::uint16_t firstROffset;
+  std::uint16_t firstSOffset;
+  std::uint16_t firstTOffset;
+  std::uint16_t firstUOffset;
+  std::uint16_t rangeROffset;
+  std::uint16_t rangeSOffset;
+  std::uint16_t rangeTOffset;
+  std::uint16_t rangeUOffset;
+  std::uint16_t RBitsOffset;
+  std::uint16_t SBitsOffset;
+  std::uint16_t TBitsOffset;
+  std::uint16_t UBitsOffset;
+  std::uint16_t nextROffset;
+  std::uint16_t nextSOffset;
+  std::uint16_t nextTOffset;
+  std::uint16_t nextUOffset;
   std::uint16_t totalSize;
-  std::int16_t frameStart;
-  std::int16_t frameRange;
+  std::uint16_t frameStart;
+  std::uint16_t frameRange;
   std::uint8_t pad[10];
 };
 
 struct md6FrameInfo_t {
   const idMD6AnimData* animData;
   const frameSetData_t* frameSetData;
-  const void* animMods;
+  const idMD6Blend::jointMod_t* animMods;
   std::uint16_t flags;
   std::uint16_t weightGroup;
   std::uint16_t animInfoSize;
@@ -32,7 +44,6 @@ struct md6FrameInfo_t {
   float originFrameFraction;
   std::int16_t originFrameSetFrame;
   std::uint16_t originFrameSetSize;
-  std::uint32_t pad52;
   const frameSetData_t* originFrameSetData;
 };
 
@@ -44,20 +55,17 @@ struct md6BlendInfo_t {
   float currentAlpha;
 };
 
-enum md6AnimCommandOp_t : std::int32_t {
-  OP_END = 1,
-  OP_DECODE_AND_PUSH = 2,
-  OP_DECODE_FACECOMPOSITE_AND_BLEND = 3,
-  OP_POP_AND_BLEND = 4,
-};
-
 struct md6AnimCommand_t {
-  md6AnimCommandOp_t op;
-  std::uint32_t pad4;
+  enum op_t : std::int32_t {
+    OP_NO = 0,
+    OP_END = 1,
+    OP_DECODE_AND_PUSH = 2,
+    OP_DECODE_FACECOMPOSITE_AND_BLEND = 3,
+    OP_POP_AND_BLEND = 4,
+  } op;
   md6FrameInfo_t frameInfo;
   md6BlendInfo_t blendInfo;
-  std::uint32_t debugCommand;
-  std::uint32_t pad84;
+  int debugCommand;
   const char* animName;
 };
 
@@ -71,7 +79,7 @@ struct md6BlendOutputs_t {
   bool done;
   bool fudged;
   std::uint8_t pad[2];
-  float time;
+  int time;
   float jointBounds[6];
 };
 
@@ -83,28 +91,11 @@ using idMD6ParseTreeBranchUpdate = void (*)(idMD6Branch*, bool,
 void SetMD6ParseTreeModelCompatible(idMD6ParseTreeModelCompatible compatible);
 void SetMD6ParseTreeBranchUpdate(idMD6ParseTreeBranchUpdate update);
 
-void GetFrame(idMD6LeafPlay* leaf, int timeMSec, std::int16_t* frame,
-              float* fraction, std::uint32_t* loops,
-              std::uint32_t ticksPerSec);
-md6AnimCommand_t* SetupCommandBlendInfo(md6AnimCommand_t* command,
-                                        idMD6Branch* branch);
-md6AnimCommand_t* SetupCommandFrameInfo(
-    const idMD6Model* model, md6AnimCommand_t* command, idMD6LeafPlay* leaf,
-    std::uint32_t lastTimeMSec, int timeMSec, idBounds* frameBounds,
-    idBounds* translatedBounds, idBounds* normalizedBounds,
-    std::uint16_t animatorFlags, int ticksPerSec);
-md6AnimCommand_t* ParseTree_r(
-    const idMD6Model* model, std::uint32_t lastTimeMSec, int timeMSec,
-    int ticksPerSec, idMD6FusionBranch* branch, md6AnimCommand_t* command,
-    idBounds* frameBounds, idBounds* translatedBounds,
-    idBounds* normalizedBounds, md6BlendOutputs_t* blendOutputs,
-    std::uint16_t animatorFlags);
-std::uint32_t ParseTree(
-    const idMD6Model* model, std::uint32_t lastTimeMSec, int timeMSec,
-    int ticksPerSec, idMD6FusionBranch* tree, md6AnimCommand_t* commands,
-    int maxCommands, idBounds* frameBounds, idBounds* translatedBounds,
-    idBounds* normalizedBounds, md6BlendOutputs_t* blendOutputs,
-    std::uint16_t animatorFlags);
+int ParseTree(const idMD6Model* model, int lastTimeMSec, int timeMSec,
+              int ticksPerSec, idMD6Node* tree, md6AnimCommand_t* commands,
+              int maxCommands, idBounds& frameBounds,
+              idBounds& translatedBounds, idBounds& normalizedBounds,
+              md6BlendOutputs_t* blendOutputs, std::uint16_t animatorFlags);
 
 static_assert(sizeof(frameSetData_t) == 48);
 static_assert(sizeof(md6FrameInfo_t) == 64);
@@ -117,4 +108,3 @@ static_assert(offsetof(md6AnimCommand_t, frameInfo) == 8);
 static_assert(offsetof(md6AnimCommand_t, blendInfo) == 72);
 static_assert(offsetof(md6AnimCommand_t, animName) == 88);
 static_assert(sizeof(md6BlendOutputs_t) == 128);
-

@@ -11,7 +11,7 @@ public:
   };
 
   idDeclRollBones();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<idDeclRollBoneInstance> rollBones;
 

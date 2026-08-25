@@ -16,7 +16,7 @@ public:
 
   idDeclVmtrPreload();
   ~idDeclVmtrPreload() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   const idList<preloadMaterial_t>& GetListForSpawnspot(const char* spawnSpot) const;
 
   idList<preloadMaterial_t> sharedList;

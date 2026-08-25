@@ -140,7 +140,7 @@ public:
   idDeclAF();
   ~idDeclAF() override;
 
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   bool RebuildTextSource() override;
   const char* DefaultDefinition() const override;
   void Parse(idParser& source) override;

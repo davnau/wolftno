@@ -8,7 +8,7 @@ public:
   idDeclVoiceOver();
   ~idDeclVoiceOver() override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   std::uint64_t Size() const override;
   int GetMaxLength() const;
 

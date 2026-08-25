@@ -63,4 +63,4 @@ const idSoundShader* idDeclImpactSound::GetImpactSoundForMaterial(int materialID
   }
 }
 
-idDeclInfo* idDeclImpactSound::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclImpactSound::GetDeclInfo() const { return &resourceList; }

@@ -15,7 +15,7 @@ void idDeclReachIK::FreeData() {
   armInfo.Clear();
 }
 
-idDeclInfo* idDeclReachIK::GetDeclInfo() {
+idDeclInfo* idDeclReachIK::GetDeclInfo() const {
   return &resourceList;
 }
 
@@ -29,6 +29,6 @@ void idDeclHandIK::FreeData() {
   handInfo.Clear();
 }
 
-idDeclInfo* idDeclHandIK::GetDeclInfo() {
+idDeclInfo* idDeclHandIK::GetDeclInfo() const {
   return &resourceList;
 }

@@ -23,7 +23,7 @@ public:
   idDeclReachIK();
   ~idDeclReachIK() override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<idIKArm, 83> armInfo;
   static idDeclInfoTemplate<idDeclReachIK> resourceList;
@@ -34,7 +34,7 @@ public:
   idDeclHandIK();
   ~idDeclHandIK() override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<idIKHand, 83> handInfo;
   static idDeclInfoTemplate<idDeclHandIK> resourceList;

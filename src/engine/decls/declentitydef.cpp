@@ -146,7 +146,7 @@ void idDeclEntityDef::FreeData() {
   stateLineNumberOffset = 0;
 }
 
-idDeclInfo* idDeclEntityDef::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclEntityDef::GetDeclInfo() const { return &resourceList; }
 
 const char* idDeclEntityDef::GetEntityState() const {
   return textSource != nullptr && stateOffset >= 0 && stateOffset <= textLength

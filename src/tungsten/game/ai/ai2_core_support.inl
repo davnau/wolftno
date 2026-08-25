@@ -315,8 +315,8 @@ RECOVERED_METHOD(idAIMoveState, GetNextPoint)
 idAnimator_Drone::~idAnimator_Drone() = default;
 idAnimatorParms_AnimWeb::idAnimatorParms_AnimWeb(
     idAnimStack* animStack_, const char* name_,
-    const idMD6Blend::blendOp_t blendOp_,
-    const idMD6Blend::originBlend_t originBlend_,
+    const idAI2CoreMD6Blend::blendOp_t blendOp_,
+    const idAI2CoreMD6Blend::originBlend_t originBlend_,
     const md6WeightGroup_t weightGroup_,
     const md6WeightGroup_t filterGroup_, const float alpha_,
     const idDeclAnimWeb* webDecl_, const char* initialSubWebName_,

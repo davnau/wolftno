@@ -50,7 +50,7 @@ class idParmBlock {
 public:
   idParmBlock();
   idParmBlock(const idParmBlock& other);
-  ~idParmBlock();
+  ~idParmBlock() noexcept(false);
   idParmBlock& operator=(const idParmBlock& other);
 
   bool SetsRenderParm(const idDeclRenderParm* parm) const;
@@ -119,7 +119,7 @@ public:
   idStaticParmBlock(const idStaticParmBlock& other) : idStaticParmBlock() {
     *this = other;
   }
-  ~idStaticParmBlock() = default;
+  ~idStaticParmBlock() noexcept(false) = default;
   idStaticParmBlock& operator=(const idStaticParmBlock& other) {
     const int numOps = other.ops.num;
     const int numConstants = other.constants.num;

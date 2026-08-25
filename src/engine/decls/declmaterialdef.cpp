@@ -15,6 +15,6 @@ idDeclMaterialDef::idDeclMaterialDef()
   resourceListPtr = &resourceList;
 }
 
-idDeclInfo* idDeclMaterialDef::GetDeclInfo() {
+idDeclInfo* idDeclMaterialDef::GetDeclInfo() const {
   return &resourceList;
 }

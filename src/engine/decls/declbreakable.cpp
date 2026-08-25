@@ -106,7 +106,7 @@ idDeclBreakable::idDeclBreakable() : numPieces(0), settings{} {
 idDeclBreakable::~idDeclBreakable() { Clear(); }
 
 const char* idDeclBreakable::DefaultDefinition() const { return "{ }\n"; }
-idDeclInfo* idDeclBreakable::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclBreakable::GetDeclInfo() const { return &resourceList; }
 
 void idDeclBreakable::Clear() {
   settings.linearFriction = 0.6f;

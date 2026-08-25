@@ -47,7 +47,7 @@ idDeclSoundMixing::idDeclSoundMixing() {
   InitializeLimiter(masterBus.limiter);
 }
 
-idDeclInfo* idDeclSoundMixing::GetDeclInfo() {
+idDeclInfo* idDeclSoundMixing::GetDeclInfo() const {
   return &resourceList;
 }
 

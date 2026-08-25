@@ -35,7 +35,7 @@ public:
   void FreeData() override;
   void Parse(idParser& source) override;
   bool RebuildTextSource() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   const char* GetEntityState() const;
   int GetEntityStateLength() const;

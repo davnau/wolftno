@@ -61,7 +61,7 @@ public:
   idDeclSwfResource();
   ~idDeclSwfResource() override;
   int FindSoundIndex(const idStr& soundName) const;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<soundEntry_t> soundEffects;
   musicEntry_t music;

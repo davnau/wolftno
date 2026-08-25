@@ -117,7 +117,7 @@ public:
   };
 
   idDeclSoundMixing();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   bool SetImplicitText() override;
   soundShaderBus_t GetGroupRouting(soundShaderGroups_t group) const;
 

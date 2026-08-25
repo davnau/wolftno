@@ -141,9 +141,11 @@ int idEncounterGroup::AnyMemberHighestAlertCycle() const {
 
 // DIA: idEncounterGroup::SetGroupEnemyUpdateTimeStamp
 void idEncounterGroup::SetGroupEnemyUpdateTimeStamp(const idEntity* enemy,
-                                                     int time) {
+                                                     int time,
+                                                     const idVec3* enemyPosition) {
   groupEnemy = enemy;
   groupEnemyUpdateTimeStamp = time;
+  (void)enemyPosition;
 }
 
 // DIA: idEncounterGroup::IsRecentlyGroupSpotted

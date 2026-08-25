@@ -245,7 +245,7 @@ int idSoundSample::PreCacheStreamData(bool highPriority) const {
   return ReadCachedSoundData(0, nullptr, 0x10000, highPriority ? 0 : 3, false);
 }
 
-void idSoundSample::List() {
+void idSoundSample::List() const {
   const char* channels = format.basic.numChannels > 1 ? "ST" : "  ";
   const int sampleCount = lastValidSample - firstValidSample;
   char status = 'X';

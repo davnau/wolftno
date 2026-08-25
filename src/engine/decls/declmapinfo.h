@@ -14,7 +14,7 @@ public:
 
   idDeclMapInfo();
   ~idDeclMapInfo() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idStrId prettyMapName;
   int discNumber;

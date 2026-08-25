@@ -16,7 +16,7 @@ idDeclTable::~idDeclTable() {
 
 void idDeclTable::FreeData() { table->Clear(); }
 const char* idDeclTable::DefaultDefinition() const { return "{ { 0 } }\n"; }
-idDeclInfo* idDeclTable::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclTable::GetDeclInfo() const { return &resourceList; }
 float idDeclTable::TableLookup(float value, bool fastSearch) const {
   return table->TableLookup(value, fastSearch);
 }

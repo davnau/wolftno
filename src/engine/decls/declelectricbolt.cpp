@@ -14,4 +14,4 @@ idDeclElectricBolt::idDeclElectricBolt()
   resourceListPtr = &resourceList;
 }
 
-idDeclInfo* idDeclElectricBolt::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclElectricBolt::GetDeclInfo() const { return &resourceList; }

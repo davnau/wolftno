@@ -23,7 +23,7 @@ idRenderLightCommitted::idRenderLightCommitted()
       lightMtr(nullptr),
       castsShadows(false) {}
 
-idRenderLightCommitted::~idRenderLightCommitted() {
+idRenderLightCommitted::~idRenderLightCommitted() noexcept(false) {
   if (world != nullptr) {
     world->UnlinkLightFromTree(this);
   }

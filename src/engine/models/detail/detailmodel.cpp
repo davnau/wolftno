@@ -52,6 +52,14 @@ idCVar r_detailFadeDistMax(
     "r_detailFadeDistMax", "3500", CVAR_FLOAT,
     "detail models will be completely faded out at this range");
 
+template <>
+idDetailModel* idTypedResourceList<idDetailModel>::Alloc(
+    const char* resourceName) const {
+  idDetailModel* resource = new idDetailModel;
+  resource->SetName(resourceName);
+  return resource;
+}
+
 idTypedResourceList<idDetailModel> idDetailModel::resourceList("detailModel");
 idStaticList<detailPaletteEntry_t, 128> idDetailModel::paletteEntries;
 idStaticList<detailPaletteVert_t, 1024> idDetailModel::paletteVerts;

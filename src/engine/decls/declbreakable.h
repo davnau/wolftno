@@ -72,7 +72,7 @@ public:
   ~idDeclBreakable() override;
 
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   void Clear();
 

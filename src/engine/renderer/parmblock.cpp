@@ -383,7 +383,7 @@ const char* idParmBlock::GetString(
 
 idParmBlock::idParmBlock() = default;
 
-idParmBlock::~idParmBlock() {
+idParmBlock::~idParmBlock() noexcept(false) {
   Clear();
 }
 

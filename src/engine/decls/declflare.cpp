@@ -17,6 +17,6 @@ void idDeclFlare::FreeData() {
   subflares.num = 0;
 }
 
-idDeclInfo* idDeclFlare::GetDeclInfo() {
+idDeclInfo* idDeclFlare::GetDeclInfo() const {
   return &resourceList;
 }

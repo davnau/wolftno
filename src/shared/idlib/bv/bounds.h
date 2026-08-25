@@ -26,6 +26,7 @@ public:
            b[1].x == 0.0f && b[1].y == 0.0f && b[1].z == 0.0f;
   }
   bool AddPoint(const idVec3& point);
+  void AddBounds(const idBounds& bounds);
   float GetRadius() const;
   float GetMaxDistFromOrigin() const;
   float GetInternalRadiusXY() const;

@@ -7,7 +7,7 @@ int FindAtomicName(const idList<idAtomicString,32>& names,const char* name){for(
 idDeclInfoTemplate<idDeclAnimSubWeb> idDeclAnimSubWeb::resourceList("subWeb","idDeclAnimSubWeb","subweb",false);
 idDeclAnimSubWeb::idDeclAnimSubWeb():changeId(0),color{-1,-1,-1,-1},isHub(false),isVisible(true){resourceListPtr=&resourceList;}
 idDeclAnimSubWeb::~idDeclAnimSubWeb(){FreeData();}
-const char*idDeclAnimSubWeb::DefaultDefinition()const{return"{\n\tsubwebname \"defaultSubWeb\"\n\tmodels {\n\t}\n\tprops {\n\t}\n}\n";}idDeclInfo*idDeclAnimSubWeb::GetDeclInfo(){return&resourceList;}
+const char*idDeclAnimSubWeb::DefaultDefinition()const{return"{\n\tsubwebname \"defaultSubWeb\"\n\tmodels {\n\t}\n\tprops {\n\t}\n}\n";}idDeclInfo*idDeclAnimSubWeb::GetDeclInfo() const{return&resourceList;}
 void idDeclAnimSubWeb::FreeData(){for(int i=0;i<nodes.Num();++i)delete nodes[i];nodes.ClearFree();subWebs.ClearFree();states.ClearFree();models.ClearFree();edges.ClearFree();edgeCache.ClearFree();++changeId;}
 animWebSubWebIndex_t idDeclAnimSubWeb::AddSubWeb(const char*n){for(int index=0;index<subWebs.Num();++index)if(idStr::Icmp(subWebs[index].name.str,n)==0)return animWebSubWebIndex_t(index);idSubWebInfo_t i;i.name.Set(n);return animWebSubWebIndex_t(subWebs.Append(i));}
 animWebNodeIndex_t idDeclAnimSubWeb::AddNode(animWebSubWebIndex_t s,const idDeclAnimWeb::stateList_t&list){if(s.value>=0&&s.value<subWebs.Num())for(int i=0;i<subWebs[s.value].nodes.Num();++i){idDeclAnimWebNode*n=nodes[subWebs[s.value].nodes[i].value];if(n->MatchStates(list)==list.numStates)return n->nodeIndex;}const animWebNodeIndex_t index(nodes.Num());nodes.Append(new idDeclAnimWebNode(index,s,list));if(s.value>=0&&s.value<subWebs.Num())subWebs[s.value].nodes.Append(index);++changeId;return index;}

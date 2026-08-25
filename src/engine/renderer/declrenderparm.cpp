@@ -46,7 +46,7 @@ const char* idDeclRenderParm::DefaultDefinition() const {
   return "{ vec 0 }\n";
 }
 
-idDeclInfo* idDeclRenderParm::GetDeclInfo() {
+idDeclInfo* idDeclRenderParm::GetDeclInfo() const {
   return &resourceList;
 }
 
@@ -58,7 +58,7 @@ idImage* idDeclRenderParm::ParseImageLine(idParser& source) const {
       idImage::resourceList.Load(imageName.data, true, false));
 }
 
-void idDeclRenderParm::List() {
+void idDeclRenderParm::List() const {
   idLib::Printf("%s ", name.str);
   const parmValue_t* value = reinterpret_cast<const parmValue_t*>(
       &renderThreadParmState->GetParmVec4(this));

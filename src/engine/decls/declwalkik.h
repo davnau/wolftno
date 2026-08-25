@@ -22,7 +22,7 @@ public:
   idDeclWalkIK();
   ~idDeclWalkIK() override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<idIKLeg, 83> legJoints;
   idAtomicString waistJoint;

@@ -10,7 +10,7 @@ idDeclLoadingScreen::idDeclLoadingScreen() : tauntImage(nullptr), loadIndex(-1) 
 
 idDeclLoadingScreen::~idDeclLoadingScreen() = default;
 
-idDeclInfo* idDeclLoadingScreen::GetDeclInfo() {
+idDeclInfo* idDeclLoadingScreen::GetDeclInfo() const {
   return &resourceList;
 }
 

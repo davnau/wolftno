@@ -252,15 +252,6 @@ enum voiceMsg_t : int;
 enum voiceController_t : int;
 enum aiSense_t : int;
 
-struct trackingParms_t {
-  float springK{1.0F};
-  float springMass{1.0F};
-  float springDamping{2.0F};
-  float springMaxSpeed{0.0F};
-  float springMaxLength{0.0F};
-  float deltaSeconds{0.016F};
-};
-
 template <typename T>
 class idEntityPtr {
 public:
@@ -851,6 +842,8 @@ protected:
 class idPlayer : public idActor {
 public:
   actorClass_t GetActorClass() const override { return ACTORCLASS_PLAYER; }
+  bool IsDying() const { return dyingForTest; }
+  void SetDyingForTest(bool value) { dyingForTest = value; }
   idFirstPersonEvent* GetCurFirstPersonEvent();
   void SetCurFirstPersonEvent(idFirstPersonEvent* value) {
     currentFirstPersonEvent = value;
@@ -1104,6 +1097,7 @@ private:
   float totalCurHealth{100.0F};
   bool spectating{false};
   bool sprinting{false};
+  bool dyingForTest{false};
   int takedownFocusState{0};
   bool takedownInProgress{false};
   float fieldOfView{90.0F};
@@ -1652,7 +1646,15 @@ public:
   void ResetHighestAlertCycleQueryCountForTest() const {
     highestAlertCycleQueryCount = 0;
   }
-  void SetGroupEnemyUpdateTimeStamp(const idEntity* enemy, int time);
+  void SetGroupEnemyUpdateTimeStamp(const idEntity* enemy, int time,
+                                    const idVec3* enemyPosition);
+  void SetGroupEnemyUpdateTimeStamp(const idEntity* enemy, int time) {
+    const idVec3 position =
+        enemy != nullptr && enemy->GetPhysics() != nullptr
+            ? enemy->GetPhysics()->GetOrigin()
+            : idVec3{};
+    SetGroupEnemyUpdateTimeStamp(enemy, time, &position);
+  }
   bool IsRecentlyGroupSpotted(const idEntity* enemy, float seconds) const;
   const idPlayer* GetPlayerWithLowestHealth() const;
   const idPlayer* GetPlayerWithHighestHealth() const;

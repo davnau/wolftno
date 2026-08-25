@@ -34,7 +34,7 @@ idDeclInfoTemplate<idDeclAF> idDeclAF::resourceList(
 idDeclInfoTemplate<idDeclParticle> idDeclParticle::resourceList(
     "particle", "idDeclParticle", "prt", false);
 
-idDeclInfo* idDeclEnv::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclEnv::GetDeclInfo() const { return &resourceList; }
 
 idDeclSkins::idDeclSkins() {
   resourceListPtr = &resourceList;
@@ -42,30 +42,30 @@ idDeclSkins::idDeclSkins() {
 
 idDeclSkins::~idDeclSkins() = default;
 
-idDeclInfo* idDeclSkins::GetDeclInfo() {
+idDeclInfo* idDeclSkins::GetDeclInfo() const {
   return &resourceList;
 }
 
-idDeclInfo* idDeclGameTime::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclGameTime::GetDeclInfo() const { return &resourceList; }
 
 idDeclDestructiblePieceInfo::idDeclDestructiblePieceInfo() {
   resourceListPtr = &resourceList;
 }
-idDeclInfo* idDeclDestructiblePieceInfo::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclDestructiblePieceInfo::GetDeclInfo() const { return &resourceList; }
 
 idDeclDragJoints::idDeclDragJoints()
     : ghostJointDistance(16.0f), maxBend(90.0f), downHillPitchAdjust(1.35f) {
   resourceListPtr = &resourceList;
 }
 idDeclDragJoints::~idDeclDragJoints() = default;
-idDeclInfo* idDeclDragJoints::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclDragJoints::GetDeclInfo() const { return &resourceList; }
 
 idDeclFreezeJoints::idDeclFreezeJoints() { resourceListPtr = &resourceList; }
-idDeclInfo* idDeclFreezeJoints::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclFreezeJoints::GetDeclInfo() const { return &resourceList; }
 
 idDeclPonytail::idDeclPonytail() : modelDef(nullptr) { resourceListPtr = &resourceList; }
 idDeclPonytail::~idDeclPonytail() = default;
-idDeclInfo* idDeclPonytail::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclPonytail::GetDeclInfo() const { return &resourceList; }
 
 idVehicleSoundDef::surfaceSoundList_t::surfaceSoundList_t()
     : metal{}, stone{}, wood{}, cardboard{}, liquid{}, glass{}, plastic{}, dirt{}, asphalt{},
@@ -166,5 +166,5 @@ idDeclVehicleProps::idDeclVehicleProps()
 }
 
 idDeclVehicleProps::~idDeclVehicleProps() = default;
-idDeclInfo* idDeclVehicleProps::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclVehicleProps::GetDeclInfo() const { return &resourceList; }
 void idDeclVehicleProps::Parse(idParser& source) { idDeclTypeInfo::Parse(source); }

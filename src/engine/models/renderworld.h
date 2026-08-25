@@ -109,9 +109,7 @@ struct debugPolygon_t {
     if (this == &other)
       return *this;
     rgb = other.rgb;
-    winding.Clear();
-    for (int i = 0; i < other.winding.GetNumPoints(); ++i)
-      winding.AddPoint(other.winding[i]);
+    winding = other.winding;
     depthTest = other.depthTest;
     lifeTime = other.lifeTime;
     return *this;

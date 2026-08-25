@@ -38,7 +38,6 @@ public:
   void LoadResource() override;
   idResourceList* GetResourceList() const override;
   bool Load_Binary(const char* detailFileName);
-  void FreeData();
 
   static void GetDetailSubTreesForView_r(
       const dm_model_t& model, const std::int16_t (*frustumVerts)[8],
@@ -57,10 +56,15 @@ public:
   static idStaticList<std::uint16_t, 4096> paletteIndices;
 
 private:
+  void FreeData();
   static void SwapModelTreeNodes(dm_model_t* model);
   static void SwapModelSubTrees(dm_subTreeData_t* data,
                                 dm_subTreeTreeNodes_t* treeNodes);
 };
+
+template <>
+idDetailModel* idTypedResourceList<idDetailModel>::Alloc(
+    const char* resourceName) const;
 
 extern idCVar r_detailFadeDistMax;
 

@@ -170,7 +170,7 @@ idRenderView::idRenderView() {
   occlusionState->renderFrameNumber = 1;
 }
 
-idRenderView::~idRenderView() {
+idRenderView::~idRenderView() noexcept(false) {
   idMem::Singleton()->Free(occlusionState, ALIGN_16);
 }
 

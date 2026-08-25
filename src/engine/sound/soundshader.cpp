@@ -202,7 +202,7 @@ idSoundShader::idSoundShader()
 }
 
 idSoundShader::~idSoundShader() { FreeData(); }
-idDeclInfo* idSoundShader::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idSoundShader::GetDeclInfo() const { return &resourceList; }
 
 bool idSoundShader::SetImplicitText() {
   idStr waveName(name.str);
@@ -335,7 +335,7 @@ int idSoundShader::GetMaxLength() const {
   return maximum;
 }
 
-void idSoundShader::List() {
+void idSoundShader::List() const {
   int bytes = 0;
   for (int index = 0; index < entries.Num(); ++index)
     if (entries[index] != nullptr) bytes += entries[index]->dataLength;
@@ -395,7 +395,7 @@ void idSoundShader::Parse(idParser& source) {
 }
 
 idDeclDuck::idDeclDuck() : layer(0), groupVolume{} { resourceListPtr = &resourceList; }
-idDeclInfo* idDeclDuck::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclDuck::GetDeclInfo() const { return &resourceList; }
 const char* idDeclDuck::DefaultDefinition() const { return "{ }\n"; }
 
 void idDeclDuck::Parse(idParser& source) {

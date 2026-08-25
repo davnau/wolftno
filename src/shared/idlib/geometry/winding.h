@@ -15,10 +15,24 @@ struct idVec5 {
 class idWinding {
 public:
   idWinding() = default;
+  idWinding(const idWinding& other) { *this = other; }
   explicit idWinding(int points) { ReAllocate(points, false); }
   virtual ~idWinding();
   virtual void Clear();
   virtual bool ReAllocate(int points, bool keep);
+
+  idWinding& operator=(const idWinding& other) {
+    if (this == &other)
+      return *this;
+    if (other.numPoints <= 0 || ReAllocate(other.numPoints, false)) {
+      for (int index = 0; index < other.numPoints; ++index)
+        p[index] = other.p[index];
+      numPoints = other.numPoints;
+    } else {
+      numPoints = 0;
+    }
+    return *this;
+  }
 
   int GetNumPoints() const { return numPoints; }
   idVec5& operator[](int index) { return p[index]; }

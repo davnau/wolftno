@@ -424,6 +424,7 @@ void idAIWorldState::Update(idAIGameState* gameState, idAILogic* owner,
   if (ownerState == nullptr) return;
   UpdateInternal(gameState, owner, trackingParms, ownerState);
   UpdateSprings(trackingParms);
+  targetCache.Init(ownerState, this);
 }
 
 // DIA: `dynamic initializer for 'ai_visTraceOutsideFOV''

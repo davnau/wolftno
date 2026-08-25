@@ -4789,8 +4789,8 @@ bool idAI2::InitAnimation() {
   initState.bodyAnimator.name = "body";
   initState.bodyAnimator.declaration = bodyAnimWeb;
   initState.bodyAnimator.treeAnimator = treeAnimator;
-  initState.bodyAnimator.blendOp = idMD6Blend::BLENDOP_REPLACE;
-  initState.bodyAnimator.originBlend = idMD6Blend::ORIGINBLEND_DEFAULT;
+  initState.bodyAnimator.blendOp = idAI2CoreMD6Blend::BLENDOP_REPLACE;
+  initState.bodyAnimator.originBlend = idAI2CoreMD6Blend::ORIGINBLEND_DEFAULT;
   initState.bodyAnimator.weightGroup = MD6_WEIGHTGROUP_ALL;
   initState.bodyAnimator.filterGroup = MD6_WEIGHTGROUP_ALL;
   initState.bodyAnimator.alpha = 1.0F;
@@ -4833,7 +4833,7 @@ bool idAI2::InitAnimation() {
         record.name = name;
         record.declaration = declaration;
         record.treeAnimator = treeAnimator;
-        record.blendOp = idMD6Blend::BLENDOP_REPLACE;
+        record.blendOp = idAI2CoreMD6Blend::BLENDOP_REPLACE;
         record.originBlend = originBlend;
         record.weightGroup = weightGroup;
         record.filterGroup = filterGroup;
@@ -4848,7 +4848,7 @@ bool idAI2::InitAnimation() {
     initializeRecord(initState.rollBonesAnimator, "rollBones",
                      initState.rollBonesDecl, MD6_WEIGHTGROUP_TORSO,
                      MD6_WEIGHTGROUP_ALL, 0,
-                     idMD6Blend::ORIGINBLEND_DEST, false);
+                     idAI2CoreMD6Blend::ORIGINBLEND_DEST, false);
   }
 
   const unsigned int modelCaps = treeAnimator->GetModelCaps();
@@ -4900,7 +4900,7 @@ bool idAI2::InitAnimation() {
     initializeRecord(initState.faceAnimator, "facetracks", nullptr,
                      MD6_WEIGHTGROUP_FACE, MD6_WEIGHTGROUP_FACE,
                      MD6_WEIGHTGROUP_FACE,
-                     idMD6Blend::ORIGINBLEND_DEFAULT, false);
+                     idAI2CoreMD6Blend::ORIGINBLEND_DEFAULT, false);
   }
 
   initState.dragJointsAnimator = {};
@@ -4908,7 +4908,7 @@ bool idAI2::InitAnimation() {
     initializeRecord(initState.dragJointsAnimator, "dragJoints",
                      initState.dragJointsDecl, MD6_WEIGHTGROUP_TORSO,
                      MD6_WEIGHTGROUP_ALL, 0,
-                     idMD6Blend::ORIGINBLEND_DEST, true);
+                     idAI2CoreMD6Blend::ORIGINBLEND_DEST, true);
   }
 
   initState.freezeJointsAnimator = {};
@@ -4916,7 +4916,7 @@ bool idAI2::InitAnimation() {
     initializeRecord(initState.freezeJointsAnimator, "freezeJoints",
                      initState.freezeJointsDecl, MD6_WEIGHTGROUP_TORSO,
                      MD6_WEIGHTGROUP_ALL, 0,
-                     idMD6Blend::ORIGINBLEND_DEST, false);
+                     idAI2CoreMD6Blend::ORIGINBLEND_DEST, false);
   }
 
   initState.droneAnimator = {};
@@ -4924,7 +4924,7 @@ bool idAI2::InitAnimation() {
     initializeRecord(initState.droneAnimator, "drone", nullptr,
                      MD6_WEIGHTGROUP_LEGS, MD6_WEIGHTGROUP_USER0,
                      MD6_WEIGHTGROUP_USER0,
-                     idMD6Blend::ORIGINBLEND_DEFAULT, false);
+                     idAI2CoreMD6Blend::ORIGINBLEND_DEFAULT, false);
   }
 
   focusInfos[0]->Init(nullptr, AIFOCI_AIM);
@@ -4937,7 +4937,7 @@ bool idAI2::InitAnimation() {
   initializeRecord(initState.walkIKAnimator, "walkIK",
                    initState.walkIKDecl, MD6_WEIGHTGROUP_TORSO,
                    MD6_WEIGHTGROUP_ALL, 0,
-                   idMD6Blend::ORIGINBLEND_DEFAULT, false);
+                   idAI2CoreMD6Blend::ORIGINBLEND_DEFAULT, false);
   initState.walkIKInitialized = true;
   initState.walkIKModelDecl = treeAnimator->GetModelWalkIKDeclForAI();
   initState.walkIKEntityNumber = GetEntityNumber();
@@ -9441,7 +9441,688 @@ bool idAI2::ModifyCrosshairInfo(const idEntity* activator,
   return false;
 }
 // DIA: idAI2::UpdateWorldState
-idRecoveredValue idAI2::UpdateWorldState(...) { return RecordCoreCall("UpdateWorldState"); }
+void idAI2::UpdateWorldState() {
+  constexpr int kAwarenessLost = 1;
+  constexpr int kAwarenessConfirmed = 3;
+  constexpr int kPhysicsBoundaryFree = 0;
+  constexpr idVec3 kNoEnemyDirection{0.0F, 0.0F, -1.0F};
+  constexpr idVec3 kNoFriendlyBlockerDirection{0.0F, 0.0F, 1.0F};
+  constexpr idVec4 kColorMagenta{1.0F, 0.0F, 1.0F, 1.0F};
+
+  if (endBlindedTime != 0 || endStunnedTime != 0) {
+    return;
+  }
+
+  idPhysics* const physics = GetPhysics();
+  if (coreState.sleeping) {
+    if (sleepRadius > 0.0F) {
+      idPlayer* const player = gameLocal->GetPlayer(0);
+      if (player != nullptr && !player->IsCrouching() &&
+          !player->PlayerBehavior_Takedown_IsInTakedown()) {
+        const float distance =
+            (player->GetPhysics()->GetOrigin() - physics->GetOrigin()).Length();
+        if (distance <= sleepRadius) {
+          if (usesSleeping && coreState.sleeping && !IsDying() && !IsDead()) {
+            coreState.sleeping = false;
+          }
+          SetupFakePosition(player, physics->GetOrigin(), false);
+        }
+      }
+    }
+    return;
+  }
+
+  trackingParms_t* trackingParms = &worldLookTrackingParms;
+  if (HasAimFocus() && GetEffectiveAccuracy() >= 0) {
+    trackingParms = &worldAimTrackingParms;
+  }
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  GetFaction()->CullEntityRelationships();
+  worldState->SetOwnerInCover(IsInCover());
+
+  idAIGameState* const gameState = gameLocal->GetAIGameState();
+  idAILogic logic(idSpawnId{GetEntityNumber()});
+  logic.SetGameState(gameState);
+  worldState->Update(gameState, &logic, trackingParms);
+
+  if (ai_debugLatchedState.GetInteger() != 0) {
+    const aiLatchedState_t* const state = logic.GetState();
+    idRenderDebug* const renderDebug =
+        gameLocal->GetRenderWorld()->GetRenderDebug();
+    renderDebug->DebugLine(kColorMagenta, physics->GetOrigin(),
+                           state->physical.origin, 0, false);
+    renderDebug->DebugLine(
+        kColorMagenta, state->physical.origin,
+        state->physical.origin + idVec3{0.0F, 0.0F, 100.0F}, 0, false);
+  }
+
+  bool updateTargets = true;
+  if (ai_limitTargetUpdates.GetInteger() != 0) {
+    const int activeCount = gameLocal->GetNumActiveAI();
+    if (activeCount > 1) {
+      int index = gameLocal->GetMapNameLength() % activeCount;
+      updateTargets = gameLocal->GetActiveAI(index) == this;
+    }
+  }
+
+  const auto resolveSpawnAwareEntity = [](idEntity* entity) -> idEntity* {
+    if (entity == nullptr || entity->GetEntityNumber() < 0) {
+      return entity;
+    }
+    return gameLocal->GetEntityByNumber(entity->GetEntityNumber()) == entity
+               ? entity
+               : nullptr;
+  };
+  const auto clearEnemyTracking = [this, &kNoEnemyDirection]() {
+    currentEnemy = nullptr;
+    memory->SetEnemy(nullptr);
+    memory->SetCurrentEnemySuspectedPos({}, false);
+    memory->SetLastSafeEnemyPosValidForTest(false);
+    memory->SetEnemyPosInsideAASForTest(false);
+    memory->SetCurrentEnemyDirectionForTest(kNoEnemyDirection);
+    memory->SetCurrentEnemyAimDirectionForTest(kNoEnemyDirection);
+  };
+  const auto clearCurrentScenePoint = [this, currentTime]() {
+    memory->SetCurScenePoint(this, currentTime, nullptr);
+    currentScenePoint = nullptr;
+    currentScenePointActivationTime = 0;
+  };
+  const auto postReaction = [this](int reactionType, int reactionTime) {
+    idFiniteStateMachine* const alertFSM = fsmManager->FindAlertCycleFSM();
+    idEventArg receiverArgument{};
+    receiverArgument.type = static_cast<unsigned char>('e');
+    receiverArgument.value.pointer = this;
+    idEventArg typeArgument{};
+    typeArgument.type = static_cast<unsigned char>('i');
+    typeArgument.value.i = reactionType;
+    idEventArg timeArgument{};
+    timeArgument.type = static_cast<unsigned char>('i');
+    timeArgument.value.i = reactionTime;
+    (void)alertFSM->ProcessEvent(&FSMEvent_Reaction, receiverArgument,
+                                 typeArgument, timeArgument);
+  };
+  const auto blockReactions = [this](std::uint32_t reactions) {
+    pendingReactions &= ~reactions;
+    forbiddenReactions |= reactions;
+  };
+  const auto sceneAllowsAlarm = [this]() {
+    const idScenePoint* const scenePoint = memory->GetCurScenePointForTest();
+    return scenePoint == nullptr || (scenePoint->GetScriptFlags() & 1U) == 0U ||
+           (scenePoint->GetScriptFlags() & 0x300U) != 0U;
+  };
+  const auto scheduleAlarm = [this, &clearCurrentScenePoint,
+                              &sceneAllowsAlarm](int delay) {
+    if (!sceneAllowsAlarm()) return;
+    clearCurrentScenePoint();
+    memory->SetSoundAlarmTime(gameLocal->GetGameTimeMs() + delay);
+    if (additiveAlarmAnimation != 0xFFFFU) {
+      PlayAdditiveAlarmAnimation();
+    }
+  };
+  const auto playVoice = [this](voiceMsg_t message) {
+    localVoiceController->PlayVoice(this, message);
+  };
+
+  if (updateTargets) {
+    idEncounterGroup* encounterGroup = nullptr;
+    if (encounterGroupHandle != -1) {
+      idEncounterGroupManager* const groupManager =
+          gameLocal->GetEncounterGroupManager();
+      encounterGroup = groupManager->GroupForHandle(
+          encounterGroupHandle_t{encounterGroupHandle});
+    }
+
+    idTarget_FakeEnemy* fakeEnemyForStimulus =
+        dynamic_cast<idTarget_FakeEnemy*>(
+            const_cast<idEntity*>(GetFakeEnemy()));
+    if (encounterGroup != nullptr) {
+      idEnemyTargetFilter groupEnemyFilter(kAwarenessConfirmed);
+      idTargetList groupEnemyTargets(&worldState->GetTargetCache());
+      groupEnemyTargets.Filter(this, &groupEnemyFilter);
+      encounterGroup->UpdateTargetList(&groupEnemyTargets);
+
+      idCombatStage* const combatStage =
+          encounterGroup->GetCurrentCombatStage();
+      if (combatStage != nullptr &&
+          fakeEnemyForStimulus != combatStage->GetFakeEnemyForTest()) {
+        if (combatStage->GetFakeEnemyForTest() != nullptr) {
+          SetFakeEnemy(combatStage->GetFakeEnemyForTest());
+        } else if (fakeEnemyForStimulus != nullptr &&
+                   fakeEnemyForStimulus->NumTargetsForTest() == 0) {
+          ClearFakeEnemy();
+          fakeEnemyForStimulus = combatStage->GetFakeEnemyForTest();
+        }
+      }
+    }
+
+    const idAAS2* const currentAAS = GetAAS();
+    if (currentAAS->PointAreaNumMaxheight(0, physics->GetOrigin(), 16.0F) > 0 &&
+        physics->GetBoundaryType() != kPhysicsBoundaryFree) {
+      memory->SetLastSafePositionForTest(physics->GetOrigin(), true);
+    }
+
+    const bool perceptionDisabled =
+        (coreState.perceptionFlags & 1U) != 0U ||
+        (!perceptionWhenScripted && IsExecutingScript());
+    if (perceptionDisabled) {
+      clearEnemyTracking();
+    } else {
+      memory->SetFriendly(nullptr);
+      memory->SetCurrentNeutral(nullptr);
+      memory->SetFriendlyBlocker(nullptr);
+      memory->SetFriendlyLOSBlockerDirectionForTest(
+          kNoFriendlyBlockerDirection);
+      memory->SetCurrentFriendlyLOSBlockerForTest(false);
+
+      const idTargetInfo* friendlyInfo = nullptr;
+      idEntity* friendlyEntity = nullptr;
+      {
+        idFriendlyTargetFilter friendlyFilter(kAwarenessLost);
+        idFriendlyTargetSelector friendlySelector;
+        idTargetList friendlies(&worldState->GetTargetCache());
+        if (friendlies.FindBestTarget(this, &friendlyFilter,
+                                      &friendlySelector) >= 0) {
+          friendlyInfo = friendlies.GetBestTarget();
+          if (friendlyInfo != nullptr && friendlyInfo->es != nullptr) {
+            friendlyEntity = friendlyInfo->es->GetEntity();
+            if (friendlyEntity != nullptr) {
+              if (!friendlyEntity->IsDead()) {
+                memory->SetFriendly(friendlyEntity);
+              }
+              if ((friendlyEntity->GetPhysics()->GetOrigin() -
+                   physics->GetOrigin())
+                      .Length() <= 96.0F) {
+                memory->SetFriendlyBlocker(friendlyEntity);
+              }
+            }
+          }
+        }
+      }
+
+      {
+        idNonEnemyTargetFilter neutralFilter(kAwarenessLost);
+        idNeutralTargetSelector neutralSelector;
+        idTargetList neutrals(&worldState->GetTargetCache());
+        if (neutrals.FindBestTarget(this, &neutralFilter, &neutralSelector) >=
+            0) {
+          const idTargetInfo* const neutralInfo = neutrals.GetBestTarget();
+          memory->SetCurrentNeutral(
+              neutralInfo != nullptr && neutralInfo->es != nullptr
+                  ? neutralInfo->es->GetEntity()
+                  : nullptr);
+        }
+      }
+
+      idEntity* const oldEnemy =
+          const_cast<idEntity*>(memory->GetEnemy());
+      if (idPlayer* const oldPlayer = dynamic_cast<idPlayer*>(oldEnemy)) {
+        bool playedOldEnemyVoice = false;
+        if ((oldPlayer->IsDying() || oldPlayer->IsDead()) &&
+            GetEntityNumber() ==
+                gameLocal->GetBestForwardPlayerViewDataID()) {
+          playVoice(AIVOICE_COMBAT_DEATH_TAUNT);
+          playedOldEnemyVoice = true;
+        }
+        if (!playedOldEnemyVoice && !isCommander &&
+            GetEntityNumber() ==
+                gameLocal->GetBestForwardPlayerViewDataID()) {
+          idTarget_AlarmSystem* const alarm =
+              dynamic_cast<idTarget_AlarmSystem*>(
+                  resolveSpawnAwareEntity(onAlarmTrigger));
+          const int activeCount = gameLocal->GetNumActiveAI();
+          if (alarm != nullptr && alarm->IsSpawnersActive() &&
+              (activeCount == 2 || activeCount == 3)) {
+            playVoice(AIVOICE_COMBAT_REINFORCE);
+            playedOldEnemyVoice = true;
+          }
+        }
+        if (!playedOldEnemyVoice && !isCommander &&
+            GetEntityNumber() ==
+                gameLocal->GetBestBackwardPlayerViewDataID() &&
+            oldPlayer->GetTotalCurHealth() <= 20.0F &&
+            oldPlayer->GetIsSprinting()) {
+          playVoice(AIVOICE_COMBAT_WINNING);
+          playedOldEnemyVoice = true;
+        }
+        if (!playedOldEnemyVoice && !isCommander &&
+            GetEntityNumber() ==
+                gameLocal->GetBestForwardPlayerViewDataID() &&
+            gameLocal->IsDangerZoneBad()) {
+          idVec3 dangerOrigin;
+          float dangerRadius = 0.0F;
+          if (gameLocal->GetDangerZone(currentTime, &dangerOrigin,
+                                       &dangerRadius) &&
+              (dangerOrigin - physics->GetOrigin()).Length() <=
+                  dangerRadius * 2.0F) {
+            playVoice(AIVOICE_COMBAT_LOSING);
+          }
+        }
+      }
+
+      const idTargetInfo* selectedEnemyInfo = nullptr;
+      idEntity* selectedEnemy = nullptr;
+      {
+        idEnemyTargetFilter enemyFilter(kAwarenessLost);
+        idEnemyTargetSelector enemySelector;
+        idTargetList enemies(&worldState->GetTargetCache());
+        memory->SetCurrentEnemyRangeForTest(-1.0F);
+        if (enemies.FindBestTarget(this, &enemyFilter, &enemySelector) >= 0) {
+          selectedEnemyInfo = enemies.GetBestTarget();
+          if (selectedEnemyInfo != nullptr && selectedEnemyInfo->es != nullptr) {
+            selectedEnemy = selectedEnemyInfo->es->GetEntity();
+          }
+        }
+
+        if (selectedEnemyInfo == nullptr || selectedEnemy == nullptr) {
+          if (oldEnemy == nullptr) {
+            idPlayer* const player = gameLocal->GetPlayer(0);
+            if (player != nullptr &&
+                memory->GetEnemyTrailUpdatePeriodForTest() >= 0 &&
+                currentTime >= memory->GetNextEnemyTrailTimeForTest() &&
+                player->GetPhysics()->GetBoundaryType() !=
+                    kPhysicsBoundaryFree) {
+              idVec3 playerPosition = player->GetPhysics()->GetOrigin();
+              int areaNumber = 0;
+              if (!currentAAS->PushPointIntoNearestAreaNum(&areaNumber,
+                                                           playerPosition)) {
+                memory->AddEnemyTrailPos(currentTime, playerPosition);
+              }
+            }
+          }
+          clearEnemyTracking();
+        } else {
+          idAIEntityState* const enemyState =
+              const_cast<idAIEntityState*>(selectedEnemyInfo->es);
+          currentEnemy = selectedEnemy;
+          memory->SetEnemy(selectedEnemy);
+          memory->SetCurrentEnemyRangeForTest(std::sqrt(std::max(
+              selectedEnemyInfo->distSqr,
+              std::numeric_limits<float>::min())));
+          (void)UpdateEnemyInAAS(selectedEnemy);
+
+          if (memory->GetEnemyTrailUpdatePeriodForTest() >= 0 &&
+              currentTime >= memory->GetNextEnemyTrailTimeForTest() &&
+              selectedEnemy->GetPhysics()->GetBoundaryType() !=
+                  kPhysicsBoundaryFree &&
+              selectedEnemy->GetPhysics()->GetBoundaryType() !=
+                  kPhysicsBoundaryFree) {
+            idVec3 enemyPosition =
+                selectedEnemy->GetPhysics()->GetOrigin();
+            int areaNumber = 0;
+            if (!currentAAS->PushPointIntoNearestAreaNum(&areaNumber,
+                                                         enemyPosition)) {
+              memory->AddEnemyTrailPos(currentTime, enemyPosition);
+            }
+          }
+
+          const aiSenseState_t* const enemySense =
+              GetEnemySenseState(AISENSE_MAX);
+          if (enemySense != nullptr) {
+            memory->SetCurrentEnemyDirectionForTest(selectedEnemyInfo->dirTo);
+            const idVec3 confirmedOrigin =
+                enemySense->GetConfirmedPhysicalSafe()->origin;
+            memory->SetCurrentEnemySuspectedPos(confirmedOrigin, true);
+            memory->CheckVoiceVolumes(this, currentTime, &confirmedOrigin);
+
+            if (friendlyInfo != nullptr && friendlyEntity != nullptr &&
+                selectedEnemyInfo->distSqr > friendlyInfo->distSqr + 48.0F) {
+              idWeapon* const weapon = GetEquippedWeapon();
+              const bool canBlockShot =
+                  weapon != nullptr && !weapon->IsMelee() &&
+                  enemyState->IsVisible() &&
+                  currentTime - enemySense->lastConfirmedStimTime < 1000;
+              const float friendlyDot =
+                  friendlyInfo->dirTo * selectedEnemyInfo->dirTo;
+              bool blockedByVerticalProjection = false;
+              if (canBlockShot && friendlyDot <=
+                                      memory->GetFriendlyFireCosAngleOffForTest() &&
+                  selectedEnemyInfo->dirTo.z < 0.0F) {
+                idVec3 eyePosition;
+                GetEyePos(&eyePosition);
+                const idVec3 eyeToFriendly = NormalizedOrZero(
+                    friendlyEntity->GetPhysics()->GetOrigin() - eyePosition);
+                blockedByVerticalProjection =
+                    eyeToFriendly * selectedEnemyInfo->dirTo >
+                    memory->GetFriendlyFireCosAngleOffForTest();
+              }
+              if (canBlockShot &&
+                  (friendlyDot >
+                       memory->GetFriendlyFireCosAngleOffForTest() ||
+                   blockedByVerticalProjection)) {
+                memory->SetFriendlyLOSBlockerDirectionForTest(
+                    friendlyInfo->dirTo);
+                memory->SetCurrentFriendlyLOSBlockerForTest(true);
+                playVoice(AIVOICE_COMBAT_FRIENDLY_BLOCKED);
+              }
+
+              if (friendlyDot >
+                  memory->GetFriendlyFireCosAngleOffForTest()) {
+                idWeapon* const repeatedWeapon = GetEquippedWeapon();
+                if (repeatedWeapon != nullptr && !repeatedWeapon->IsMelee() &&
+                    enemyState->IsVisible() &&
+                    currentTime - enemySense->lastConfirmedStimTime < 1000) {
+                  memory->SetFriendlyLOSBlockerDirectionForTest(
+                      friendlyInfo->dirTo);
+                  memory->SetCurrentFriendlyLOSBlockerForTest(true);
+                  playVoice(AIVOICE_COMBAT_FRIENDLY_BLOCKED);
+                }
+              }
+            }
+
+            if (enemyState->IsVisible() &&
+                currentTime - enemySense->lastConfirmedStimTime < 1000) {
+              memory->ClearAllTrailPositions(currentTime);
+            } else if ((enemySense->senseFlags & 4U) != 0U ||
+                       IsInsideTrailUpdateRange(
+                           &enemySense->GetConfirmedPhysicalSafe()->origin)) {
+              CheckForSuspectedToTrailUpdate(currentTime, false);
+            }
+          } else {
+            memory->SetCurrentEnemySuspectedPos({}, false);
+            memory->SetLastSafeEnemyPosValidForTest(false);
+            memory->SetEnemyPosInsideAASForTest(false);
+            memory->SetCurrentEnemyDirectionForTest(kNoEnemyDirection);
+            memory->SetCurrentEnemyAimDirectionForTest(kNoEnemyDirection);
+          }
+
+          const bool skipReactionLogic =
+              !perceptionWhenScripted &&
+              componentTimeLine->RunningActionScript(this);
+          if (!skipReactionLogic) {
+            if (oldEnemy != selectedEnemy) {
+              focusInfos[0]->DivergeAim(this);
+              ++worldStateAimDivergeCount;
+            }
+
+            idTarget_AlarmSystem* const alarm =
+                dynamic_cast<idTarget_AlarmSystem*>(
+                    resolveSpawnAwareEntity(onAlarmTrigger));
+            if (!enemyState->IsVisible()) {
+              if (oldEnemy != selectedEnemy && alarm != nullptr &&
+                  isCommander && memory->GetSoundAlarmTimeForTest() < 0 &&
+                  !firstAlarm) {
+                blockReactions(2U | 8U | 4U);
+                scheduleAlarm(3000);
+              }
+              if (enemyReactionTime < 0 ||
+                  !IsRecentlySpotted(
+                      selectedEnemy,
+                      static_cast<float>(enemyReactionTime - currentTime) *
+                          0.001F)) {
+                postReaction(8, currentTime);
+              }
+              enemyState->spotDuration = -1;
+              enemyState->firstSpot = std::min(enemyState->firstSpot, 0);
+
+              idEntity* const detectTrigger =
+                  resolveSpawnAwareEntity(onDetectEnemyTrigger);
+              if (detectTrigger != nullptr &&
+                  memory->GetDetectedEnemyTrigger() != selectedEnemy) {
+                memory->SetDetectedEnemyTrigger(selectedEnemy);
+                detectTrigger->PostEventMS(&EV_Activate, 0, this);
+              }
+              if (!IsRecentlySpotted(selectedEnemy, 3.0F)) {
+                memory->SetCurrentEnemyAimDirectionForTest(
+                    kNoEnemyDirection);
+              }
+            } else {
+              voiceMsg_t responseVoice = AIVOICE_MAX;
+              const bool firstConfirmedSpot =
+                  enemyState->curAwareness == kAwarenessConfirmed &&
+                  enemyState->highestAwareness == kAwarenessConfirmed &&
+                  enemyState->firstSpot < 0;
+              if (firstConfirmedSpot) {
+                if (alarm != nullptr && isCommander) {
+                  if (memory->GetSoundAlarmTimeForTest() < 0 &&
+                      !firstAlarm) {
+                    blockReactions(2U | 8U | 4U);
+                    scheduleAlarm(1000);
+                  }
+                } else {
+                  idScenePoint* const scenePoint =
+                      memory->GetCurScenePointForTest();
+                  if (scenePoint != nullptr &&
+                      (scenePoint->GetScriptFlags() & 1U) != 0U &&
+                      (scenePoint->GetScriptFlags() & 0x300U) != 0U) {
+                    clearCurrentScenePoint();
+                  }
+                  idTarget_AITensionManager* const tensionManager =
+                      gameLocal->GetAITensionManager();
+                  if (tensionManager != nullptr &&
+                      tensionManager->GetCurrentTension() >=
+                          AITENSION_COMBAT_NOALARM) {
+                    playVoice(AIVOICE_COMBAT_RESPOT);
+                    blockReactions(4U | 8U);
+                  } else {
+                    playVoice(AIVOICE_COMBAT_FIRST_SPOT);
+                    postReaction(4, currentTime);
+                  }
+                }
+              } else {
+                if (alarm != nullptr &&
+                    alarm->GetAlarmState() ==
+                        AIALARMSTATE_PRE_SECOND_ALARM &&
+                    isCommander && memory->GetSoundAlarmTimeForTest() < 0 &&
+                    !firstAlarm) {
+                  scheduleAlarm(1000);
+                }
+                if (GetAlertCycle() == ALERTCYCLE_COMBAT &&
+                    GetAlertCycleDuration() >= 4000) {
+                  if (currentTime - enemyState->firstSpot >= 8000 &&
+                      GetEnemyLookDot(selectedEnemy) >= 0.5F) {
+                    responseVoice = AIVOICE_COMBAT_RESPOT;
+                    playVoice(responseVoice);
+                  } else if (currentTime - enemyState->firstSpot >= 3000 &&
+                             GetEnemyLookDot(selectedEnemy) < 0.5F) {
+                    responseVoice = AIVOICE_COMBAT_FLANK_SPOT;
+                    playVoice(responseVoice);
+                  }
+                }
+                if (enemyReactionTime < 0 ||
+                    currentTime - enemyState->firstSpot >
+                        enemyReactionTime) {
+                  postReaction(8, currentTime);
+                }
+              }
+
+              idVec3 targetForward{1.0F, 0.0F, 0.0F};
+              if (const idPlayer* const targetPlayer =
+                      dynamic_cast<const idPlayer*>(selectedEnemy)) {
+                idMat3 targetEyeAxis;
+                targetPlayer->GetEyeAxis(&targetEyeAxis);
+                targetForward = targetEyeAxis[0];
+              } else if (const idAI2* const targetAI =
+                             dynamic_cast<const idAI2*>(selectedEnemy)) {
+                const idFocusInfo* const targetAimFocus =
+                    targetAI->focusInfos[0].get();
+                targetAimFocus->GetAimTracker().GetWorldSpaceDir(
+                    targetAI->GetPhysics()->GetAxis(), &targetForward);
+              } else {
+                const idMat3* const targetPresentableAxis =
+                    selectedEnemy->GetPresentableAxis();
+                if (targetPresentableAxis != nullptr) {
+                  targetForward = (*targetPresentableAxis)[0];
+                } else {
+                  targetForward = selectedEnemy->GetPhysics()->GetAxis()[0];
+                }
+              }
+
+              idPlayer* const enemyPlayer =
+                  dynamic_cast<idPlayer*>(selectedEnemy);
+              if (isKampHund || robotState.usesRobot || usesDrone ||
+                  enemyPlayer == nullptr) {
+                memory->SetPlayerViewDataForTest(0.0F, 16000.0F, 0);
+              } else {
+                const idVec3 playerToAI =
+                    physics->GetOrigin() -
+                    enemyPlayer->GetPhysics()->GetOrigin();
+                const float rangeSquared = playerToAI.LengthSqr();
+                const float inverseRange =
+                    1.0F / std::sqrt(std::max(
+                               rangeSquared,
+                               std::numeric_limits<float>::min()));
+                memory->SetPlayerViewDataForTest(
+                    (playerToAI * inverseRange) * targetForward,
+                    rangeSquared * inverseRange,
+                    enemyState->spotDuration >= 0
+                        ? enemyState->spotDuration
+                        : -1);
+              }
+
+              if (enemyState->spotDuration <= 0 && fireControl != nullptr) {
+                fireControl->ResetNextPullTriggerTime(this, currentTime);
+              }
+              enemyState->SetSpot(currentTime, targetForward);
+              memory->SetCurrentEnemyAimDirectionForTest(targetForward);
+              if (responseVoice < AIVOICE_MAX) {
+                ++worldStateAffirmativeResponseCount;
+                worldStateLastAffirmativeVoice =
+                    static_cast<int>(responseVoice);
+                (void)HandleAffirmativeResponse(selectedEnemy,
+                                                responseVoice);
+              }
+
+              if (encounterGroup != nullptr) {
+                const idVec3 enemyPosition =
+                    selectedEnemy->GetPhysics()->GetOrigin();
+                encounterGroup->SetGroupEnemyUpdateTimeStamp(
+                    selectedEnemy, currentTime, &enemyPosition);
+              }
+              idScenePoint_Combat* const combatScene =
+                  dynamic_cast<idScenePoint_Combat*>(
+                      memory->GetCurScenePointForTest());
+              if (combatScene != nullptr && combatScene->IsTactical() &&
+                  (combatScene->GetWorldStateTacticalFlagsForTest() &
+                   0x10U) != 0U &&
+                  IsInCover() && coreState.coverAction == COVERACTION_HIDE &&
+                  currentTime - coreState.coverActionTimestamp >= 1000) {
+                combatScene->SetPriorityFitnessForTest(-10.0F);
+                clearCurrentScenePoint();
+              }
+
+              idEntity* const spotTrigger =
+                  resolveSpawnAwareEntity(onSpotEnemyTrigger);
+              if (spotTrigger != nullptr &&
+                  memory->GetSpottedEnemyTrigger() != selectedEnemy &&
+                  (!onlyPlayerTriggersOnSpot || enemyPlayer != nullptr)) {
+                memory->SetSpottedEnemyTrigger(selectedEnemy);
+                spotTrigger->PostEventMS(&EV_Activate, 0, this);
+              }
+            }
+          }
+
+          idAI2* const eventInstigator = dynamic_cast<idAI2*>(
+              resolveSpawnAwareEntity(memory->GetEventInstigatorForTest()));
+          if (eventInstigator != nullptr && selectedEnemy != nullptr) {
+            const idVec3 enemyOrigin =
+                selectedEnemy->GetPhysics()->GetOrigin();
+            const float instigatorDistance =
+                (eventInstigator->GetPhysics()->GetOrigin() - enemyOrigin)
+                    .LengthSqr();
+            const float ourDistance =
+                (physics->GetOrigin() - enemyOrigin).LengthSqr();
+            if (ourDistance > instigatorDistance) {
+              eventInstigator->GetMemory()
+                  .SetCurrentFriendlyBlockerTimeForTest(currentTime + 500);
+              memory->SetCurrentFriendlyBlockerTimeForTest(-1);
+            }
+          }
+          if ((-memory->GetCurrentEnemyAimDirectionForTest()) *
+                  selectedEnemyInfo->dirTo >=
+              0.96600002F) {
+            memory->SetLastAimedAtTimeForTest(currentTime);
+          }
+        }
+      }
+
+      if (fakeEnemyForStimulus != nullptr &&
+          memory->GetEnemy() != fakeEnemyForStimulus &&
+          fakeEnemyForStimulus->AddsTriggerStimulus()) {
+        idAILogic fakeLogic(idSpawnId{GetEntityNumber()});
+        fakeLogic.SetGameState(gameState);
+        worldState->AddEntityState(
+            gameState, &fakeLogic,
+            idSpawnId{fakeEnemyForStimulus->GetEntityNumber()},
+            AISTIM_TRIGGER, 1.0F, idSpawnId{GetEntityNumber()});
+      }
+
+      UpdateAvoidCharacter();
+      if (ai_debugLevel.GetInteger() > 0 &&
+          (ai_debugEnemyTargetSelector.GetInteger() == -1 ||
+           ai_debugEnemyTargetSelector.GetInteger() == GetEntityNumber()) &&
+          memory->GetEnemy() != nullptr) {
+        idRenderDebug* const renderDebug =
+            gameLocal->GetRenderWorld()->GetRenderDebug();
+        renderDebug->DebugArrow(
+            idColor::colorYellow,
+            physics->GetOrigin() + idVec3{0.0F, 0.0F, 8.0F},
+            memory->GetEnemy()->GetPhysics()->GetOrigin() +
+                idVec3{0.0F, 0.0F, 8.0F},
+            8.0F, 0, false);
+      }
+    }
+  }
+
+  idFiniteStateMachine* const roamFSM =
+      fsmManager->GetRoamScenePointFSMForAI();
+  if (GetAlertCycle() == ALERTCYCLE_RELAXED &&
+      GetAlertCycleDuration() >= 3000 && roamFSM != nullptr &&
+      roamFSM->GetStatus() == 1 && idleTalkPeriod > 0.0F) {
+    idAI2* const buddy = dynamic_cast<idAI2*>(
+        resolveSpawnAwareEntity(memory->GetEventInstigatorForTest()));
+    if (buddy != nullptr) {
+      if (currentTime + static_cast<int>(idleTalkPeriod * 0.25F * 0.001F) >=
+          memory->GetLastIdleTalkTimeForTest()) {
+        playVoice(AIVOICE_IDLE_BUDDY);
+        buddy->SetDelayedVoice(AIVOICE_IDLE_BUDDY_RESPONSE, 2.0F);
+        memory->SetLastIdleTalkTimeForTest(currentTime);
+      }
+    } else if (currentTime +
+                   static_cast<int>(idleTalkPeriod * 0.001F) >=
+               memory->GetLastIdleTalkTimeForTest()) {
+      playVoice(AIVOICE_IDLE_ALONE);
+      memory->SetLastIdleTalkTimeForTest(currentTime);
+    }
+  }
+
+  idFiniteStateMachine* const combatFSM =
+      fsmManager->GetCombatScenePointFSMForTest();
+  idFiniteStateMachine* const searchFSM =
+      fsmManager->GetSearchScenePointFSMForTest();
+  if (worldUsesLookScenePoints) {
+    bool allowCombatLook = false;
+    if (GetAlertCycle() == ALERTCYCLE_COMBAT && combatFSM != nullptr &&
+        combatFSM->GetStatus() == 1 && combatTargetDelayLook >= 0.0F) {
+      allowCombatLook = true;
+      if (memory->GetEnemy() != nullptr) {
+        const aiSenseState_t* const enemySense =
+            GetEnemySenseState(AISENSE_MAX);
+        if (enemySense != nullptr && enemySense->lastConfirmedStimTime > 0) {
+          allowCombatLook =
+              currentTime - enemySense->lastConfirmedStimTime >=
+              static_cast<int>(combatTargetDelayLook * 1000.0F);
+        }
+      }
+    }
+    memory->SetLookScenePointAllowancesForTest(
+        allowCombatLook,
+        GetAlertCycle() == ALERTCYCLE_SEARCH && searchFSM != nullptr &&
+            searchFSM->GetStatus() == 1,
+        GetAlertCycle() == ALERTCYCLE_RELAXED && roamFSM != nullptr &&
+            roamFSM->GetStatus() == 1);
+  }
+
+  if (ai_debugLevel.GetInteger() > 0) {
+    if (ai_debugPerception.GetInteger() > 0) {
+      Debug_Perception();
+    }
+    if (ai_debugLevel.GetInteger() > 0 &&
+        ai_debugScenePoints.GetInteger() != 0) {
+      (void)Debug_ScenePoints();
+    }
+  }
+}
 // DIA: `idAI2::UpdateWorldState'::`1'::dtor$0
 // DIA: `idAI2::UpdateWorldState'::`1'::dtor$1
 // DIA: `idAI2::UpdateWorldState'::`1'::dtor$2

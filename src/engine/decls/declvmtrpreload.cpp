@@ -9,7 +9,7 @@ idDeclVmtrPreload::idDeclVmtrPreload() {
 
 idDeclVmtrPreload::~idDeclVmtrPreload() = default;
 
-idDeclInfo* idDeclVmtrPreload::GetDeclInfo() {
+idDeclInfo* idDeclVmtrPreload::GetDeclInfo() const {
   return &resourceList;
 }
 

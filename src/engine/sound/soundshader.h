@@ -129,12 +129,12 @@ public:
   idSoundShader();
   ~idSoundShader() override;
 
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   bool SetImplicitText() override;
   void Parse(idParser& source) override;
   void FreeData() override;
   void LoadResource() override;
-  void List() override;
+  void List() const override;
 
   const idSoundSample* SelectTailSample();
   const idSoundSample* GetNextEntry(soundShaderGetNextEntryMode_t mode);
@@ -166,7 +166,7 @@ public:
 class idDeclDuck final : public idDecl {
 public:
   idDeclDuck();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   const char* DefaultDefinition() const override;
   bool RebuildTextSource() override;
   void Parse(idParser& source) override;

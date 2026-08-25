@@ -10,4 +10,4 @@ idDeclRibbon::idDeclRibbon()
       helix{0, 0, 0, {0, 0}, {0, 0}}, turbulence{0, 0, 1, {0.93f, 1.0f, 0.91f, 0.73f}} {
   resourceListPtr = &resourceList;
 }
-idDeclInfo* idDeclRibbon::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclRibbon::GetDeclInfo() const { return &resourceList; }

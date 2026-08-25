@@ -27,7 +27,7 @@ public:
 
   idDeclFlare();
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   idList<subFlare_t, 79> subflares;
   std::uint8_t useAltViewVecCalc : 1;

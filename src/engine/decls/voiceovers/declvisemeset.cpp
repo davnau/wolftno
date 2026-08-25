@@ -23,7 +23,7 @@ void idDeclVisemeSet::FreeData() {
   visemes.ClearFree();
   phonemes.ClearFree();
 }
-idDeclInfo* idDeclVisemeSet::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclVisemeSet::GetDeclInfo() const { return &resourceList; }
 std::uint64_t idDeclVisemeSet::Size() const {
   return 32ULL * (phonemes.size + 4LL) + 24ULL * visemes.size;
 }

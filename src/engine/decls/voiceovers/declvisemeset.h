@@ -25,7 +25,7 @@ public:
   ~idDeclVisemeSet() override;
   const char* DefaultDefinition() const override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   std::uint64_t Size() const override;
   std::uint8_t VisemeForName(const char* name) const;

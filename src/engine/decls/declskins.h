@@ -24,7 +24,7 @@ public:
   bool RebuildTextSource() override;
   void Parse(idParser& source) override;
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   int IndexForSkin(const char* skinName) const;
 
   idList<idSkin, 46> skins;

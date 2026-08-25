@@ -463,7 +463,7 @@ void idRender::UpdateShadowBufferOptions() {
       1.0f / logarithmicScale, r_sb_sliceRampScale.valueFloat);
 }
 
-void idRender::WaitAndSwap(void* hdc, bool force30Hz) {
+__declspec(noinline) void idRender::WaitAndSwap(void* hdc, bool force30Hz) {
   console->BeginTimeRange(RANGE_RENDER, &idColor::colorRed);
   {
     ScopedRenderRecorderEvent event("GL_WaitForEndFrame");
@@ -1392,8 +1392,9 @@ void idRender::RenderSingleView(
       grainLevelsMin.x - grainLevelsMax.x, grainLevelsMax.x);
 
   if (r_glFinishBeforeGetQuery.valueInteger != 0) {
-    ScopedRenderRecorderEvent event("optional PreOcclusion finish");
+    RenderEventRecorderLightStartEvent_Impl("optional PreOcclusion finish");
     GL_Finish();
+    RenderEventRecorderLightStopEvent_Impl();
   }
 
   renderCullParms_t cullParms{};

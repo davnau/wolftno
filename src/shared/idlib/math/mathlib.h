@@ -12,6 +12,7 @@ struct idMath {
   static float ATan16(float y, float x);
   static float Exp16(float f);
   static float Sin16(float a);
+  static float Cos16(float a);
   static float ONE_OVER_TWO_PI;
   static __m128 vector_float_smallestNonDenorm;
 };

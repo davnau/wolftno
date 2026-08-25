@@ -161,8 +161,8 @@ void idRenderModelCommitted::PostCommit() {
         for (int bound = 0; bound < 2; ++bound) {
           for (int component = 0; component < 3; ++component) {
             radius = std::fmax(
-                radius, std::fabs(globalReferenceBounds.b[bound][component] -
-                                  center[component]));
+                radius,
+                globalReferenceBounds.b[bound][component] - center[component]);
           }
         }
         maxVisibleRange = {center.x, center.y, center.z,
@@ -303,10 +303,12 @@ idRenderModelCommitted::idRenderModelCommitted()
       globalReferenceBounds(bounds_zero), localLightingPoint{},
       localLightingRadius(0.0f), modelMatrix{}, inverseModelMatrix{},
       approximateLighting{}, approximateState(0), committedFlags0(0x20u),
-      committedFlags1(0), mvpMatrix{},
+      mayContributeToPreZ(false), forceApproximateLightingCalculation(false),
+      preventApproximateLightingCalculation(false),
+      forceNoGPUocclusionTest(false), mvpMatrix{},
       highlightColor(static_cast<const idVec4&>(idColor::colorBlack)) {}
 
-idRenderModelCommitted::~idRenderModelCommitted() {
+idRenderModelCommitted::~idRenderModelCommitted() noexcept(false) {
   if (world == nullptr)
     return;
 

@@ -23,6 +23,6 @@ int idDeclSwfResource::FindSoundIndex(const idStr& soundName) const {
   return -1;
 }
 
-idDeclInfo* idDeclSwfResource::GetDeclInfo() {
+idDeclInfo* idDeclSwfResource::GetDeclInfo() const {
   return &resourceList;
 }

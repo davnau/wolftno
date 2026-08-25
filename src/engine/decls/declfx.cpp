@@ -131,7 +131,7 @@ void idDeclFX::FreeData() {
   ReleaseList(events);
 }
 
-idDeclInfo* idDeclFX::GetDeclInfo() {
+idDeclInfo* idDeclFX::GetDeclInfo() const {
   return &resourceList;
 }
 

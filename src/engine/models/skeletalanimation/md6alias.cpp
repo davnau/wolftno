@@ -7,28 +7,21 @@
 #include <algorithm>
 #include <new>
 
+extern idMD6AliasAnimLoad g_md6AliasAnimLoad;
+extern idMD6AliasAnimCompatible g_md6AliasAnimCompatible;
+
 namespace {
-
-idMD6AliasAnimLoad animLoad = nullptr;
-idMD6AliasAnimCompatible animCompatible = nullptr;
-
 const idMD6Anim* LoadAnim(const char* name, bool makeDefault,
                           bool skipStaleCheck) {
-  return animLoad != nullptr
-             ? animLoad(name, makeDefault, skipStaleCheck)
+  return g_md6AliasAnimLoad != nullptr
+             ? g_md6AliasAnimLoad(name, makeDefault, skipStaleCheck)
              : nullptr;
 }
 
 } // namespace
 
-void SetMD6AliasAnimLoad(idMD6AliasAnimLoad load) { animLoad = load; }
-
-void SetMD6AliasAnimCompatible(idMD6AliasAnimCompatible compatible) {
-  animCompatible = compatible;
-}
-
 bool idMD6Alias::IsInherited(const idMD6Alias* other) const {
-  if (other == nullptr || mappings.num != other->mappings.num)
+  if (mappings.num != other->mappings.num)
     return false;
   for (int index = 0; index < mappings.num; ++index) {
     if (idStr::Icmp(mappings.list[index].animRef.str,
@@ -51,12 +44,12 @@ void idMD6Alias::LoadAnims(const idDeclMD6* decl) {
       continue;
     }
     const idMD6Skel* skeleton = decl->model->skeleton;
-    if (animCompatible != nullptr &&
-        !animCompatible(mapping.anim, skeleton)) {
+    if (g_md6AliasAnimCompatible != nullptr &&
+        !g_md6AliasAnimCompatible(mapping.anim, skeleton)) {
       idLib::Warning(
           "Animation '%s' was loaded for invalid skeleton '%s', md6Def '%s'",
           mapping.anim->name.str,
-          skeleton != nullptr ? skeleton->name.str : "",
+          skeleton->name.str,
           decl->name.str);
       mapping.anim = nullptr;
     }
@@ -111,7 +104,9 @@ int idList<idMD6AliasEntry, 19>::Append(const idMD6AliasEntry& object) {
   }
   if (num == size) {
     int newSize;
-    if (granularity != 0) {
+    if (forceIdListsToReallocateEveryAppend) {
+      newSize = size + 1;
+    } else if (granularity != 0) {
       newSize = size + granularity - (size + granularity) % granularity;
     } else if (size <= 0x3fffffff) {
       newSize = size * 2;
@@ -164,13 +159,12 @@ void idMD6Alias::Parse(const idDecl* decl, idParser* source,
   if ((flags & 1u) != 0) {
     for (int index = 0; index < mappings.num; ++index) {
       if (LoadAnim(mappings.list[index].animRef.str, true, false) == nullptr) {
-        if (loadErrors != nullptr)
-          ++*loadErrors;
+        ++*loadErrors;
         idLib::Warning(
             "Failed to load animation '%s' for alias '%s' while parsing "
             "aliases for md6Def '%s'.",
             mappings.list[index].animRef.str, name.str,
-            decl != nullptr ? decl->name.str : "");
+            decl->name.str);
       }
     }
   }

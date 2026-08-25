@@ -10,9 +10,31 @@
 
 #if defined(WOLF_RENDERER_RENDERLIGHTPARMS_TEST_ACCESS)
 extern idRenderSystemLocal* rendererRenderLightParmsTestLocal;
+extern void RenderLightParmsTestCreateFromOriginAxis(
+    const idVec3& origin, const idMat3& axis, idRenderMatrix& result);
+extern bool RenderLightParmsTestInverse(const idRenderMatrix& input,
+                                        idRenderMatrix& result);
+extern void RenderLightParmsTestMultiply(const idRenderMatrix& left,
+                                         const idRenderMatrix& right,
+                                         idRenderMatrix& result);
+extern void RenderLightParmsTestWarning(const char* message);
 #define RENDER_LIGHT_LOCAL (*rendererRenderLightParmsTestLocal)
+#define RENDER_LIGHT_CREATE_FROM_ORIGIN_AXIS(origin, axis, result) \
+  RenderLightParmsTestCreateFromOriginAxis(origin, axis, result)
+#define RENDER_LIGHT_INVERSE(input, result) \
+  RenderLightParmsTestInverse(input, result)
+#define RENDER_LIGHT_MULTIPLY(left, right, result) \
+  RenderLightParmsTestMultiply(left, right, result)
+#define RENDER_LIGHT_WARNING(message) RenderLightParmsTestWarning(message)
 #else
 #define RENDER_LIGHT_LOCAL tr
+#define RENDER_LIGHT_CREATE_FROM_ORIGIN_AXIS(origin, axis, result) \
+  idRenderMatrix::CreateFromOriginAxis(origin, axis, result)
+#define RENDER_LIGHT_INVERSE(input, result) \
+  idRenderMatrix::Inverse(input, result)
+#define RENDER_LIGHT_MULTIPLY(left, right, result) \
+  idRenderMatrix::Multiply(left, right, result)
+#define RENDER_LIGHT_WARNING(message) idLib::Warning(message)
 #endif
 
 const idMaterial* idRenderLightParms::DefaultMaterial() const {
@@ -129,12 +151,12 @@ void idRenderLightParms::ComputeWorldToLightMatrix(
 
   idRenderMatrix lightMatrix;
   idRenderMatrix inverseLightMatrix;
-  idRenderMatrix::CreateFromOriginAxis(origin, axis, lightMatrix);
-  if (!idRenderMatrix::Inverse(lightMatrix, inverseLightMatrix))
-    idLib::Warning("lightMatrix invert failed");
-  idRenderMatrix::Multiply(localProject, inverseLightMatrix, baseLightProject);
-  if (!idRenderMatrix::Inverse(baseLightProject, inverseBaseLightProject))
-    idLib::Warning("baseLightProject invert failed");
+  RENDER_LIGHT_CREATE_FROM_ORIGIN_AXIS(origin, axis, lightMatrix);
+  if (!RENDER_LIGHT_INVERSE(lightMatrix, inverseLightMatrix))
+    RENDER_LIGHT_WARNING("lightMatrix invert failed");
+  RENDER_LIGHT_MULTIPLY(localProject, inverseLightMatrix, baseLightProject);
+  if (!RENDER_LIGHT_INVERSE(baseLightProject, inverseBaseLightProject))
+    RENDER_LIGHT_WARNING("baseLightProject invert failed");
 }
 
 void idRenderLightParms::ComputeLightGlobalOrigin(idVec3& globalOrigin) const {
@@ -170,3 +192,7 @@ void idRenderLightParms::ComputeLightGlobalOrigin(idVec3& globalOrigin) const {
 }
 
 #undef RENDER_LIGHT_LOCAL
+#undef RENDER_LIGHT_CREATE_FROM_ORIGIN_AXIS
+#undef RENDER_LIGHT_INVERSE
+#undef RENDER_LIGHT_MULTIPLY
+#undef RENDER_LIGHT_WARNING

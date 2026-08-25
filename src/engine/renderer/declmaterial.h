@@ -135,10 +135,7 @@ public:
   idMaterial();
   ~idMaterial() override;
 
-  idDeclInfo* GetDeclInfo() override {
-    return static_cast<const idMaterial*>(this)->GetDeclInfo();
-  }
-  idDeclInfo* GetDeclInfo() const;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   void FreeData() override;
   const char* DefaultDefinition() const override;
@@ -148,8 +145,7 @@ public:
   }
   std::uint32_t GetDeclTimestamp() const;
   void ReParse(bool fromDisk) override;
-  void List() override { static_cast<const idMaterial*>(this)->List(); }
-  void List() const;
+  void List() const override;
   void Print() override { static_cast<const idMaterial*>(this)->Print(); }
   void Print() const;
 

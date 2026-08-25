@@ -291,7 +291,7 @@ void idDeclRenderProg::Print() {
   }
 }
 
-void idDeclRenderProg::List() {
+void idDeclRenderProg::List() const {
   idLib::Printf("%2i %2i %2i %s\n", data.vertexParms.num,
                 data.fragmentParms.num, data.textureParms.num, name.str);
 }
@@ -450,7 +450,7 @@ bool LoadGeneratedFile(const char* filename, renderProgData_t* data,
   return data->Read(file.file);
 }
 
-idDeclInfo* idDeclRenderProg::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclRenderProg::GetDeclInfo() const { return &resourceList; }
 
 void idDeclRenderProg::Clear() {
   renamed = this;

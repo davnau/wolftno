@@ -29,7 +29,7 @@ public:
   void LoadResource() override;
   bool ReloadIfStale() override;
   idResourceList* GetResourceList() const override;
-  void List() override;
+  void List() const override;
 
   int GetLengthInMsec() const;
 

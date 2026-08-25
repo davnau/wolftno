@@ -13,7 +13,7 @@ public:
   ~idDeclTable() override;
   void FreeData() override;
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
   float TableLookup(float value, bool fastSearch = true) const;
   idLookupTable& LookupTable() { return *table; }
@@ -54,7 +54,7 @@ public:
   };
 
   idDeclTrailBeam();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   trail_t trailProperties;
   quad_t quadProperties;
   static idDeclInfoTemplate<idDeclTrailBeam> resourceList;

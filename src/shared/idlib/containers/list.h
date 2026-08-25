@@ -1,7 +1,10 @@
 #pragma once
 
+#include "shared/idlib/sys/sys_alloc.h"
+
 #include <algorithm>
 #include <cstdint>
+#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -14,7 +17,17 @@ public:
   std::uint8_t memTag;
   std::uint8_t listStatic;
 
-  idList() : list(nullptr), num(0), size(0), granularity(0), memTag(DefaultTag), listStatic(0) {}
+  idList() : list(nullptr) {
+    // Retail initializes every list through the engine allocator boundary,
+    // even when the initial allocation is empty.
+    idMem::Singleton();
+    granularity = 0;
+    memTag = DefaultTag;
+    listStatic = 0;
+    num = 0;
+    size = 0;
+    ClearFree();
+  }
   idList(const idList& other) : idList() { *this = other; }
   idList& operator=(const idList& other) {
     if (this == &other)
@@ -24,16 +37,7 @@ public:
       list[i] = other.list[i];
     return *this;
   }
-  ~idList() {
-    if (listStatic == 0 || listStatic == 2) {
-      delete[] list;
-      list = nullptr;
-      num = 0;
-      size = 0;
-    } else {
-      num = 0;
-    }
-  }
+  ~idList() { ClearFree(); }
 
   int Num() const { return num; }
   bool IsFull() const { return listStatic != 0 && num >= size; }
@@ -103,7 +107,13 @@ public:
   void Clear() { num = 0; }
   void ClearFree() {
     if (listStatic == 0 || listStatic == 2) {
-      delete[] list;
+      if (list != nullptr) {
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+          for (int index = 0; index < size; ++index)
+            list[index].~T();
+        }
+        idMem::Singleton()->Free(list, ALIGN_16);
+      }
       list = nullptr;
       size = 0;
     }
@@ -149,11 +159,32 @@ public:
         break;
       }
     }
-    T* replacement = new T[newSize];
+    idMem* memory = idMem::Singleton();
+    T* replacement = static_cast<T*>(memory->AllocWithLocation(
+        "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag",
+        sizeof(T) * static_cast<std::size_t>(newSize),
+        static_cast<memTag_t>(memTag), false, ALIGN_16, HEAP_DEFAULTHEAP));
+    if (replacement == nullptr)
+      return;
+    int constructed = 0;
+    try {
+      for (; constructed < newSize; ++constructed)
+        ::new (static_cast<void*>(&replacement[constructed])) T;
+    } catch (...) {
+      while (constructed > 0)
+        replacement[--constructed].~T();
+      memory->Free(replacement, ALIGN_16);
+      throw;
+    }
     for (int i = 0; i < num; ++i)
       replacement[i] = std::move(list[i]);
-    if (listStatic == 0 || listStatic == 2)
-      delete[] list;
+    if ((listStatic == 0 || listStatic == 2) && list != nullptr) {
+      if constexpr (!std::is_trivially_destructible_v<T>) {
+        for (int index = 0; index < size; ++index)
+          list[index].~T();
+      }
+      idMem::Singleton()->Free(list, ALIGN_16);
+    }
     list = replacement;
     size = newSize;
     listStatic = 0;
@@ -171,11 +202,33 @@ private:
     if (newSize == size || listStatic != 0) {
       return true;
     }
-    T* replacement = new T[newSize];
+    idMem* memory = idMem::Singleton();
+    T* replacement = static_cast<T*>(memory->AllocWithLocation(
+        "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag",
+        sizeof(T) * static_cast<std::size_t>(newSize),
+        static_cast<memTag_t>(memTag), false, ALIGN_16, HEAP_DEFAULTHEAP));
+    if (replacement == nullptr)
+      return false;
+    int constructed = 0;
+    try {
+      for (; constructed < newSize; ++constructed)
+        ::new (static_cast<void*>(&replacement[constructed])) T;
+    } catch (...) {
+      while (constructed > 0)
+        replacement[--constructed].~T();
+      memory->Free(replacement, ALIGN_16);
+      throw;
+    }
     const int copyCount = std::min(num, newSize);
     for (int i = 0; i < copyCount; ++i)
       replacement[i] = std::move(list[i]);
-    delete[] list;
+    if ((listStatic == 0 || listStatic == 2) && list != nullptr) {
+      if constexpr (!std::is_trivially_destructible_v<T>) {
+        for (int index = 0; index < size; ++index)
+          list[index].~T();
+      }
+      idMem::Singleton()->Free(list, ALIGN_16);
+    }
     list = replacement;
     size = newSize;
     num = copyCount;

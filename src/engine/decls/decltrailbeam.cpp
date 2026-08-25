@@ -18,4 +18,4 @@ idDeclTrailBeam::idDeclTrailBeam()
   resourceListPtr = &resourceList;
 }
 
-idDeclInfo* idDeclTrailBeam::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclTrailBeam::GetDeclInfo() const { return &resourceList; }

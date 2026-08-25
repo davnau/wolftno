@@ -54,8 +54,7 @@ public:
   idParticleStage* FindStageByName(const char* stageName);
   int CalcLodForDistance(float distanceSquared) const;
   const idLookupTable* GetTables() const;
-  idDeclInfo* GetDeclInfo() override;
-  virtual idDeclInfo* GetDeclInfo() const;
+  idDeclInfo* GetDeclInfo() const override;
   bool RebuildTextSource() override;
   void LogMissingDecl() override;
   virtual void LogMissingDecl() const;

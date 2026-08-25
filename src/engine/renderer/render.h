@@ -38,6 +38,8 @@ struct idViewBypass {
 };
 
 struct idEnvBlendParms {
+  ~idEnvBlendParms() noexcept(false) = default;
+
   void RemoveRenderParm(const idDeclRenderParm* parm);
   void Clear();
   void CopyFrom(const idEnvBlendParms& other);
@@ -260,7 +262,7 @@ struct alignas(16) renderSettings_t {
 class alignas(16) idRenderView {
 public:
   idRenderView();
-  ~idRenderView();
+  ~idRenderView() noexcept(false);
 
   void CommitParameters(int windowWidth, int windowHeight, int renderWidth,
                         int renderHeight);

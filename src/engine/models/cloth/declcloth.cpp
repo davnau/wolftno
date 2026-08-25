@@ -96,7 +96,7 @@ idDeclCloth::~idDeclCloth() = default;
 
 void idDeclCloth::FreeData() { ropeData.ClearFree(); }
 
-idDeclInfo* idDeclCloth::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclCloth::GetDeclInfo() const { return &resourceList; }
 
 void idDeclCloth::Parse(idParser& src) {
   idToken token;

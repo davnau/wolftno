@@ -39,7 +39,7 @@ public:
   };
 
   idDeclElectricBolt();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   const idMaterial* material;
   bool applyGradient;
@@ -75,7 +75,7 @@ class idDeclImpactParticle final : public idDeclTypeInfo {
 public:
   idDeclImpactParticle();
   const idDeclParticle* GetImpactParticleForMaterial(int materialID) const;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   const idDeclParticle* defaultPrt;
   const idDeclParticle* metalPrt;
@@ -118,7 +118,7 @@ class idDeclImpactSound final : public idDeclTypeInfo {
 public:
   idDeclImpactSound();
   const idSoundShader* GetImpactSoundForMaterial(int materialID) const;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   const idSoundShader* defaultSound;
   const idSoundShader* metalSound;
@@ -168,7 +168,7 @@ public:
 class idDeclStaticImage final : public idDeclTypeInfo {
 public:
   idDeclStaticImage();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   idAtomicString fileName;
   static idDeclInfoTemplate<idDeclStaticImage> resourceList;
 };
@@ -176,7 +176,7 @@ public:
 class idDeclGlass final : public idDeclTypeInfo {
 public:
   idDeclGlass();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   const idDeclFX* fx;
   int impact;
   int destroy;
@@ -213,7 +213,7 @@ public:
     idVec4 magic;
   };
   idDeclRibbon();
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   const idMaterial* material;
   int duration;
   float maxLength;
@@ -242,7 +242,7 @@ public:
   idDeclProductionFilter();
   ~idDeclProductionFilter() override;
   void Parse(idParser& source) override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   idList<idStr> entityFilter;
   idList<idStr> entityRenderModelFilter;
   idList<idStr> layerListFilter;
@@ -264,7 +264,7 @@ class idDeclModelLOD final : public idDeclTypeInfo {
 public:
   idDeclModelLOD();
   void FreeData() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
   float fade;
   idList<modelLODLevel_t> LODs;
   static idDeclInfoTemplate<idDeclModelLOD> resourceList;

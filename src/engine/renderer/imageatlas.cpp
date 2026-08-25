@@ -62,7 +62,7 @@ bool idAtlasResource::ReloadIfStale() {
   return true;
 }
 
-void idAtlasResource::List() {
+void idAtlasResource::List() const {
   idImageAtlas* atlas = globalImages->transSortImageAtlas;
   idLib::Printf("%4i , %4i : %4i x %4i %s\n",
                 atlas->ATLAS_TILE_WIDTH * img_x,

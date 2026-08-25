@@ -5,28 +5,27 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
-#include <unordered_map>
 #include <vector>
 
 namespace {
 struct Allocation {
+  void* pointer;
   std::size_t size;
   memTag_t tag;
   bool map;
+  Allocation* next;
 };
-std::mutex allocationMutex;
-std::unordered_map<void*, Allocation> allocations;
 std::array<const char*, 256> tagNames{};
+SRWLOCK allocationLock = SRWLOCK_INIT;
+Allocation* allocations = nullptr;
 } // namespace
 void idMemLocal_ResetMapAllocations(idMemLocal* memory) {
   std::vector<void*> pending;
-  {
-    std::lock_guard<std::mutex> lock(allocationMutex);
-    for (const auto& item : allocations)
-      if (item.second.map)
-        pending.push_back(item.first);
-  }
+  AcquireSRWLockShared(&allocationLock);
+  for (Allocation* item = allocations; item != nullptr; item = item->next)
+    if (item->map)
+      pending.push_back(item->pointer);
+  ReleaseSRWLockShared(&allocationLock);
   for (void* pointer : pending)
     memory->Free(pointer);
 }
@@ -74,26 +73,45 @@ void* idMemLocal::AllocWithLocation(const char* location, std::size_t size, memT
     return nullptr;
   if (zero)
     std::memset(pointer, 0, size);
-  {
-    std::lock_guard<std::mutex> lock(allocationMutex);
-    allocations[pointer] = {size, tag,
-                            heap == HEAP_MAPHEAP || (heap == HEAP_DEFAULTHEAP && !IsGlobalHeap())};
-    ++numAllocs;
+  auto* allocation = static_cast<Allocation*>(
+      HeapAlloc(GetProcessHeap(), 0, sizeof(Allocation)));
+  if (allocation == nullptr) {
+    _aligned_free(pointer);
+    isOutOfMemory = true;
+    return nullptr;
   }
+  allocation->pointer = pointer;
+  allocation->size = size;
+  allocation->tag = tag;
+  allocation->map =
+      heap == HEAP_MAPHEAP ||
+      (heap == HEAP_DEFAULTHEAP && !IsGlobalHeap());
+  AcquireSRWLockExclusive(&allocationLock);
+  allocation->next = allocations;
+  allocations = allocation;
+  ++numAllocs;
+  ReleaseSRWLockExclusive(&allocationLock);
   hashTable[0] = {pointer, tag, location, static_cast<int>(size), false, heap == HEAP_MAPHEAP};
   return pointer;
 }
 void idMemLocal::Free(void* pointer, align_t) {
   if (!pointer)
     return;
-  {
-    std::lock_guard<std::mutex> lock(allocationMutex);
-    auto it = allocations.find(pointer);
-    if (it != allocations.end()) {
-      allocations.erase(it);
+  Allocation* removed = nullptr;
+  AcquireSRWLockExclusive(&allocationLock);
+  Allocation** link = &allocations;
+  while (*link != nullptr) {
+    if ((*link)->pointer == pointer) {
+      removed = *link;
+      *link = removed->next;
       --numAllocs;
+      break;
     }
+    link = &(*link)->next;
   }
+  ReleaseSRWLockExclusive(&allocationLock);
+  if (removed != nullptr)
+    HeapFree(GetProcessHeap(), 0, removed);
   _aligned_free(pointer);
 }
 void idMemLocal::InitMapHeap() {
@@ -111,10 +129,11 @@ bool idMemLocal::OutOfMemory() {
   return isOutOfMemory;
 }
 std::uint64_t idMemLocal::BytesCurrentlyAllocated() const {
-  std::lock_guard<std::mutex> lock(allocationMutex);
+  AcquireSRWLockShared(&allocationLock);
   std::uint64_t total = 0;
-  for (const auto& item : allocations)
-    total += item.second.size;
+  for (Allocation* item = allocations; item != nullptr; item = item->next)
+    total += item->size;
+  ReleaseSRWLockShared(&allocationLock);
   return total;
 }
 void idMemLocal::DumpMemory() const {

@@ -1019,8 +1019,6 @@ void idDeclParticle::FreeData() {
   tables.ClearFree();
 }
 
-idDeclInfo* idDeclParticle::GetDeclInfo() { return &resourceList; }
-
 idDeclInfo* idDeclParticle::GetDeclInfo() const { return &resourceList; }
 
 void idDeclParticle::WriteStageImposter(

@@ -20,4 +20,4 @@ void idDeclProductionFilter::Parse(idParser& source) {
               entityRenderModelFilter.list + entityRenderModelFilter.num, less);
 }
 
-idDeclInfo* idDeclProductionFilter::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclProductionFilter::GetDeclInfo() const { return &resourceList; }

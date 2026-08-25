@@ -59,8 +59,8 @@ public:
   ~idDeclRenderParm() override;
 
   const char* DefaultDefinition() const override;
-  idDeclInfo* GetDeclInfo() override;
-  void List() override;
+  idDeclInfo* GetDeclInfo() const override;
+  void List() const override;
   void Parse(idParser& source) override;
 
   idImage* ParseImageLine(idParser& source) const;

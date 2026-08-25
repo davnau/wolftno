@@ -33,7 +33,7 @@ const char* idDeclTypeInfo::DefaultDefinition() const {
   return "{ }\n";
 }
 
-idDeclInfo* idDeclTypeInfo::GetDeclInfo() {
+idDeclInfo* idDeclTypeInfo::GetDeclInfo() const {
   return &resourceList;
 }
 

@@ -53,4 +53,4 @@ const idDeclParticle* idDeclImpactParticle::GetImpactParticleForMaterial(int mat
   }
 }
 
-idDeclInfo* idDeclImpactParticle::GetDeclInfo() { return &resourceList; }
+idDeclInfo* idDeclImpactParticle::GetDeclInfo() const { return &resourceList; }

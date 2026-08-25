@@ -24,11 +24,8 @@ public:
   const char* DefaultDefinition() const override;
   void Print() override { static_cast<const idDeclFoliage*>(this)->Print(); }
   void Print() const;
-  void List() override;
-  idDeclInfo* GetDeclInfo() override {
-    return static_cast<const idDeclFoliage*>(this)->GetDeclInfo();
-  }
-  idDeclInfo* GetDeclInfo() const;
+  void List() const override;
+  idDeclInfo* GetDeclInfo() const override;
   void Parse(idParser& source) override;
 
   std::uint16_t quadWidth;

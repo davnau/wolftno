@@ -10,7 +10,7 @@ class idDeclLoadingScreen final : public idDeclTypeInfo {
 public:
   idDeclLoadingScreen();
   ~idDeclLoadingScreen() override;
-  idDeclInfo* GetDeclInfo() override;
+  idDeclInfo* GetDeclInfo() const override;
 
   template <typename Haystack, typename Needles>
   static bool ContainsOne(const Haystack& haystack, const Needles& needles) {

@@ -10,6 +10,6 @@ idDeclMapInfo::idDeclMapInfo()
 
 idDeclMapInfo::~idDeclMapInfo() = default;
 
-idDeclInfo* idDeclMapInfo::GetDeclInfo() {
+idDeclInfo* idDeclMapInfo::GetDeclInfo() const {
   return &resourceList;
 }
