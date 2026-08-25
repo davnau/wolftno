@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <immintrin.h>
 
 namespace {
 
@@ -24,15 +25,27 @@ float Sin16ForWater(float angle) {
 }
 
 std::uint8_t EncodeDirection(float value) {
+  const int encoded = _mm_cvttss_si32(
+      _mm_set_ss((value + 1.0f) * 127.5f));
   return static_cast<std::uint8_t>(std::clamp(
-      static_cast<int>((value + 1.0f) * 127.5f), 0, 255));
+      encoded, 0, 255));
 }
 
 } // namespace
 
 float idMath::Exp16(float f) {
   const float scaled = f * 1.442695f;
-  const int whole = static_cast<int>(std::floor(scaled));
+  std::int32_t scaledBits;
+  std::memcpy(&scaledBits, &scaled, sizeof(scaledBits));
+  const int sign = scaledBits >> 31;
+  const int exponent =
+      static_cast<int>((static_cast<std::uint32_t>(scaledBits) >> 23) &
+                       0xffu) -
+      127;
+  const int mantissa =
+      (scaledBits & 0x7fffff) | 0x800000;
+  const int whole =
+      sign ^ (~(exponent >> 31) & (mantissa >> (23 - exponent)));
   const std::uint32_t exponentBits =
       static_cast<std::uint32_t>(whole + 127) << 23;
   float powerOfTwo;
@@ -70,6 +83,8 @@ void BlockPosToBlockLoc(int blockX, int blockY, int numBlocksX,
 }
 
 void ApplyDisturbances(const deferredWaterBlockGenParms_t* parms) {
+  const float spacing = parms->spacing;
+  const float inverseSpacing = 1.0f / spacing;
   for (int blockY = 0; blockY < 16; ++blockY) {
     for (int blockX = 0; blockX < 16; ++blockX) {
       const int index = blockX + blockY * 16;
@@ -87,32 +102,37 @@ void ApplyDisturbances(const deferredWaterBlockGenParms_t* parms) {
           case WATER_DISTURBANCE_DROP:
           case WATER_DISTURBANCE_GRID_DROP: {
             const int gridRadius = static_cast<int>(
-                std::floor(disturbance.radius / parms->spacing + 0.5f));
-            if (gridY >= disturbance.gridY - gridRadius &&
-                gridY <= disturbance.gridY + gridRadius &&
-                gridX >= disturbance.gridX - gridRadius &&
-                gridX <= disturbance.gridX + gridRadius) {
-              const idVec2 location =
-                  disturbance.type == WATER_DISTURBANCE_GRID_DROP
-                      ? idVec2{disturbance.gridX * parms->spacing,
-                               disturbance.gridY * parms->spacing}
-                      : disturbance.loc;
-              const float dx = gridX * parms->spacing - location.x;
-              const float dy = gridY * parms->spacing - location.y;
-              const float inside = disturbance.radius * disturbance.radius -
-                                   (dx * dx + dy * dy);
-              if (inside > 0.0f) {
-                amount = disturbance.parms.x;
-                if (disturbance.type != WATER_DISTURBANCE_GRID_DROP)
-                  amount *= std::sqrt(inside) / disturbance.radius;
+                std::floor(disturbance.radius * inverseSpacing + 0.5f));
+            if (gridY < disturbance.gridY - gridRadius ||
+                gridY > disturbance.gridY + gridRadius ||
+                gridX < disturbance.gridX - gridRadius ||
+                gridX > disturbance.gridX + gridRadius) {
+              continue;
+            }
+            const idVec2 location =
+                disturbance.type == WATER_DISTURBANCE_GRID_DROP
+                    ? idVec2{disturbance.gridX * spacing,
+                             disturbance.gridY * spacing}
+                    : disturbance.loc;
+            const float dy = gridY * spacing - location.y;
+            const float dx = gridX * spacing - location.x;
+            const float distanceSquared = dy * dy + dx * dx;
+            const float inside = disturbance.radius * disturbance.radius -
+                                 distanceSquared;
+            if (inside > 0.0f) {
+              amount = disturbance.parms.x;
+              if (disturbance.type != WATER_DISTURBANCE_GRID_DROP) {
+                amount = (((1.0f / std::sqrt(inside)) * inside) /
+                          disturbance.radius) *
+                         amount;
               }
             }
             break;
           }
           case WATER_DISTURBANCE_WAVE: {
-            const float dx = gridX * parms->spacing - disturbance.loc.x;
-            const float dy = gridY * parms->spacing - disturbance.loc.y;
-            const float distanceSquared = dx * dx + dy * dy;
+            const float dy = gridY * spacing - disturbance.loc.y;
+            const float dx = gridX * spacing - disturbance.loc.x;
+            const float distanceSquared = dy * dy + dx * dx;
             if (disturbance.radius * disturbance.radius - distanceSquared >
                 0.0f) {
               const float distance = distanceSquared *
@@ -122,6 +142,8 @@ void ApplyDisturbances(const deferredWaterBlockGenParms_t* parms) {
                                      remaining * disturbance.parms.z) *
                        disturbance.parms.x *
                        Sin16ForWater(remaining * disturbance.parms.y);
+            } else {
+              continue;
             }
             break;
           }
@@ -131,8 +153,9 @@ void ApplyDisturbances(const deferredWaterBlockGenParms_t* parms) {
         const float simulationScale =
             static_cast<float>(parms->simulationParms[index] & 0xffu) *
             0.0039215689f;
-        parms->currBlock[index] +=
-            simulationScale * amount * parms->timeDelta;
+        parms->currBlock[index] =
+            simulationScale * (amount * parms->timeDelta) +
+            parms->currBlock[index];
       }
     }
   }
@@ -150,9 +173,10 @@ void GenWaterSurface(const deferredWaterBlockGenParms_t* parms,
       1.0f / ((static_cast<float>(parms->gridHeight) - 1.0f) *
               parms->spacing);
   const float damping = 1.0f - parms->timeDelta * parms->damping;
-  const float wave = parms->timeDelta * parms->timeDelta * 0.5f *
-                     parms->speed * parms->speed /
-                     (parms->spacing * parms->spacing);
+  const float wave =
+      ((parms->timeDelta * parms->timeDelta) * 0.5f) *
+      (parms->speed * parms->speed) *
+      (1.0f / (parms->spacing * parms->spacing));
 
   for (int row = 0; row < 16; ++row) {
     idDrawVert localVerts[16]{};
@@ -179,7 +203,7 @@ void GenWaterSurface(const deferredWaterBlockGenParms_t* parms,
                            simulationScale;
       const float slopeX = (right - left) * inverseSpacing * 0.5f *
                            simulationScale;
-      height *= simulationScale;
+      height = simulationScale * height;
       parms->prevBlock[index] = height;
 
       idDrawVert& vertex = localVerts[column];
@@ -210,4 +234,3 @@ void GenWaterSurface(const deferredWaterBlockGenParms_t* parms,
     std::memcpy(parms->verts + row * 16, localVerts, sizeof(localVerts));
   }
 }
-

@@ -23,6 +23,7 @@ public:
   bool Triangulate();
 
 private:
+  friend struct EarClipValidationAccess;
   friend class idRenderModelCuttableResource;
 
   struct vertex_t {

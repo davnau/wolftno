@@ -7,8 +7,9 @@
 
 class idImageManager {
 public:
-  idImage* ScratchImage(const char* name, const idImageOpts* options);
+  idImage* ScratchImage(const char* name, const idImageOpts& options);
   idImage* ImageFromFile(const char* name, const void* filter, bool forceLoad);
+  void CreateIntrinsicImages();
 
   idImage* defaultImage{};
   idImage* whiteImage{};
@@ -25,6 +26,10 @@ public:
 
 class idImageAtlas {
 public:
+  idImageAtlas(const char* atlasName, int sizeLog2);
+  ~idImageAtlas();
+  void ClearAtlas();
+
   int ATLAS_WIDTH_BITS{};
   int ATLAS_HEIGHT_BITS{};
   int ATLAS_MIP_LEVELS{};

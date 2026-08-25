@@ -4,7 +4,6 @@
 #include "shared/idlib/sys/sys_alloc.h"
 
 #include <algorithm>
-#include <vector>
 
 namespace {
 constexpr std::uint16_t kStripRestart = 0xffffu;
@@ -112,18 +111,22 @@ void InOrderTriangleStripper(const std::uint16_t* triIndexes,
 void TriangleStripper(const std::uint16_t* indexes, unsigned int numIndexes,
                       idList<std::uint16_t, 5>* stripIndexes) {
   const int indexCount = static_cast<int>(numIndexes);
-  std::vector<int> oldOrder(static_cast<std::size_t>(indexCount));
+  ForsythResultOwner oldOrder;
+  oldOrder.data = static_cast<int*>(idMem::Singleton()->AllocWithLocation(
+      "w:\\build\\tech5\\shared\\idlib\\containers/Array.h(105) : TAG_TEMP",
+      sizeof(int) * static_cast<std::size_t>(indexCount), TAG_TEMP, false,
+      ALIGN_16, HEAP_DEFAULTHEAP));
   int maximumIndex = -1;
   for (int index = 0; index < indexCount; ++index) {
-    oldOrder[index] = indexes[index];
-    maximumIndex = std::max(maximumIndex, oldOrder[index]);
+    oldOrder.data[index] = indexes[index];
+    maximumIndex = std::max(maximumIndex, oldOrder.data[index]);
   }
   ForsythResultOwner reordered;
-  reordered.data = reorderForsyth(oldOrder.data(), indexCount / 3,
+  reordered.data = reorderForsyth(oldOrder.data, indexCount / 3,
                                   maximumIndex + 1);
   if (!reordered.data) {
     reordered.data = static_cast<int*>(idMem::Singleton()->AllocWithLocation(
-        "StaticModelTriStrips fallback indices",
+        "w:\\build\\tech5\\shared\\idlib\\Heap.h(76) : TAG_NEW",
         sizeof(int) * static_cast<std::size_t>(indexCount), TAG_NEW, false,
         ALIGN_16, HEAP_DEFAULTHEAP));
     for (int index = 0; index < indexCount; ++index)

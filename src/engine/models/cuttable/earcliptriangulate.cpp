@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace {
 
@@ -18,8 +19,27 @@ float Orientation(const idVec2& previous, const idVec2& current,
 }
 
 bool SamePoint(const idVec2& lhs, const idVec2& rhs) {
-  return std::fabs(lhs.x - rhs.x) <= kPointEpsilon &&
-         std::fabs(lhs.y - rhs.y) <= kPointEpsilon;
+  return !(std::fabs(lhs.x - rhs.x) > kPointEpsilon ||
+           std::fabs(lhs.y - rhs.y) > kPointEpsilon);
+}
+
+bool IsConvexCorner(const idVec2& previous, const idVec2& current,
+                    const idVec2& next) {
+  return !(Orientation(previous, current, next) < 0.0f);
+}
+
+void NormalVectors(const idVec3& normal, idVec3& left, idVec3& down) {
+  const float horizontalLengthSquared =
+      normal.x * normal.x + normal.y * normal.y;
+  if (horizontalLengthSquared == 0.0f) {
+    left = {1.0f, 0.0f, 0.0f};
+  } else {
+    const float inverseLength =
+        1.0f / std::sqrt(std::max(horizontalLengthSquared,
+                                  std::numeric_limits<float>::min()));
+    left = {-inverseLength * normal.y, inverseLength * normal.x, 0.0f};
+  }
+  down = left.Cross(normal);
 }
 
 } // namespace
@@ -108,9 +128,14 @@ int idEarClipTriangulate::TriangleQuery(const idVec2& point, const idVec2& v0,
 
   const float edge1 = (v2.y - v0.y) * (point.x - v0.x) -
                       (point.y - v0.y) * (v2.x - v0.x);
-  if (edge1 < 0.0f)
-    return 1;
-  const int sign1 = edge1 > 0.0f ? 1 : 0;
+  int sign1;
+  if (edge1 <= 0.0f) {
+    if (edge1 < 0.0f)
+      return 1;
+    sign1 = 0;
+  } else {
+    sign1 = 1;
+  }
 
   const float edge2 = (v1.y - v0.y) * (point.x - v0.x) -
                       (point.y - v0.y) * (v1.x - v0.x);
@@ -165,12 +190,18 @@ idEarClipTriangulate::idEarClipTriangulate()
 void idEarClipTriangulate::BuildGeometry(
     const idPlane& plane, idList<idVec2>& outputPositions,
     idList<std::uint16_t>& outputIndices) {
-  (void)plane;
-  outputPositions.EnsureCapacity(outputPositions.Num() + maxIndex + 1);
+  idVec3 left;
+  idVec3 down;
+  NormalVectors({plane.a, plane.b, plane.c}, left, down);
+
+  const int numPositions = maxIndex + 1;
+  if (numPositions > outputPositions.size)
+    outputPositions.ResizeForPort(numPositions);
   for (int i = 0; i <= maxIndex; ++i)
     outputPositions.Append(positions[i]);
 
-  outputIndices.EnsureCapacity(outputIndices.Num() + triangles.Num());
+  if (triangles.Num() > outputIndices.size)
+    outputIndices.ResizeForPort(triangles.Num());
   for (int i = 0; i < triangles.Num(); ++i)
     outputIndices.Append(static_cast<std::uint16_t>(triangles[i]));
 }
@@ -189,7 +220,8 @@ void idEarClipTriangulate::SetOuterFromPoints(
 
   contour_t& contour = *contours[0];
   contour.indices.ClearFree();
-  contour.indices.EnsureCapacity(points.Num());
+  if (points.Num() > contour.indices.size)
+    contour.indices.ResizeForPort(points.Num());
   float valueMax = -1.0e30f;
   std::int16_t indexMax = -1;
 
@@ -225,7 +257,9 @@ void idEarClipTriangulate::AddInnerFromPoints(
     contours.Append(nullptr);
 
   auto* contour = new contour_t;
-  contour->indices.EnsureCapacity(points.Num());
+  contour->indices.ClearFree();
+  if (points.Num() > contour->indices.size)
+    contour->indices.ResizeForPort(points.Num());
   float valueMax = -1.0e30f;
   std::int16_t indexMax = -1;
 
@@ -257,11 +291,12 @@ void idEarClipTriangulate::AddInnerFromPoints(
 }
 
 void idEarClipTriangulate::CreateVertices() {
-  vertices.EnsureCapacity(indices.Num());
+  if (indices.Num() > vertices.size)
+    vertices.ResizeForPort(indices.Num());
   int previous = indices.Num() - 1;
 
   for (int current = 0; current < indices.Num(); ++current) {
-    vertex_t vertex{};
+    vertex_t vertex;
     vertex.index = indices[current];
     vertex.prevVertex = static_cast<std::int16_t>(previous);
     vertex.nextVertex =
@@ -270,11 +305,10 @@ void idEarClipTriangulate::CreateVertices() {
     vertex.nextEar = -1;
     vertex.prevShared.value = -1;
     vertex.nextShared.value = -1;
-    vertex.isConvex =
-        Orientation(positions[indices[previous]], positions[indices[current]],
-                    positions[indices[vertex.nextVertex]]) >= 0.0f;
+    vertex.isConvex = IsConvexCorner(
+        positions[indices[previous]], positions[indices[current]],
+        positions[indices[vertex.nextVertex]]);
     vertex.isEar = 0;
-    vertex.__free = 0;
     vertices.Append(vertex);
 
     if (vertices[current].isConvex != 0) {
@@ -306,7 +340,9 @@ bool idEarClipTriangulate::Process() {
   int remaining = vertices.Num();
   if (headReflex == -1) {
     const std::int16_t first = indices[0];
-    triangles.EnsureCapacity(3 * (remaining - 2));
+    const int numTriangleIndices = 3 * (remaining - 2);
+    if (numTriangleIndices > triangles.size)
+      triangles.ResizeForPort(numTriangleIndices);
     for (int i = 1; i < remaining - 1; ++i) {
       triangles.Append(first);
       triangles.Append(indices[i]);
@@ -351,10 +387,9 @@ bool idEarClipTriangulate::Process() {
   auto recomputeConvex = [this](int vertexIndex) {
     vertex_t& vertex = vertices[vertexIndex];
     const bool wasReflex = vertex.isConvex == 0;
-    vertex.isConvex =
-        Orientation(positions[vertices[vertex.prevVertex].index],
-                    positions[vertex.index],
-                    positions[vertices[vertex.nextVertex].index]) >= 0.0f;
+    vertex.isConvex = IsConvexCorner(
+        positions[vertices[vertex.prevVertex].index], positions[vertex.index],
+        positions[vertices[vertex.nextVertex].index]);
     return wasReflex;
   };
 
@@ -416,9 +451,16 @@ bool idEarClipTriangulate::Process() {
     removeEar(currentEar);
     headEar = nextEar;
     if (currentEar == nextEar) {
+      const idVec2& previousPosition = positions[vertices[previousVertex].index];
+      const idVec2& currentPosition = positions[vertices[nextEar].index];
+      const idVec2& nextPosition = positions[vertices[nextVertex].index];
+      const char* nextText = nextPosition.ToString(2);
+      const char* currentText = currentPosition.ToString(2);
+      const char* previousText = previousPosition.ToString(2);
       idLib::Warning(
           "idEarClipTriangulate::Process Circularity error same ear being "
-          "processed.!");
+          "processed.! prev %s index %s next %s",
+          previousText, currentText, nextText);
       return false;
     }
 
@@ -462,7 +504,7 @@ bool idEarClipTriangulate::CombineContours(
   for (int current = 0; current < outerIndices.Num(); ++current) {
     const idVec2 previousDelta = positions[outerIndices[previous]] - innerPosition;
     const idVec2 currentDelta = positions[outerIndices[current]] - innerPosition;
-    if (previousDelta.y <= 0.0f && currentDelta.y >= 0.0f) {
+    if (!(previousDelta.y > 0.0f || currentDelta.y < 0.0f)) {
       float intersection;
       int endpoint = -1;
       if (previousDelta.y >= 0.0f) {
@@ -531,26 +573,24 @@ bool idEarClipTriangulate::CombineContours(
           (candidate + outerIndices.Num() - 1) % outerIndices.Num();
       const int candidateNext = (candidate + 1) % outerIndices.Num();
       const idVec2& candidatePosition = positions[outerIndices[candidate]];
-      if (Orientation(positions[outerIndices[candidatePrevious]],
-                      candidatePosition,
-                      positions[outerIndices[candidateNext]]) > 0.0f ||
-          TriangleQuery(candidatePosition, triangle[0], triangle[1],
-                        triangle[2]) > 0)
+      if (!(Orientation(positions[outerIndices[candidatePrevious]],
+                        candidatePosition,
+                        positions[outerIndices[candidateNext]]) <= 0.0f &&
+            TriangleQuery(candidatePosition, triangle[0], triangle[1],
+                          triangle[2]) <= 0))
         continue;
 
       const idVec2 difference = candidatePosition - innerPosition;
       const float distance = difference.LengthSqr();
       const float cosineSquared = difference.x * difference.x / distance;
-      if (cosineSquared < bestCosineSquared &&
-          std::fabs(cosineSquared - bestCosineSquared) > kPointEpsilon)
-        continue;
-      if (std::fabs(cosineSquared - bestCosineSquared) <= kPointEpsilon &&
-          bestDistance <= distance)
-        continue;
-
-      bridgeIndex = candidate;
-      if (cosineSquared > bestCosineSquared)
+      if (cosineSquared <= bestCosineSquared) {
+        if (std::fabs(cosineSquared - bestCosineSquared) > kPointEpsilon ||
+            bestDistance <= distance)
+          continue;
+      } else {
         bestCosineSquared = cosineSquared;
+      }
+      bridgeIndex = candidate;
       bestDistance = distance;
     }
   }
@@ -654,6 +694,9 @@ void idEarClipTriangulate::AddInnerFromPoints(
 
 bool idEarClipTriangulate::CreateSimplePolygon() {
   const int numContours = contours.Num();
+  if (numContours == 1)
+    indices.Append(contours[0]->indices);
+
   for (int sorted = 1; sorted < numContours; ++sorted) {
     for (int index = numContours - 1; index > sorted; --index) {
       if (contours[index]->valueMax > contours[index - 1]->valueMax)
@@ -661,15 +704,27 @@ bool idEarClipTriangulate::CreateSimplePolygon() {
     }
   }
 
-  indices.Clear();
-  for (int i = 0; i < contours[0]->indices.Num(); ++i)
-    indices.Append(contours[0]->indices[i]);
+  int requiredCapacity = 2 * numContours;
+  for (int contourIndex = 0; contourIndex < numContours; ++contourIndex)
+    requiredCapacity += contours[contourIndex]->indices.Num();
 
-  idList<std::int16_t> combined;
+  idList<std::int16_t> workIndices;
+  if (requiredCapacity > indices.size)
+    indices.ResizeForPort(requiredCapacity);
+  if (requiredCapacity > 0)
+    workIndices.ResizeForPort(requiredCapacity);
+
+  idList<std::int16_t>* source = &workIndices;
+  idList<std::int16_t>* destination = &indices;
+  if ((numContours & 1) != 0)
+    std::swap(source, destination);
+
+  source->Clear();
+  source->Append(contours[0]->indices);
   for (int contourIndex = 1; contourIndex < numContours; ++contourIndex) {
-    if (!CombineContours(contours[contourIndex], indices, combined))
+    if (!CombineContours(contours[contourIndex], *source, *destination))
       return false;
-    indices = combined;
+    std::swap(source, destination);
   }
   return true;
 }

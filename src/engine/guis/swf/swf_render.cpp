@@ -1235,7 +1235,7 @@ void idSWF::CreateAltasImageAndMaterial() {
   options.sampler.repeat = TR_REPEAT;
   options.sampler.lodMaxClamp = 13.0f;
   atlasImage = globalImages != nullptr
-                   ? globalImages->ScratchImage(atlasTextureName.str, &options)
+                   ? globalImages->ScratchImage(atlasTextureName.str, options)
                    : nullptr;
   idStr materialText;
   materialText.Format("{\ntransmap %s\nstageprogram guiBlend_CoACgY_premulalpha\n}",

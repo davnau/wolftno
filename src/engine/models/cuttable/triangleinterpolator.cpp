@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <immintrin.h>
 #include <limits>
 
 namespace {
@@ -17,9 +18,10 @@ float Dot2(const idVec2& left, const idVec2& right) {
 }
 
 float InverseLength(float lengthSquared) {
-  return 1.0f /
-         std::sqrt(std::max(lengthSquared,
-                            std::numeric_limits<float>::min()));
+  const float clamped = _mm_cvtss_f32(_mm_max_ss(
+      _mm_set_ss(lengthSquared),
+      _mm_set_ss(std::numeric_limits<float>::min())));
+  return 1.0f / std::sqrt(clamped);
 }
 
 idVec2 ExtrapolateStart(const idVec2& first, const idVec2& second,
@@ -49,7 +51,7 @@ float Decode(std::uint8_t value) {
 
 std::uint8_t Encode(float value) {
   const float scaled = (value + 1.0f) * 127.5f + 0.5f;
-  const int rounded = static_cast<int>(std::nearbyint(scaled));
+  const int rounded = _mm_cvtss_si32(_mm_set_ss(scaled));
   return static_cast<std::uint8_t>(std::clamp(rounded, 0, 255));
 }
 

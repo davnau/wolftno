@@ -200,6 +200,14 @@ public:
   void SetEnemy(idEntity* value) { currentEnemy = value; }
   void SetFriendly(idEntity* value) { currentFriendly = value; }
   void SetFriendlyBlocker(idEntity* value) { friendlyBlocker = value; }
+  void SetTurretBurstState(int nextBurst, int endBurst, int lastFired) {
+    nextBurstTime = nextBurst;
+    endBurstTime = endBurst;
+    lastFiredAtTime = lastFired;
+  }
+  int GetNextBurstTimeForTest() const { return nextBurstTime; }
+  int GetEndBurstTimeForTest() const { return endBurstTime; }
+  int GetLastFiredAtTimeForTest() const { return lastFiredAtTime; }
   void SetCurrentNeutral(idEntity* value) { currentNeutral = value; }
   void SetLastAttacker(idEntity* value) { lastAttacker = value; }
   void SetSoundAlarmTime(int value) { timeToSoundAlarm = value; }
@@ -297,6 +305,9 @@ private:
   idEntity* currentEnemy{nullptr};
   idEntity* currentFriendly{nullptr};
   idEntity* friendlyBlocker{nullptr};
+  int nextBurstTime{0};
+  int endBurstTime{0};
+  int lastFiredAtTime{-1};
   idEntity* currentNeutral{nullptr};
   int lastDamageTime{-1};
   const idInfoPath* currentPath{nullptr};

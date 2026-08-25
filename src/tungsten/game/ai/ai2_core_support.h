@@ -113,7 +113,43 @@ private:
   std::vector<std::string> goreNames;
 };
 
-class idAIHealth {};
+class idAIHealth {
+public:
+  void ClearDeadFlag() {
+    dead = false;
+    ++clearDeadFlagCount;
+  }
+  void SetCurBaseHealth_Impl(float health) {
+    currentBaseHealth = health;
+    ++setCurBaseHealthCount;
+  }
+  void Kill_Impl(float killingBlowDamage = 0.0F) {
+    currentBaseHealth = 0.0F;
+    lastKillingBlowDamage = killingBlowDamage;
+  }
+  void SetDeadFlag() { dead = true; }
+
+  bool IsDead_Impl() const { return dead; }
+  float GetCurBaseHealthForTest() const { return currentBaseHealth; }
+  float GetLastKillingBlowDamageForTest() const {
+    return lastKillingBlowDamage;
+  }
+  int GetClearDeadFlagCountForTest() const { return clearDeadFlagCount; }
+  int GetSetCurBaseHealthCountForTest() const {
+    return setCurBaseHealthCount;
+  }
+  void ResetCallCountsForTest() {
+    clearDeadFlagCount = 0;
+    setCurBaseHealthCount = 0;
+  }
+
+private:
+  float currentBaseHealth{0.0F};
+  float lastKillingBlowDamage{0.0F};
+  bool dead{false};
+  int clearDeadFlagCount{0};
+  int setCurBaseHealthCount{0};
+};
 
 class idComponentActionScript {
 public:
@@ -458,6 +494,38 @@ class idDeclEntityDef;
 class idSoundShader;
 class idDamageGroup;
 class idDeclElectricBolt;
+class idDeclGore;
+class idDeclVoiceOver;
+
+class idSpawnFocusWithRequirement {
+public:
+  idSpawnFocusWithRequirement();
+  idRecoveredValue RequirementFilled(...);
+  const idList<idAtomicString, 5>& GetRequirementsForTest() const {
+    return requirements;
+  }
+  const idDeclEntityDef* GetGiveEntityDefinitionForTest() const {
+    return giveEnt;
+  }
+
+private:
+  const idDeclEntityDef* giveEnt{nullptr};
+  idList<idAtomicString, 5> requirements;
+};
+static_assert(sizeof(idSpawnFocusWithRequirement) == 0x20,
+              "idSpawnFocusWithRequirement ABI size drift");
+
+struct idAIDeathSound {
+  const idDeclDamage* damageType{nullptr};
+  const idDeclVoiceOver* voiceOver{nullptr};
+  const idSoundShader* soundShader{nullptr};
+};
+static_assert(sizeof(idAIDeathSound) == 0x18,
+              "idAIDeathSound ABI size drift");
+
+struct idSpawnEntityReference {
+  int value{0x1FFF};
+};
 
 class idAIEditable {
 public:
@@ -494,11 +562,39 @@ public:
   struct idAIDeath {
     idAIDeath();
     ~idAIDeath();
+
+    int ignoreDamageType;
+    idSpawnEntityReference trigger;
+    idSpawnEntityReference triggerOnDying;
+    int removeTime;
+    float fadeOutTime;
+    float bodyFadeTime;
+    bool bAvoidDangerZone;
+    bool bReportDangerZone;
+    float dangerZoneFactor_Death;
+    bool bCorpseDetection;
+    idAnimWebPath deathAnim;
+    idList<idAIDeathSound, 5> deathSounds;
+    const idDeclGore* goreDef;
+    bool removeHealthWhenDamaged : 1;
+    bool shouldDropLootBox : 1;
+    bool useArmorSurfTypeOnDG : 1;
+    bool noBodyRemoval : 1;
+    bool useRagdoll : 1;
+    bool manuallyStartedRagdoll : 1;
+    bool useDeadPhys : 1;
+    bool slideAwayFromCollision : 1;
+    bool instantRagdoll : 1;
+    float disintigrateDuration;
+    int deadEffectDuration;
+    int deathAnimAWResponseFlags;
+    bool canOnlyBeKilledByPlayer : 1;
+    idList<idStr, 5> canOnlyBeKilledDamageGroups;
+    idSpawnFocusWithRequirement focusOverride;
+    const idDeclEntityDef* deathSpawnEntityDef;
   };
   struct idAIActionSettings {
-    struct idSpawnEntityReference {
-      int value{0x1FFF};
-    };
+    using idSpawnEntityReference = ::idSpawnEntityReference;
 
     struct idAICoverSettings {
       bool usesCombatScenePoints{true};
@@ -795,6 +891,16 @@ static_assert(offsetof(idAIEditable::idAIActionSettings, EMPStun) == 0x268);
 static_assert(offsetof(idAIEditable::idAIActionSettings, sleeping) == 0x278);
 static_assert(offsetof(idAIEditable::idAIActionSettings, robotDeath) == 0x288);
 static_assert(offsetof(idAIEditable::idAIActionSettings, tesla) == 0x2B0);
+static_assert(sizeof(idAIEditable::idAIDeath) == 0xC8,
+              "idAIDeath ABI size drift");
+static_assert(offsetof(idAIEditable::idAIDeath, trigger) == 0x4);
+static_assert(offsetof(idAIEditable::idAIDeath, triggerOnDying) == 0x8);
+static_assert(offsetof(idAIEditable::idAIDeath, deathAnim) == 0x28);
+static_assert(offsetof(idAIEditable::idAIDeath, deathSounds) == 0x50);
+static_assert(offsetof(idAIEditable::idAIDeath, canOnlyBeKilledDamageGroups) ==
+              0x88);
+static_assert(offsetof(idAIEditable::idAIDeath, focusOverride) == 0xA0);
+static_assert(offsetof(idAIEditable::idAIDeath, deathSpawnEntityDef) == 0xC0);
 
 class idAIEvent {
 public:
@@ -1392,23 +1498,6 @@ private:
 class idScriptFunction {
 public:
   ~idScriptFunction();
-};
-
-class idDeclEntityDef;
-class idSpawnFocusWithRequirement {
-public:
-  idSpawnFocusWithRequirement();
-  idRecoveredValue RequirementFilled(...);
-  const idList<idAtomicString, 5>& GetRequirementsForTest() const {
-    return requirements;
-  }
-  const idDeclEntityDef* GetGiveEntityDefinitionForTest() const {
-    return giveEnt;
-  }
-
-private:
-  idList<idAtomicString, 5> requirements;
-  const idDeclEntityDef* giveEnt{nullptr};
 };
 
 struct eboltControlNode_t { int value{0}; };

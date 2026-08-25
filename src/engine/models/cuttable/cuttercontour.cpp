@@ -1,9 +1,19 @@
 #include "engine/models/cuttable/cuttercontour.h"
 
+#include "shared/idlib/sys/sys_alloc.h"
+
 #include <cstdint>
 #include <limits>
 
 namespace {
+
+constexpr memTag_t kGameTag = static_cast<memTag_t>(0x4D);
+
+template <typename Type>
+Type* Allocate(const char* location) {
+  return static_cast<Type*>(idMem::Singleton()->AllocWithLocation(
+      location, sizeof(Type), kGameTag, false, ALIGN_16, HEAP_DEFAULTHEAP));
+}
 
 std::int32_t WrapAdd(std::int32_t left, std::int32_t right) {
   return static_cast<std::int32_t>(static_cast<std::uint32_t>(left) +
@@ -43,17 +53,17 @@ idContourManager::idContourManager()
 idContourManager::~idContourManager() {
   while (contoursPool != nullptr) {
     Contour* next = contoursPool->next;
-    delete contoursPool;
+    idMem::Singleton()->Free(contoursPool, ALIGN_16);
     contoursPool = next;
   }
   while (edgesPool != nullptr) {
     ContourEdge_t* next = edgesPool->next;
-    delete edgesPool;
+    idMem::Singleton()->Free(edgesPool, ALIGN_16);
     edgesPool = next;
   }
   while (nodesPool != nullptr) {
     ContourNode_t* next = nodesPool->next;
-    delete nodesPool;
+    idMem::Singleton()->Free(nodesPool, ALIGN_16);
     nodesPool = next;
   }
 }
@@ -77,7 +87,8 @@ void idContourManager::Free(Contour* contour) {
 
 ContourEdge_t* idContourManager::AllocEdge() {
   if (edgesPool == nullptr) {
-    edgesPool = new ContourEdge_t;
+    edgesPool = Allocate<ContourEdge_t>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterContour.cpp(409) : TAG_GAME");
     edgesPool->next = nullptr;
   }
   ContourEdge_t* result = edgesPool;
@@ -87,7 +98,8 @@ ContourEdge_t* idContourManager::AllocEdge() {
 
 Contour* idContourManager::AllocContour() {
   if (contoursPool == nullptr) {
-    contoursPool = new Contour;
+    contoursPool = Allocate<Contour>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterContour.cpp(393) : TAG_GAME");
     contoursPool->next = nullptr;
   }
   Contour* result = contoursPool;
@@ -97,7 +109,8 @@ Contour* idContourManager::AllocContour() {
 
 ContourNode_t* idContourManager::AllocNode() {
   if (nodesPool == nullptr) {
-    nodesPool = new ContourNode_t;
+    nodesPool = Allocate<ContourNode_t>(
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterContour.cpp(425) : TAG_GAME");
     nodesPool->next = nullptr;
   }
   ContourNode_t* result = nodesPool;

@@ -30,7 +30,8 @@ enum memTag_t {
   TAG_RENDERWORLD = 61,
   TAG_RENDERER = 62,
   TAG_HASHINDEX = 78,
-  TAG_DXBUFFER = 86
+  TAG_DXBUFFER = 86,
+  TAG_RESOURCE = 99
 };
 struct virtualMemStats_t {
   std::uint64_t totalPhysicalMem, usedPhysicalMem, pageIns, pageOuts, pageFaults;

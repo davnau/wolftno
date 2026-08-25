@@ -28,6 +28,19 @@ public:
   virtual idFileList* ListFiles(const char* directory, const char* extension,
                                 bool recursive = false) const = 0;
   virtual void FreeFileList(idFileList* list) const { delete list; }
+  // NEEDS_WORK(shared/idlib/filesystem): renderer-facing portions of the
+  // retail interface; the full vtable will be recovered with filesystem.
+  virtual void FixLongFilename(const char* basePath, const char* extension,
+                               const char* input, char* output,
+                               int outputLength) const {
+    idStr::snPrintf(output, outputLength, "%s%s.%s", basePath ? basePath : "",
+                    input ? input : "", extension ? extension : "");
+  }
+  std::uint32_t GetTimestamp(const char* path, bool) const {
+    return GetTimestamp(path);
+  }
+  bool FileExists(const char* path, bool) const { return FileExists(path); }
+  bool RemoveFile(const char* path, fsPath_t) { return RemoveFile(path); }
 };
 
 class idFileSystemLocal final : public idFileSystem {

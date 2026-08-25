@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <immintrin.h>
 #include <limits>
 
 namespace {
@@ -36,23 +37,35 @@ template <typename AdvanceLeft, typename StopRight>
 void QuickSortIndices(std::int16_t* indices, int low, int high,
                       const AdvanceLeft& advanceLeft,
                       const StopRight& stopRight) {
-  if (low >= high)
-    return;
-  std::swap(indices[low], indices[(low + high) >> 1]);
-  const std::int16_t pivot = indices[low];
-  int left = low + 1;
-  int right = high;
-  while (left <= right) {
-    while (left <= high && advanceLeft(indices[left], pivot))
-      ++left;
-    while (right >= low && !stopRight(indices[right], pivot))
-      --right;
-    if (left < right)
-      std::swap(indices[left], indices[right]);
-  }
-  std::swap(indices[low], indices[right]);
-  QuickSortIndices(indices, low, right - 1, advanceLeft, stopRight);
-  QuickSortIndices(indices, right + 1, high, advanceLeft, stopRight);
+  int lows[256];
+  int highs[256];
+  int stackIndex = 0;
+  lows[0] = low;
+  highs[0] = high;
+  do {
+    low = lows[stackIndex];
+    high = highs[stackIndex];
+    if (low < high) {
+      std::swap(indices[low], indices[(low + high) >> 1]);
+      const std::int16_t pivot = indices[low];
+      int left = low + 1;
+      int right = high;
+      while (left <= right) {
+        while (left <= high && advanceLeft(indices[left], pivot))
+          ++left;
+        while (right >= low && !stopRight(indices[right], pivot))
+          --right;
+        if (left < right)
+          std::swap(indices[left], indices[right]);
+      }
+      std::swap(indices[low], indices[right]);
+      stackIndex += 2;
+      lows[stackIndex - 2] = right + 1;
+      lows[stackIndex - 1] = low;
+      highs[stackIndex - 1] = right - 1;
+    }
+    --stackIndex;
+  } while (stackIndex >= 0);
 }
 
 std::int32_t HullTurn(const idList<idVec2i>& points,
@@ -82,8 +95,10 @@ void AppendHullIndex(const idList<idVec2i>& points,
 }
 
 float InverseLength(float lengthSquared) {
-  return 1.0f /
-         std::sqrt(std::max(lengthSquared, std::numeric_limits<float>::min()));
+  const __m128 clamped =
+      _mm_max_ss(_mm_set_ss(lengthSquared),
+                 _mm_set_ss(std::numeric_limits<float>::min()));
+  return 1.0f / _mm_cvtss_f32(_mm_sqrt_ss(clamped));
 }
 
 } // namespace
@@ -181,8 +196,8 @@ void idConvexHull::Create(const idList<idVec2i>& points, float shrink) {
                                                        convex[previous].x)) *
                                 0.5f;
       const float inverse = InverseLength(edgeY * edgeY + edgeX * edgeX);
-      weights.Append(
-          std::fabs(edgeX * inverse * offsetY - edgeY * inverse * offsetX));
+      weights.Append(std::fabs((edgeX * inverse) * offsetY +
+                               (-(edgeY * inverse)) * offsetX));
       sorted.Append(static_cast<std::int16_t>(current));
       indicesLower.Append(static_cast<std::int16_t>(previous));
       indicesUpper.Append(static_cast<std::int16_t>(next));
@@ -221,9 +236,10 @@ void idConvexHull::Create(const idList<idVec2i>& points, float shrink) {
       const float lengthSquared = delta.LengthSqr();
       const float inverse = InverseLength(lengthSquared);
       if (shrink * 2.0f <= inverse * lengthSquared) {
-        const idVec2 offset = delta * (inverse * shrink);
+        const idVec2 offset{(delta.x * inverse) * shrink,
+                            (inverse * delta.y) * shrink};
         vertices[previous] = vertices[previous] - offset;
-        vertices[current] = vertices[current] + offset;
+        vertices[current] = offset + vertices[current];
       }
       previous = current;
     }

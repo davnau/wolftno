@@ -8,6 +8,9 @@ class idResourceManager {
 public:
   virtual ~idResourceManager() = default;
   virtual bool ExcludeFont(const char* filename) = 0;
+  // NEEDS_WORK(engine/framework): retained here as the renderer-facing slice
+  // until the complete retail idResourceManager interface is recovered.
+  virtual bool ExcludeImage(const char*) { return false; }
   virtual unsigned GetBuildPlatforms() const { return 0; }
   virtual void SetFileHook() {}
   virtual void ReleaseFileHook() {}

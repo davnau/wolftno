@@ -1,5 +1,7 @@
 #include "engine/models/cuttable/cutterclip.h"
 
+#include "shared/idlib/sys/sys_alloc.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -33,11 +35,15 @@ std::int32_t WrapAbs(std::int32_t value) {
              : value;
 }
 
+constexpr memTag_t kGameTag = static_cast<memTag_t>(0x4D);
+
 template <typename T, int Count>
-T* AllocatePoolBlock(idList<void*>& allocations) {
-  auto* bytes = new unsigned char[sizeof(T) * Count];
-  allocations.Append(bytes);
-  return reinterpret_cast<T*>(bytes);
+T* AllocatePoolBlock(idList<void*>& allocations, const char* location) {
+  T* block = static_cast<T*>(idMem::Singleton()->AllocWithLocation(
+      location, sizeof(T) * Count, kGameTag, false, ALIGN_16,
+      HEAP_DEFAULTHEAP));
+  allocations.Append(block);
+  return block;
 }
 
 } // namespace
@@ -58,11 +64,12 @@ public:
     constexpr std::int64_t maxLevels = 128;
     std::int64_t lo[maxLevels];
     std::int64_t hi[maxLevels];
-    lo[0] = 0;
-    hi[0] = num - 1;
-    for (std::int64_t level = 0; level >= 0;) {
-      std::int64_t i = lo[level];
-      std::int64_t j = hi[level];
+    std::int64_t low = 0;
+    std::int64_t high = num - 1;
+    std::int64_t level = 0;
+    for (;;) {
+      std::int64_t i = low;
+      std::int64_t j = high;
       if (j - i >= 4 && level < maxLevels - 1) {
         const std::int64_t pivotIndex = (i + j) / 2;
         std::swap(base[j], base[pivotIndex]);
@@ -81,18 +88,23 @@ public:
           std::swap(base[i], base[j]);
         } while (++i < --j);
         while (static_cast<const Derived*>(this)->Compare(base[i], pivot) <= 0 &&
-               i < hi[level]) {
+               i < high) {
           ++i;
         }
         while (static_cast<const Derived*>(this)->Compare(base[j], pivot) >= 0 &&
-               lo[level] < j) {
+               low < j) {
           --j;
         }
         std::swap(pivot, base[i]);
-        lo[level + 1] = i;
-        hi[level + 1] = hi[level];
-        hi[level] = j;
-        ++level;
+        if (high - i <= j - low) {
+          lo[level] = low;
+          hi[level++] = j;
+          low = i;
+        } else {
+          lo[level] = i;
+          hi[level++] = high;
+          high = j;
+        }
       } else {
         for (; i < j; --j) {
           std::int64_t maximum = i;
@@ -104,7 +116,10 @@ public:
           }
           std::swap(base[maximum], base[j]);
         }
-        --level;
+        if (--level < 0)
+          return;
+        low = lo[level];
+        high = hi[level];
       }
     }
   }
@@ -121,7 +136,7 @@ public:
     if (left->points != nullptr && right->points != nullptr) {
       const Polygon_t* leftOuter = left->hole ? left->firstLeft : left;
       const Polygon_t* rightOuter = right->hole ? right->firstLeft : right;
-      const int difference = leftOuter->index - rightOuter->index;
+      const int difference = WrapSubtract(leftOuter->index, rightOuter->index);
       if (difference != 0)
         return difference;
       if (left->hole == right->hole)
@@ -138,12 +153,13 @@ idCutterClip::idSort_Polygons::~idSort_Polygons() = default;
 
 int idCutterClip::precisionModifier = 10000;
 
-idCutterClip::idCutterClip() = default;
+idCutterClip::idCutterClip()
+    : clipMode(CLIPMODE_INTERSECT), running(false) {}
 
 idCutterClip::~idCutterClip() {
   Prepare();
   for (int index = 0; index < poolAllocations.Num(); ++index) {
-    delete[] static_cast<unsigned char*>(poolAllocations[index]);
+    idMem::Singleton()->Free(poolAllocations[index], ALIGN_16);
     poolAllocations[index] = nullptr;
   }
   poolAllocations.ClearFree();
@@ -305,8 +321,10 @@ void idCutterClip::AddContour(const Contour* contours, polygonType_t polyType) {
       edge->horizontal = edge->bottom.y == edge->top.y;
       edge->deltaX = edge->horizontal
                          ? -1.0e30f
-                         : static_cast<float>(edge->top.x - edge->bottom.x) /
-                               static_cast<float>(edge->bottom.y - edge->top.y);
+                         : static_cast<float>(WrapSubtract(edge->top.x,
+                                                           edge->bottom.x)) /
+                               static_cast<float>(WrapSubtract(edge->top.y,
+                                                               edge->bottom.y));
       if (lowest == nullptr || edge->bottom.y < lowest->bottom.y)
         lowest = edge;
       previousIndex = index;
@@ -1138,7 +1156,9 @@ void idCutterClip::FixupPolygon(Polygon_t* polygon) {
 
 idCutterClip::Edge_t* idCutterClip::AllocEdge() {
   if (edgesPool == nullptr) {
-    Edge_t* block = AllocatePoolBlock<Edge_t, 1024>(poolAllocations);
+    Edge_t* block = AllocatePoolBlock<Edge_t, 1024>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(193) : TAG_GAME");
     edgesPool = block;
     for (int index = 0; index < 1023; ++index)
       block[index].next = &block[index + 1];
@@ -1153,8 +1173,9 @@ idCutterClip::Edge_t* idCutterClip::AllocEdge() {
 
 idCutterClip::LocalMinima_t* idCutterClip::AllocLocalMinima() {
   if (localMinimasPool == nullptr) {
-    LocalMinima_t* block =
-        AllocatePoolBlock<LocalMinima_t, 256>(poolAllocations);
+    LocalMinima_t* block = AllocatePoolBlock<LocalMinima_t, 256>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(226) : TAG_GAME");
     localMinimasPool = block;
     for (int index = 0; index < 255; ++index)
       block[index].next = &block[index + 1];
@@ -1169,7 +1190,9 @@ idCutterClip::LocalMinima_t* idCutterClip::AllocLocalMinima() {
 
 idCutterClip::Scanbeam_t* idCutterClip::AllocScanbeam() {
   if (scanbeamsPool == nullptr) {
-    Scanbeam_t* block = AllocatePoolBlock<Scanbeam_t, 256>(poolAllocations);
+    Scanbeam_t* block = AllocatePoolBlock<Scanbeam_t, 256>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(259) : TAG_GAME");
     scanbeamsPool = block;
     for (int index = 0; index < 256; ++index) {
       block[index].next = index < 255 ? &block[index + 1] : nullptr;
@@ -1185,7 +1208,9 @@ idCutterClip::Scanbeam_t* idCutterClip::AllocScanbeam() {
 
 idCutterClip::Polygon_t* idCutterClip::AllocPolygon() {
   if (polygonsPool == nullptr) {
-    Polygon_t* block = AllocatePoolBlock<Polygon_t, 32>(poolAllocations);
+    Polygon_t* block = AllocatePoolBlock<Polygon_t, 32>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(291) : TAG_GAME");
     polygonsPool = block;
     for (int index = 0; index < 32; ++index) {
       block[index].firstLeft = nullptr;
@@ -1208,8 +1233,9 @@ idCutterClip::Polygon_t* idCutterClip::AllocPolygon() {
 
 idCutterClip::PolygonPoint_t* idCutterClip::AllocPolygonPoint() {
   if (polygonPointsPool == nullptr) {
-    PolygonPoint_t* block =
-        AllocatePoolBlock<PolygonPoint_t, 1024>(poolAllocations);
+    PolygonPoint_t* block = AllocatePoolBlock<PolygonPoint_t, 1024>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(336) : TAG_GAME");
     polygonPointsPool = block;
     for (int index = 0; index < 1024; ++index) {
       block[index].next = index < 1023 ? &block[index + 1] : nullptr;
@@ -1227,8 +1253,9 @@ idCutterClip::PolygonPoint_t* idCutterClip::AllocPolygonPoint() {
 
 idCutterClip::NestedPolygon_t* idCutterClip::AllocNestedPolygon() {
   if (nestedPolygonsPool == nullptr) {
-    NestedPolygon_t* block =
-        AllocatePoolBlock<NestedPolygon_t, 32>(poolAllocations);
+    NestedPolygon_t* block = AllocatePoolBlock<NestedPolygon_t, 32>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(375) : TAG_GAME");
     nestedPolygonsPool = block;
     for (int index = 0; index < 32; ++index)
       block[index].next = index < 31 ? &block[index + 1] : nullptr;
@@ -1245,7 +1272,9 @@ idCutterClip::NestedPolygon_t* idCutterClip::AllocNestedPolygon() {
 
 idCutterClip::JoinRecord_t* idCutterClip::AllocJoinRecord() {
   if (joinRecordsPool == nullptr) {
-    JoinRecord_t* block = AllocatePoolBlock<JoinRecord_t, 128>(poolAllocations);
+    JoinRecord_t* block = AllocatePoolBlock<JoinRecord_t, 128>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(412) : TAG_GAME");
     joinRecordsPool = block;
     for (int index = 0; index < 128; ++index)
       block[index].next = index < 127 ? &block[index + 1] : nullptr;
@@ -1260,7 +1289,9 @@ idCutterClip::JoinRecord_t* idCutterClip::AllocJoinRecord() {
 idCutterClip::HorizontalJoinRecord_t* idCutterClip::AllocHorizontalJoinRecord() {
   if (horizontalJoinRecordsPool == nullptr) {
     HorizontalJoinRecord_t* block =
-        AllocatePoolBlock<HorizontalJoinRecord_t, 128>(poolAllocations);
+        AllocatePoolBlock<HorizontalJoinRecord_t, 128>(
+            poolAllocations,
+            "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(444) : TAG_GAME");
     horizontalJoinRecordsPool = block;
     for (int index = 0; index < 128; ++index)
       block[index].next = index < 127 ? &block[index + 1] : nullptr;
@@ -1274,8 +1305,9 @@ idCutterClip::HorizontalJoinRecord_t* idCutterClip::AllocHorizontalJoinRecord() 
 
 idCutterClip::IntersectNode_t* idCutterClip::AllocIntersectNode() {
   if (intersectNodesPool == nullptr) {
-    IntersectNode_t* block =
-        AllocatePoolBlock<IntersectNode_t, 128>(poolAllocations);
+    IntersectNode_t* block = AllocatePoolBlock<IntersectNode_t, 128>(
+        poolAllocations,
+        "w:\\build\\tech5\\engine\\models\\cuttable\\CutterClip.cpp(477) : TAG_GAME");
     intersectNodesPool = block;
     for (int index = 0; index < 128; ++index)
       block[index].next = index < 127 ? &block[index + 1] : nullptr;

@@ -148,6 +148,54 @@ using glUniformBlockBindingProc_t = void (*)(unsigned int program,
                                              unsigned int blockIndex,
                                              unsigned int blockBinding);
 using glUniform1iProc_t = void (*)(int location, int value);
+using glMapTexture2DIntelProc_t = void* (*)(unsigned int texture, int level,
+                                            unsigned int access, int* stride,
+                                            unsigned int* layout);
+using glUnmapTexture2DIntelProc_t = void (*)(unsigned int texture, int level);
+using glCompressedTextureSubImage3DProc_t = void (*)(
+    unsigned int texture, unsigned int target, int level, int x, int y, int z,
+    int width, int height, int depth, unsigned int format, int imageSize,
+    const void* data);
+using glTextureSubImage3DProc_t = void (*)(
+    unsigned int texture, unsigned int target, int level, int x, int y, int z,
+    int width, int height, int depth, unsigned int format, unsigned int type,
+    const void* data);
+using glCompressedTextureSubImage2DProc_t = void (*)(
+    unsigned int texture, unsigned int target, int level, int x, int y,
+    int width, int height, unsigned int format, int imageSize,
+    const void* data);
+using glTextureSubImage2DProc_t = void (*)(
+    unsigned int texture, unsigned int target, int level, int x, int y,
+    int width, int height, unsigned int format, unsigned int type,
+    const void* data);
+using glCompressedTexSubImage3DProc_t = void (*)(
+    unsigned int target, int level, int x, int y, int z, int width,
+    int height, int depth, unsigned int format, int imageSize,
+    const void* data);
+using glTexSubImage3DProc_t = void (*)(unsigned int target, int level, int x,
+                                      int y, int z, int width, int height,
+                                      int depth, unsigned int format,
+                                      unsigned int type, const void* data);
+using glCompressedTexSubImage2DProc_t = void (*)(
+    unsigned int target, int level, int x, int y, int width, int height,
+    unsigned int format, int imageSize, const void* data);
+using glTexStorageSparseAMDProc_t = void (*)(
+    unsigned int target, unsigned int internalFormat, int width, int height,
+    int depth, int layers, unsigned int flags);
+using glCompressedTexImage3DProc_t = void (*)(
+    unsigned int target, int level, unsigned int internalFormat, int width,
+    int height, int depth, int border, int imageSize, const void* data);
+using glTexImage3DProc_t = void (*)(unsigned int target, int level,
+                                    int internalFormat, int width, int height,
+                                    int depth, int border,
+                                    unsigned int format, unsigned int type,
+                                    const void* data);
+using glCompressedTexImage2DProc_t = void (*)(
+    unsigned int target, int level, unsigned int internalFormat, int width,
+    int height, int border, int imageSize, const void* data);
+using glTexImage2DMultisampleProc_t = void (*)(
+    unsigned int target, int samples, int internalFormat, int width,
+    int height, unsigned char fixedSampleLocations);
 
 extern glBindBufferProc_t _glewBindBufferARB;
 extern glGenBuffersProc_t _glewGenBuffersARB;
@@ -215,6 +263,22 @@ extern glGetUniformLocationProc_t _glewGetUniformLocation;
 extern glGetUniformBlockIndexProc_t _glewGetUniformBlockIndex;
 extern glUniformBlockBindingProc_t _glewUniformBlockBinding;
 extern glUniform1iProc_t _glewUniform1i;
+extern glMapTexture2DIntelProc_t _glewMapTexture2DINTEL;
+extern glUnmapTexture2DIntelProc_t _glewUnmapTexture2DINTEL;
+extern glCompressedTextureSubImage3DProc_t
+    _glewCompressedTextureSubImage3DEXT;
+extern glTextureSubImage3DProc_t _glewTextureSubImage3DEXT;
+extern glCompressedTextureSubImage2DProc_t
+    _glewCompressedTextureSubImage2DEXT;
+extern glTextureSubImage2DProc_t _glewTextureSubImage2DEXT;
+extern glCompressedTexSubImage3DProc_t _glewCompressedTexSubImage3DARB;
+extern glTexSubImage3DProc_t _glewTexSubImage3D;
+extern glCompressedTexSubImage2DProc_t _glewCompressedTexSubImage2DARB;
+extern glTexStorageSparseAMDProc_t _glewTexStorageSparseAMD;
+extern glCompressedTexImage3DProc_t _glewCompressedTexImage3DARB;
+extern glTexImage3DProc_t _glewTexImage3D;
+extern glCompressedTexImage2DProc_t _glewCompressedTexImage2DARB;
+extern glTexImage2DMultisampleProc_t _glewTexImage2DMultisample;
 
 extern unsigned char _GLEW_ATI_meminfo;
 extern unsigned char _GLEW_NVX_gpu_memory_info;
@@ -258,9 +322,21 @@ extern "C" void glTexSubImage2D(unsigned int target, int level, int xOffset,
                                 int yOffset, int width, int height,
                                 unsigned int format, unsigned int type,
                                 const void* pixels);
+extern "C" void glPixelStorei(unsigned int parameter, int value);
+extern "C" void glDeleteTextures(int count, const unsigned int* textures);
+extern "C" void glGenTextures(int count, unsigned int* textures);
+extern "C" void glTexParameteri(unsigned int target, unsigned int parameter,
+                                 int value);
+extern "C" void glTexImage2D(unsigned int target, int level,
+                              int internalFormat, int width, int height,
+                              int border, unsigned int format,
+                              unsigned int type, const void* pixels);
 extern "C" void glCopyTexSubImage2D(unsigned int target, int level,
                                      int xOffset, int yOffset, int x, int y,
                                      int width, int height);
 extern "C" void glReadPixels(int x, int y, int width, int height,
                               unsigned int format, unsigned int type,
                               void* pixels);
+extern "C" void glGetTexImage(unsigned int target, int level,
+                               unsigned int format, unsigned int type,
+                               void* pixels);

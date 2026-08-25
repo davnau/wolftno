@@ -1567,7 +1567,8 @@ struct idAIAnimWebRuntimeState {
   std::vector<std::string> validScriptedPaths;
 };
 
-struct idDamageGroup {
+class idDamageGroup {
+public:
   idStr groupName;
   float damageScale{1.0F};
   float maxHealth{0.0F};
@@ -1661,6 +1662,8 @@ struct idAICoreState {
 
 struct idAIRobotRuntimeState {
   bool usesRobot{false};
+  bool isBoss{true};
+  bool bossRegistered{false};
   bool isCharging{false};
   bool autoRecharge{false};
   bool useRechargeAnimation{false};
@@ -1674,10 +1677,14 @@ struct idAIRobotRuntimeState {
   int lastShootTime{-1};
   int chargeStartTime{-1};
   int chargeDoneTime{-1};
+  int immuneDoneTime{-1};
+  int nextMTSPCheck{-1};
+  int nextTurnfastTime{-1};
   int numberOfStages{1};
   int currentStage{0};
   int powerOutTriggerActivations{0};
   int chargingDoneTriggerActivations{0};
+  int currentStageTriggerActivations{0};
   int cooldownEffectStartTime{-1};
   int cooldownEffectStopTime{-1};
   float shootHealthDrain{0.0F};
@@ -1686,6 +1693,12 @@ struct idAIRobotRuntimeState {
   float chargeHealthFraction{0.0F};
   float chargeTime{0.0F};
   float bossHealth{0.0F};
+  idStr stageGroup{"battery"};
+  const idSoundShader* turnfastSound{nullptr};
+  idVec3 lastBodyDir{1.0F, 0.0F, 0.0F};
+  int turnfastSoundPlayCount{0};
+  idStr lastDebugText;
+  idVec4 lastDebugColor{};
 };
 
 class idProp_Moveable : public idEntity {
@@ -1853,12 +1866,77 @@ public:
     struct idAIDebugging { ~idAIDebugging(); };
     struct idAIDeath;
     struct idAIAnimationInfo {
+      struct idAnimWebAnimatorStorage {
+        std::array<unsigned char, 0x478> bytes;
+      };
+      struct idTurretAnimatorStorage {
+        std::array<unsigned char, 0x448> base;
+        int lastBlendTriangle;
+        std::array<unsigned short, 9> vertexAliasHandles;
+        std::array<unsigned char, 2> tail;
+      };
+      template <std::size_t Size>
+      struct idAnimatorStorage {
+        std::array<unsigned char, Size> bytes;
+      };
+      struct tagData_t {
+        idVec3 trans;
+        idQuat rot;
+        unsigned short parentJoint;
+        unsigned short padding;
+      };
+      struct idSyncedAnimationInfo {
+        int overrideAnim;
+        int targetSpawnId;
+      };
+
       idAIAnimationInfo();
       ~idAIAnimationInfo();
+
+      int GetTurretLastBlendTriangleForTest() const {
+        return turretAnimator.lastBlendTriangle;
+      }
+      unsigned short GetTurretAliasHandleForTest(int index) const {
+        return turretAnimator.vertexAliasHandles[static_cast<std::size_t>(index)];
+      }
+      const tagData_t& GetViewTagDataForTest() const { return viewTagData; }
+      int GetSyncedTargetSpawnIdForTest() const {
+        return syncedAnim.targetSpawnId;
+      }
+
+      idAnimWebAnimatorStorage animWebAnimator;
+      aiSubWeb_t subWeb;
+      std::array<unsigned char, 4> subWebPadding;
+      idTurretAnimatorStorage turretAnimator;
+      idAnimatorStorage<0xB8> painAnimator;
+      idAnimatorStorage<0xB8> shootAnimator;
+      idAnimatorStorage<0x120> rollBonesAnimator;
+      idAnimatorStorage<0xE0> faceAnimator;
+      idAnimatorStorage<0x140> dragJointsAnimator;
+      idAnimatorStorage<0xF0> freezeJointsAnimator;
+      tagData_t viewTagData;
+      aiMelee_t meleeFlags;
+      aiMelee_t crouchMeleeFlags;
+      idSyncedAnimationInfo syncedAnim;
+      int ikEnableTime;
+      std::array<unsigned char, 4> trailingPadding;
     };
     struct idAIScriptInfo {
+      struct idScriptSpawnReference {
+        int value;
+      };
       idAIScriptInfo();
       ~idAIScriptInfo();
+
+      int flags;
+      idThread* thread;
+      idStaticList<int, 4> threads;
+      idStaticList<int, 4> fibers;
+      const idAIEvent* currentAIEvent;
+      int lastAIEventClass;
+      idVec3 lastAIEventOrigin;
+      idScriptSpawnReference lastAIEventOriginator;
+      idScriptSpawnReference lastAIEventInstigator;
     };
     struct idAIPhysics { ~idAIPhysics(); };
     struct idAIPain { ~idAIPain(); };
@@ -1880,11 +1958,6 @@ public:
     };
   };
 
-  struct idAIConstant {
-    idAIConstant();
-    ~idAIConstant();
-  };
-
   struct idAnimWebDefaults {
     idAnimWebDefaults();
     ~idAnimWebDefaults();
@@ -1899,6 +1972,92 @@ public:
     idStr webPath;
     idList<idAtomicString, 5> activeLayers;
     bool enabled{false};
+  };
+
+  struct idAIConstant {
+    struct idContentsStorage {
+      std::array<unsigned char, 3> bytes;
+    };
+    struct idAIPhysics {
+      idVec3 playerCollisionSize;
+      float heightCrouched;
+      float aiPathfindRadius;
+      idContentsStorage contents;
+      idContentsStorage clipMask;
+      idContentsStorage playerClipMask;
+      idContentsStorage extendedClipMask;
+    };
+    struct idRangeStorage {
+      float minimum;
+      float maximum;
+    };
+    struct idEntityInfluenceTrailStorage {
+      idVec3 offset;
+      float innerRadius;
+      float outerRadius;
+      float angle;
+      float trailDist;
+      float trailFadeInTime;
+      float trailFadeOutTime;
+    };
+    struct idAIMovement {
+      idStr aasName;
+      idRangeStorage moveSpeed;
+      idRangeStorage bodyTurnRate;
+      idRangeStorage moveTurnRate;
+      float relaxedTurnRateScale;
+      float accelRate;
+      float decelRate;
+      float alignmentTolerance;
+      int defaultMovementMode;
+      idEntityInfluenceTrailStorage influence;
+      bool useMoveFSM;
+      bool allowStrafing;
+      bool allowHostileStance;
+      bool requireWeaponForSearchCombat : 1;
+      int modeRestricFlags;
+    };
+    struct idAIAnimation {
+      const idDeclAnimWeb* animWebs[1];
+      idAnimWebDefaults animWebDefaults[1];
+      idStr eyeInfoName;
+      idAtomicString viewTagName;
+      bool useMoods : 1;
+      bool useLipsync : 1;
+      bool useGestures : 1;
+      bool useEyeTracking : 1;
+      bool useFaceSetupEyeTracking : 1;
+      bool useBlinking : 1;
+      bool useLidDeformation : 1;
+      bool useFaceManager : 1;
+      bool useFacialAnims : 1;
+      bool useCombatWebOnly : 1;
+      bool useRelaxedWebOnly : 1;
+      bool useHandsRelaxed : 1;
+      bool canUseTurret : 1;
+      bool useAimOffsetAnims : 1;
+      float focusTrackingYawOnlyOverride;
+      bool useMoodsEnabled : 1;
+      bool useLipsyncEnabled : 1;
+      bool useGesturesEnabled : 1;
+      bool useFacialAnimsEnabled : 1;
+      bool useFaceSetupEyeTrackingEnabled : 1;
+    };
+    struct idAIOnlineScoring {
+      bool heavy;
+    };
+    struct idAIStats {
+      int killStat;
+    };
+
+    idAIConstant();
+    ~idAIConstant();
+
+    idAIPhysics physics;
+    idAIMovement movement;
+    idAIAnimation animation;
+    idAIOnlineScoring onlineScoring;
+    idAIStats stats;
   };
 
   struct idVisibilityObscurity {
@@ -2459,7 +2618,8 @@ public:
   idRecoveredValue Damage(...);
   idRecoveredValue DamageFeedback(...);
   idRecoveredValue DamageGroupPopOffArmor(...);
-  idRecoveredValue DamageRobot(...);
+  float DamageRobot(idEntity* attacker, float damageDone,
+                    idDamageGroup* damageGroup);
   void DeactivateExtendedClipModel();
   bool DeathPending() const;
   idRecoveredValue Debug_Perception(...);
@@ -2679,7 +2839,7 @@ public:
   void ReloadWeapon(idWeapon* weapon);
   idRecoveredValue Remove(...);
   bool RespondsToAIEvent(const idAIEvent* event) const;
-  idRecoveredValue RobotBatteryExplodes(...);
+  bool RobotBatteryExplodes(idEntity* attacker);
   void SaveFSM(idFile_String* file, const char* fsmName,
                const char* indent);
   void SendDeathTrigger();
@@ -2774,9 +2934,9 @@ public:
   idRecoveredValue Think_AIControl(...);
   idRecoveredValue Think_Impl(...);
   idRecoveredValue Think_PlayerControl(...);
-  idRecoveredValue ThinkRobot(...);
+  void ThinkRobot(int currentTime);
   void TurretFire();
-  idRecoveredValue TurretShouldFire(...);
+  bool TurretShouldFire(idWeapon* weapon);
   bool UnequipItem(idInventoryItem* item);
   void UpdateActions(int curTime);
   idRecoveredValue UpdateAnimationControllers(...);
@@ -2792,7 +2952,7 @@ public:
   idRecoveredValue UpdateFSMs(...);
   idRecoveredValue UpdateGoreLevel(...);
   idRecoveredValue UpdateGrappleActivation(...);
-  idRecoveredValue UpdateGroupStatusConditions(...);
+  void UpdateGroupStatusConditions();
   idRecoveredValue UpdateLookFocus(...);
   void UpdateMeleeCapabilities();
   void UpdateMovement();
@@ -2982,6 +3142,9 @@ public:
     return lastAimDebugPosition;
   }
   int GetAimDebugCountForTest() const { return aimDebugCount; }
+  void SetCurrentAnimWebStateNameForTest(const char* value) {
+    animWebState.movementState = value != nullptr ? value : "";
+  }
   void ClearMissTimeDebugForTest() const {
     missTimeDebugPointCount = 0;
     missTimeDebugLineCount = 0;
@@ -3001,6 +3164,16 @@ public:
     groupStatusCondition = groupCondition;
     editableAimAccuracy = editableAccuracy;
     skillAimAccuracy = skillAccuracy;
+  }
+  void ConfigureGroupStatusInputs(bool coverValid,
+                                  const idVec3& coverOrigin,
+                                  int firedAtTime) {
+    groupCurrentCoverValid = coverValid;
+    groupCurrentCoverOrigin = coverOrigin;
+    groupLastFiredAtTime = firedAtTime;
+  }
+  int GetGroupStatusConditionForTest() const {
+    return groupStatusCondition;
   }
   int GetLastFireTime() const { return lastFireTime; }
   void SetAIEvaluationTime(int time) { aiEvaluationTime = time; }
@@ -3747,6 +3920,9 @@ private:
   bool usesSleeping{true};
   std::unique_ptr<idAIFireControl> fireControl;
   int groupStatusCondition{0};
+  bool groupCurrentCoverValid{false};
+  idVec3 groupCurrentCoverOrigin{};
+  int groupLastFiredAtTime{-1};
   int editableAimAccuracy{0};
   int skillAimAccuracy{0};
   int lastFireTime{-1};
@@ -3810,6 +3986,7 @@ private:
   idPlayer* controllingPlayer{nullptr};
   idEntity* currentEnemy{nullptr};
   idEntity* fakeEnemy{nullptr};
+  int fakeEnemyNumber{-1};
   const idDeclInventory* inventoryDecl{nullptr};
   idEntity* deathTrigger{nullptr};
   idEntity* currentActionNode{nullptr};
@@ -3920,6 +4097,35 @@ private:
   mutable idVec3 lastLookDebugPosition{};
   mutable int lookDebugCount{0};
 };
+
+static_assert(sizeof(idAI2::idAIVolatile::idAIAnimationInfo) == 0xEB8,
+              "idAIAnimationInfo ABI size drift");
+static_assert(offsetof(idAI2::idAIVolatile::idAIAnimationInfo,
+                       turretAnimator) == 0x480);
+static_assert(offsetof(idAI2::idAIVolatile::idAIAnimationInfo,
+                       painAnimator) == 0x8E0);
+static_assert(offsetof(idAI2::idAIVolatile::idAIAnimationInfo,
+                       viewTagData) == 0xE80);
+static_assert(offsetof(idAI2::idAIVolatile::idAIAnimationInfo,
+                       syncedAnim) == 0xEA8);
+static_assert(offsetof(idAI2::idAIVolatile::idAIAnimationInfo,
+                       ikEnableTime) == 0xEB0);
+static_assert(sizeof(idAI2::idAIVolatile::idAIScriptInfo) == 0x80,
+              "idAIScriptInfo ABI size drift");
+static_assert(offsetof(idAI2::idAIVolatile::idAIScriptInfo, threads) == 0x10);
+static_assert(offsetof(idAI2::idAIVolatile::idAIScriptInfo, fibers) == 0x38);
+static_assert(offsetof(idAI2::idAIVolatile::idAIScriptInfo,
+                       currentAIEvent) == 0x60);
+static_assert(offsetof(idAI2::idAIVolatile::idAIScriptInfo,
+                       lastAIEventOriginator) == 0x78);
+static_assert(sizeof(idAI2::idAnimWebDefaults) == 0x48,
+              "idAnimWebDefaults ABI size drift");
+static_assert(sizeof(idAI2::idAIConstant) == 0x138,
+              "idAIConstant ABI size drift");
+static_assert(offsetof(idAI2::idAIConstant, movement) == 0x20);
+static_assert(offsetof(idAI2::idAIConstant, animation) == 0xA0);
+static_assert(offsetof(idAI2::idAIConstant, onlineScoring) == 0x130);
+static_assert(offsetof(idAI2::idAIConstant, stats) == 0x134);
 
 extern idCVar ai_forceWalk;
 extern idCVar ai_enableDormancy;

@@ -63,6 +63,18 @@ public:
               trackingParms_t* trackingParms);
 
   int NumEntityStates() const { return static_cast<int>(activeIndices.size()); }
+  idAIEntityState* AddEntityStateForTest(const idSpawnId& entityId) {
+    if (idAIEntityState* existing = StateForSpawnId(entityId)) return existing;
+    if (freeIndices.empty()) return nullptr;
+    const int slot = freeIndices.back();
+    freeIndices.pop_back();
+    activeIndices.push_back(slot);
+    idAIEntityState& state =
+        entityStates[static_cast<std::size_t>(slot)];
+    state.spawnId = entityId;
+    state.active = true;
+    return &state;
+  }
   const idAIEntityState* GetEntityStateAt(int index) const {
     return index >= 0 && index < static_cast<int>(activeIndices.size())
         ? &entityStates[static_cast<std::size_t>(activeIndices[index])]

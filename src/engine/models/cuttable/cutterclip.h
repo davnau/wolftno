@@ -78,8 +78,7 @@ public:
     std::uint16_t side : 1;
     std::uint16_t polyType : 1;
     std::uint16_t horizontal : 1;
-    std::uint16_t free : 1;
-    std::uint16_t reserved : 12;
+    std::uint16_t free : 12;
     int ID;
   };
 
@@ -95,6 +94,7 @@ public:
     int index;
   };
 
+#pragma pack(push, 4)
   struct Polygon_t {
     Polygon_t* next;
     Polygon_t* firstLeft;
@@ -107,6 +107,7 @@ public:
     bool connected;
     bool hole;
   };
+#pragma pack(pop)
 
   struct NestedPolygon_t {
     NestedPolygon_t* next;
@@ -228,6 +229,7 @@ private:
   void JoinEdges();
   bool ProcessEdgesAtTopOfScanbeam(int y);
 
+#pragma pack(push, 4)
   static int precisionModifier;
 
   int memoryPeek = 0;
@@ -277,12 +279,13 @@ private:
   idList<HorizontalJoinRecord_t*> horizontalJoins;
   idList<void*> poolAllocations;
 
-  clipMode_t clipMode = CLIPMODE_INTERSECT;
   fillType_t fillTypeSubject;
   fillType_t fillTypeClip;
-  bool running = false;
+  clipMode_t clipMode;
+  bool running : 1;
 
 };
+#pragma pack(pop)
 
 static_assert(sizeof(idCutterClip::Edge_t) == 112, "Edge_t ABI drift");
 static_assert(offsetof(idCutterClip::Edge_t, top) == 64, "Edge_t::top ABI drift");
@@ -303,6 +306,8 @@ static_assert(sizeof(idCutterClip::PolygonPoint_t) == 32,
               "PolygonPoint_t ABI drift");
 static_assert(sizeof(idCutterClip::Polygon_t) == 64,
               "Polygon_t ABI drift");
+static_assert(alignof(idCutterClip::Polygon_t) == 4,
+              "Polygon_t alignment drift");
 static_assert(offsetof(idCutterClip::Polygon_t, points) == 24,
               "Polygon_t::points ABI drift");
 static_assert(offsetof(idCutterClip::Polygon_t, index) == 56,
@@ -318,3 +323,4 @@ static_assert(sizeof(idCutterClip::JoinRecord_t) == 48,
 static_assert(sizeof(idCutterClip::HorizontalJoinRecord_t) == 24,
               "HorizontalJoinRecord_t ABI drift");
 static_assert(sizeof(idCutterClip) == 400, "idCutterClip ABI drift");
+static_assert(alignof(idCutterClip) == 4, "idCutterClip alignment drift");

@@ -40,6 +40,17 @@ struct idTextureSamplerManager {
                ? vtable->GetSamplerName(this, sampler)
                : nullptr;
   }
+  const idTextureSampler* CreateSampler(const void* options,
+                                        const char* name) {
+    return vtable != nullptr && vtable->CreateSampler != nullptr
+               ? vtable->CreateSampler(this, options, name)
+               : nullptr;
+  }
+  void DeleteSampler(const idTextureSampler* sampler) {
+    if (vtable != nullptr && vtable->DeleteSampler != nullptr) {
+      vtable->DeleteSampler(this, sampler);
+    }
+  }
 };
 
 extern idTextureSamplerManager* textureSamplerManager;
