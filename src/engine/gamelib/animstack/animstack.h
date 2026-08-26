@@ -23,8 +23,15 @@ public:
     ANIMATORFLAG_CLIENT_AUTHORITATIVE_CONTRIBUTED = 32,
   };
 
+  void AddAnimator(idAnimator_Base* animator);
+  void RemoveAnimator(idAnimator_Base* animator);
+  int GetAnimatorIndex(const idAnimator_Base* animator) const;
+  void SetAnimatorFlag(const idAnimator_Base* animator,
+                       animatorFlag_t flag);
   void ClearAnimatorFlag(const idAnimator_Base* animator,
                          animatorFlag_t flag);
+  bool IsAnimatorFlagSet(const idAnimator_Base* animator,
+                         animatorFlag_t flag) const;
   idAnimator_Base* GetAnimatorByIndex(int index) const;
   void SerializeSnapshot(idSerializer& serializer, idClip* clip,
                          int curTime, idGameTimeManager* gameTimeManager,

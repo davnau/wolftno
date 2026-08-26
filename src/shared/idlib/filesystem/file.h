@@ -87,7 +87,11 @@ public:
   std::uint32_t Timestamp() const override { return timestamp; }
   bool IsWritable() const override { return mode != FS_READ; }
   fsDevice_t GetDevice() const override { return FS_DEVICE_MEMORY; }
+#if defined(WOLFTNO_RETAIL_PVS_CONST_FILE_DATA_ABI)
+  void SetReadOnlyData(const char* data, std::uint64_t length);
+#else
   void SetReadOnlyData(char* data, std::uint64_t length);
+#endif
   void SetWritableData(char* data, std::uint64_t length);
   void SetMaxLength(std::uint64_t length);
   void MakeReadOnly();

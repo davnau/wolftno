@@ -15,26 +15,32 @@ public:
     return *reinterpret_cast<const idVec4*>(this);
   }
 
-  static const idColor colorRed;
-  static const idColor colorBlack;
-  static const idColor colorGreen;
-  static const idColor colorLtGrey;
-  static const idColor colorBlue;
-  static const idColor colorCyan;
-  static const idColor colorYellow;
-  static const idColor colorWhite;
-  static const idColor colorOrange;
-  static const idColor colorPurple;
-  static const idColor colorMagenta;
-  static const idColor colorDarkRed;
-  static const idColor colorDarkGreen;
-  static const idColor colorPink;
-  static const idColor colorBrown;
-  static const idColor colorMdGrey;
-  static const idColor colorDkGrey;
-  static const idColor colorXAxis;
-  static const idColor colorYAxis;
-  static const idColor colorZAxis;
+#if defined(WOLFTNO_RETAIL_MUTABLE_IDCOLOR_ABI)
+#define IDCOLOR_RETAIL_STORAGE
+#else
+#define IDCOLOR_RETAIL_STORAGE const
+#endif
+  static IDCOLOR_RETAIL_STORAGE idColor colorRed;
+  static IDCOLOR_RETAIL_STORAGE idColor colorBlack;
+  static IDCOLOR_RETAIL_STORAGE idColor colorGreen;
+  static IDCOLOR_RETAIL_STORAGE idColor colorLtGrey;
+  static IDCOLOR_RETAIL_STORAGE idColor colorBlue;
+  static IDCOLOR_RETAIL_STORAGE idColor colorCyan;
+  static IDCOLOR_RETAIL_STORAGE idColor colorYellow;
+  static IDCOLOR_RETAIL_STORAGE idColor colorWhite;
+  static IDCOLOR_RETAIL_STORAGE idColor colorOrange;
+  static IDCOLOR_RETAIL_STORAGE idColor colorPurple;
+  static IDCOLOR_RETAIL_STORAGE idColor colorMagenta;
+  static IDCOLOR_RETAIL_STORAGE idColor colorDarkRed;
+  static IDCOLOR_RETAIL_STORAGE idColor colorDarkGreen;
+  static IDCOLOR_RETAIL_STORAGE idColor colorPink;
+  static IDCOLOR_RETAIL_STORAGE idColor colorBrown;
+  static IDCOLOR_RETAIL_STORAGE idColor colorMdGrey;
+  static IDCOLOR_RETAIL_STORAGE idColor colorDkGrey;
+  static IDCOLOR_RETAIL_STORAGE idColor colorXAxis;
+  static IDCOLOR_RETAIL_STORAGE idColor colorYAxis;
+  static IDCOLOR_RETAIL_STORAGE idColor colorZAxis;
+#undef IDCOLOR_RETAIL_STORAGE
 
   const char* ToString(int precision = 2, bool parentheses = false) const;
   void Lerp(const idColor& from, const idColor& to, float fraction);

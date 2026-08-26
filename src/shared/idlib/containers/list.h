@@ -10,7 +10,15 @@
 
 class idMD6MorphSet;
 class idAnimator_FaceTracks;
+class idAnimator_EndAdditiveChannels;
+class idAnimator_ChannelWeight;
+class idAnimator_JointMod;
 class idAnimator_Synced;
+class idAnimWebBlendTree;
+class idAFTree;
+class idObstacleAvoidanceManagerLocal;
+class idPush;
+class idClass;
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -27,7 +35,15 @@ struct idListAllocReturnsReference<
 template <typename T, int DefaultTag = 5> class idList {
 public:
   friend class idAnimator_FaceTracks;
+  friend class idAnimator_EndAdditiveChannels;
+  friend class idAnimator_ChannelWeight;
+  friend class idAnimator_JointMod;
   friend class idAnimator_Synced;
+  friend class idAnimWebBlendTree;
+  friend class idAFTree;
+  friend class idObstacleAvoidanceManagerLocal;
+  friend class idPush;
+  friend class idClass;
   T* list;
   int num;
   int size;
@@ -35,16 +51,25 @@ public:
   std::uint8_t memTag;
   std::uint8_t listStatic;
 
-  idList() : list(nullptr) {
+#if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_DTOR_ABI)
+  __forceinline
+#endif
+  idList()
+#if !defined(WOLFTNO_RETAIL_IDLIST_EMPTY_CTOR_ABI)
+      : list(nullptr)
+#endif
+  {
     // Retail initializes every list through the engine allocator boundary,
     // even when the initial allocation is empty.
     idMem::Singleton();
+#if !defined(WOLFTNO_RETAIL_IDLIST_EMPTY_CTOR_ABI)
     granularity = 0;
     memTag = DefaultTag;
     listStatic = 0;
     num = 0;
     size = 0;
     ClearFree();
+#endif
   }
   idList(const idList& other) : idList() { *this = other; }
   idList& operator=(const idList& other) {
@@ -55,6 +80,9 @@ public:
       list[i] = other.list[i];
     return *this;
   }
+#if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_DTOR_ABI)
+  __forceinline
+#endif
   ~idList()
 #if defined(WOLFTNO_RETAIL_SYNCED_DTOR_UNWIND_ABI)
       noexcept(false)
@@ -67,6 +95,9 @@ public:
   bool IsFull() const { return listStatic != 0 && num >= size; }
   T& operator[](int index) { return list[index]; }
   const T& operator[](int index) const { return list[index]; }
+#if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_APPEND_ABI)
+  int Append(const T& value);
+#else
   int Append(const T& value) {
     EnsureCapacity(num + 1);
     if (num >= size)
@@ -74,6 +105,7 @@ public:
     list[num] = value;
     return num++;
   }
+#endif
   template <int OtherTag> int Append(const idList<T, OtherTag>& other) {
     if (other.num <= 0)
       return num;
@@ -121,18 +153,34 @@ public:
   }
   using AllocResult = std::conditional_t<
       DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
+          (DefaultTag == 5 && std::is_same_v<T, std::uint16_t>) ||
+#endif
           idListAllocReturnsReference<T>::value,
       T&, T*>;
+#if defined(WOLFTNO_RETAIL_IDLIST_NOINLINE_ALLOC_ABI)
+  __declspec(noinline)
+#endif
+#if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_ALLOC_ABI)
+  AllocResult Alloc();
+#else
   AllocResult Alloc() {
     EnsureCapacity(num + 1);
     const int index = num >= size ? size - 1 : num++;
     if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
+                  (DefaultTag == 5 && std::is_same_v<T, std::uint16_t>) ||
+#endif
                   idListAllocReturnsReference<T>::value)
       return list[index];
     else
       return index >= 0 ? &list[index] : nullptr;
   }
+#endif
   void Clear() { num = 0; }
+#if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CLEARFREE_ABI)
+  __forceinline
+#endif
   void ClearFree() {
     if (listStatic == 0 || listStatic == 2) {
       if (list != nullptr) {
@@ -227,6 +275,9 @@ public:
 private:
   // Recovered compilands explicitly instantiate Resize for selected
   // element/tag combinations; private access is part of its MSVC ABI name.
+#if defined(WOLFTNO_RETAIL_IDLIST_NOINLINE_RESIZE_ABI)
+  __declspec(noinline)
+#endif
   bool Resize(int newSize) {
     if (newSize <= 0) {
       ClearFree();

@@ -29,6 +29,9 @@ class idTraceModelCache;
 
 class idCollisionQuery {
 public:
+  idCollisionQuery() : offset(0) {}
+  idCollisionQuery(const idCollisionQuery& other) : offset(other.offset) {}
+
   std::uint64_t offset;
 
   static const std::uint64_t finalResultsFirstSubmittedOffset;
@@ -37,7 +40,13 @@ public:
 
 class idClipModel {
 public:
-  idCollisionModel* NoTraceModelWarning() const;
+  int GetNumCollisionModels() const;
+  idCollisionModel* GetCollisionModel(int index) const;
+  void Delete();
+  void Link(int entityNumber, int physicsId, int bodyId,
+            const idVec3& origin, const idMat3& axis);
+  void Unlink();
+  void SetContents(int newContents);
   void SetLinkedPosition(const idVec3& linkedOrigin,
                          const idMat3& linkedAxis) {
     origin = linkedOrigin;
@@ -64,6 +73,12 @@ public:
   idCollisionQuery collisionQuery;
   idClipModel* nextDeleted;
   std::uint8_t aasLinks[0x58];
+
+private:
+  idCollisionModel* NoTraceModelWarning() const;
+
+  friend class idBuoyancy;
+  friend class idEffectPhysicsBroadPhase;
 };
 
 class idClip {
@@ -86,6 +101,12 @@ public:
                           const idMat3& startAxis, int clipMask,
                           int passEntityNumber, bool moveClipModel,
                           const char* userName);
+  idClipQuery Rotation(trace_t* result, const idVec3& start,
+                       const idRotation& rotation,
+                       const idClipModel* clipModel,
+                       const idMat3& startAxis, int clipMask,
+                       int passEntityNumber, bool moveClipModel,
+                       const char* userName);
 
   bool TracePoint(trace_t& result, const idVec3& start, const idVec3& end,
                   int clipMask, int passEntityNumber, const char* userName);
@@ -94,7 +115,33 @@ public:
                                   int maxCount) const;
   idResidencyQuery TestResidency(const idBounds& bounds);
 
-  std::uint8_t recoveredPrefix[0x400F8];
+private:
+  int GetPositionedModelsInternal(
+      const idVec3& boundsMin, const idVec3& boundsMax, bool isLine,
+      int clipMask, int passEntityNumber, int passOwnerNumber, int physicsId,
+      int bodyMask, class idPositionedCollisionModel* models,
+      int maxModels) const;
+
+  friend class idEffectPhysicsBroadPhase;
+
+public:
+  idClipModel* world;
+  idClipModel* temporaryClipModel;
+  idClipModel* defaultClipModel;
+  idClipModel* playerMeleeClipModel;
+  idClipModel* clip8x8;
+  idClipModel* clip8x8x8;
+  idClipModel* clip16x16;
+  idClipModel* clip16x16x16;
+  idClipModel* clip24x24;
+  idClipModel* clip32x32;
+  idClipModel* clip8x16;
+  idClipModel* clip48x48;
+  idClipModel* clip96x96;
+  idClipModel* clip24x24x96;
+  idClipModel* clip32x32x96;
+  idClipModel* clip48x48x96;
+  std::uint8_t recoveredPrefix[0x40078];
   idTraceModelCache* traceModelCache;
   std::uint8_t recoveredQueryPrefix[0x1C188];
   idClipCollisionQuery collisionQueries[4096];
@@ -128,6 +175,8 @@ static_assert(offsetof(idClipModel, traceModels) == 0x88,
               "idClipModel trace-model offset drift");
 static_assert(offsetof(idClipModel, clip) == 0xC0,
               "idClipModel owner offset drift");
+static_assert(offsetof(idClip, defaultClipModel) == 0x10,
+              "idClip default-model offset drift");
 static_assert(offsetof(idClip, traceModelCache) == 0x400F8,
               "idClip trace-model cache offset drift");
 static_assert(offsetof(idClip, collisionQueries) == 0x5C288,

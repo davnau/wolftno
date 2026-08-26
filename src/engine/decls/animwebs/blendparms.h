@@ -21,9 +21,18 @@ public:
   blendParms_t();
   explicit blendParms_t(int durationMS);
   int GetDuration() const;
+#if defined(WOLFTNO_RETAIL_CHANNEL_BLENDPARMS_ABI)
+  std::int16_t GetDurationMS() const;
+#else
   int GetDurationMS() const;
+#endif
   bool GetSourceFrames(const idMD6Anim* anim, std::int16_t* first, std::int16_t* last) const;
+#if defined(WOLFTNO_RETAIL_CHANNEL_BLENDPARMS_ABI)
+  bool GetDestFrames(const idMD6Anim* anim, std::int16_t& first,
+                     std::int16_t& duration) const;
+#else
   bool GetDestFrames(const idMD6Anim* anim, std::int16_t* first, std::int16_t* duration) const;
+#endif
   void SetDestStartFrame(int frame);
   void SetDuration(int frames);
   void SetDurationMS(int milliseconds);

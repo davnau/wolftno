@@ -11,10 +11,29 @@ public:
   int lookupMask;
   int memTag;
 
-  static int* INTERNAL_INVALID_INDEX;
+#if defined(WOLFTNO_RETAIL_HASHINDEX_INVALID_ARRAY_ABI)
+private:
+  friend class idEffectsModelManager;
+  static int INTERNAL_INVALID_INDEX[1];
 
+public:
+  static __forceinline int* RetailInvalidIndexAddress() {
+    return INTERNAL_INVALID_INDEX;
+  }
+#else
+  static int* INTERNAL_INVALID_INDEX;
+#endif
+
+#if defined(WOLFTNO_RETAIL_HASHINDEX_MEMBER_ABI)
+  idHashIndex(int initialHashSize = 1024, int initialIndexSize = 1024)
+      : memTag(78) {
+    InternalInit(initialHashSize, initialIndexSize);
+  }
+  ~idHashIndex() { InternalFree(); }
+#else
   idHashIndex(int initialHashSize = 1024, int initialIndexSize = 1024);
   ~idHashIndex();
+#endif
   idHashIndex(const idHashIndex& other);
   idHashIndex& operator=(const idHashIndex& other);
 
@@ -28,6 +47,10 @@ public:
   int Next(int index) const {
     return indexChain == INTERNAL_INVALID_INDEX ? -1 : indexChain[index & lookupMask];
   }
+#if defined(WOLFTNO_RETAIL_HASHINDEX_OUTOFLINE_MUTATORS_ABI)
+  void Add(int key, int index);
+  void Remove(int key, int index);
+#else
   void Add(int key, int index) {
     if (hash == INTERNAL_INVALID_INDEX)
       InternalAllocate(hashSize, indexSize);
@@ -53,6 +76,7 @@ public:
     }
     indexChain[index & lookupMask] = -1;
   }
+#endif
   void RemoveIndex(int key, int index);
   void RemoveIndexFast(int key, int index);
   void Clear() {

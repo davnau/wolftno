@@ -97,6 +97,8 @@ public:
     }
     return length;
   }
+  bool FixDenormals();
+  bool FixDegenerateNormal();
 
   void NormalVectors(idVec3& left, idVec3& down) const;
   float ToYaw() const;
@@ -205,6 +207,7 @@ public:
   float Determinant() const;
   bool InverseSelf();
   idMat3& OrthoNormalizeSelf(std::uint8_t prio1, std::uint8_t prio2);
+  idMat3& OrthoNormalizeSelf();
   idMat3& InertiaTranslateSelf(float mass, const idVec3& centerOfMass, const idVec3& translation);
   const idMat3& RotateSelf(const idVec3& axis, float angleDegrees);
   float ToPitch() const;
@@ -242,10 +245,12 @@ struct idRotation {
   idAngles ToAngles() const;
   idVec3 ToAngularVelocity() const;
   idVec3 operator*(const idVec3& point) const;
+  void RotatePoint(idVec3& point) const;
 };
 
 extern const idVec2 vec2_origin;
 extern const idVec3 vec3_origin;
+extern const idVec3 vec3_unit;
 extern const idVec3 vec3_infinity;
 extern const idVec6 vec6_infinity;
 extern idAngles ang_zero;

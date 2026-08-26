@@ -13,10 +13,18 @@ public:
     idStaticList<unsigned,256> tagList;
     int animPropIndex;
   };
-  struct existingNode_t { idAtomicString name; idMD6Node* node=nullptr; };
+  struct existingNodeName_t {
+    char str[8];
+    operator char*() { return str; }
+    operator const char*() const { return str; }
+  };
+  struct existingNode_t {
+    existingNodeName_t name;
+    idMD6Node* node = nullptr;
+  };
   using scalarList_t = idList<idAnimWebScalar,33>;
   using scalarPairList_t = idList<idAnimWebScalarPair,33>;
-  using existingNodeList_t = idList<existingNode_t,33>;
+  using existingNodeList_t = idList<existingNode_t,5>;
 
   idAnimWebBlendEquation();
   static bool ParseScalarName(idLexer& source,idToken& token);

@@ -67,14 +67,13 @@ public:
   bool Parse(idParser& parser);
   bool LoadText(const char* fileName);
 
+  const idMD6Anim* defaultAnim{};
   idMD6SkelData* data{};
   idAtomicString userChannelFilename;
   std::uint32_t timestamp{0xffffffffu};
   std::uint32_t userChannelTimestamp{0xffffffffu};
   idJointConversionHandle_t jointConversion;
   idCrcHandle_t jointConversionChecksum;
-  std::uint32_t recoveredPadding{};
-  const idMD6Anim* defaultAnim{};
 
   static idTypedResourceList<idMD6Skel> resourceList;
 };
@@ -86,15 +85,15 @@ void AddChildren_r(const idMD6Skel* skeleton, idJointIndex_t parent,
 
 static_assert(sizeof(idJointQuat) == 32, "idJointQuat ABI drift");
 static_assert(sizeof(idMD6Skel) == 88, "idMD6Skel ABI drift");
-static_assert(offsetof(idMD6Skel, data) == 48, "idMD6Skel data offset drift");
-static_assert(offsetof(idMD6Skel, userChannelFilename) == 56,
-              "idMD6Skel channel-file offset drift");
-static_assert(offsetof(idMD6Skel, timestamp) == 64,
-              "idMD6Skel timestamp offset drift");
-static_assert(offsetof(idMD6Skel, jointConversion) == 72,
-              "idMD6Skel conversion offset drift");
-static_assert(offsetof(idMD6Skel, defaultAnim) == 80,
+static_assert(offsetof(idMD6Skel, defaultAnim) == 48,
               "idMD6Skel default-animation offset drift");
+static_assert(offsetof(idMD6Skel, data) == 56, "idMD6Skel data offset drift");
+static_assert(offsetof(idMD6Skel, userChannelFilename) == 64,
+              "idMD6Skel channel-file offset drift");
+static_assert(offsetof(idMD6Skel, timestamp) == 72,
+              "idMD6Skel timestamp offset drift");
+static_assert(offsetof(idMD6Skel, jointConversion) == 80,
+              "idMD6Skel conversion offset drift");
 
 class idMD6SkeletonConfig : public idResource {
 public:

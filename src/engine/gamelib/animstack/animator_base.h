@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/animation/md6.h"
+#include "shared/idlib/sys/sys_alloc.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@ class idGameTimeManager;
 class idSerializer;
 class idTreeAnimator;
 class AnimatorPainValidationAccess;
+class AnimatorChannelValidationAccess;
 
 #ifndef ID_GAME_TIME_UNIQUE_T_DEFINED
 #define ID_GAME_TIME_UNIQUE_T_DEFINED
@@ -75,7 +77,14 @@ public:
 
 class idAnimator_Base {
 public:
-  enum priority_t { PRIORITY_DEFAULT = 0 };
+  enum priority_t {
+    PRIORITY_WEB = 0,
+    PRIORITY_AFTER_WEB = 1,
+    PRIORITY_IK = 99,
+    PRIORITY_AF = 100,
+    PRIORITY_FACETRACKS = 101,
+    PRIORITY_DEFAULT = PRIORITY_WEB,
+  };
 
   struct serializeProps_t {
     idMD6Branch* serializedTrees[2];
@@ -95,15 +104,42 @@ public:
 
   bool Init(idGameTimeManager* gameTimeManager,
             const idAnimatorParms_Base& parms);
+  void Shutdown(idAnimStack* stack);
+  void Blend(const idAnimStack* stack, int curTime, float targetAlpha,
+             int blendDurationMS, bool reset);
+  void Start(const idAnimStack* stack, int curTime, int blendDurationMS,
+             bool reset);
+  void End(const idAnimStack* stack, int curTime, int blendDurationMS,
+           bool reset);
+  void Pause(const idAnimStack* stack,
+             idTypesafeNumber<int, gameTimeUnique_t> curTime);
+  void Unpause(const idAnimStack* stack,
+               idTypesafeNumber<int, gameTimeUnique_t> curTime);
   bool IsContributing() const;
+  bool IsInitialized(idAnimStack* animStack) const;
+  bool IsEnabled(idAnimStack* animStack) const;
+  void SetEnabled(idAnimStack* animStack, bool enabled);
   md6WeightGroup_t GetFilterGroup() const;
+  float GetAlpha() const;
+  void SetAlpha(float alpha);
+  void SetTargetAlpha(float alpha, float alphaRate);
 
-  virtual priority_t GetStackPriority() const;
-  virtual serializeType_t GetSerializeType();
-  virtual void SerializeSnapshot(idSerializer& serializer);
-  virtual void PreBlendSnapshot(idAnimStack* stack, int curTime,
-                                int ticksPerSec, float blendWeight);
-  virtual void PreSerializeInit(idGameTimeManager* gameTimeManager);
+  virtual priority_t GetStackPriority() const { return PRIORITY_WEB; }
+  virtual serializeType_t GetSerializeType() { return STYPE_GENERIC; }
+  virtual void SerializeSnapshot(idSerializer&) {}
+  virtual void PreBlendSnapshot(idAnimStack*, int, int, float) {}
+  virtual void PreSerializeInit(idGameTimeManager* gameTimeManager) {
+    gametimeManager.gameTimeManager = gameTimeManager;
+    serializeProps.createdThroughSerialization = true;
+  }
+
+  __forceinline static void operator delete(void* memory) noexcept {
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem::Singleton().Free(memory, ALIGN_16);
+#else
+    idMem::Singleton()->Free(memory, ALIGN_16);
+#endif
+  }
 
 protected:
   virtual bool InternalInit(const idAnimatorParms_Base& parms) = 0;
@@ -125,13 +161,13 @@ protected:
   virtual const idMD6Branch* InternalGetMergeBranch() const = 0;
   virtual idMD6Branch* InternalGetMergeBranch() = 0;
   virtual void InternalPause(
-      const idAnimStack* stack,
-      idTypesafeNumber<int, gameTimeUnique_t> pauseTime);
+      const idAnimStack*, idTypesafeNumber<int, gameTimeUnique_t>) {}
   virtual void InternalUnpause(
-      const idAnimStack* stack,
-      idTypesafeNumber<int, gameTimeUnique_t> unpauseTime);
-  virtual const idMD6Branch* InternalGetEndBranch() const;
-  virtual idMD6Branch* InternalGetEndBranch();
+      const idAnimStack*, idTypesafeNumber<int, gameTimeUnique_t>) {}
+  virtual const idMD6Branch* InternalGetEndBranch() const {
+    return nullptr;
+  }
+  virtual idMD6Branch* InternalGetEndBranch() { return nullptr; }
 
 protected:
   idGameTimeManagerPtr gametimeManager;
@@ -144,6 +180,7 @@ protected:
   std::uint8_t tailPadding[7];
 
   friend class AnimatorPainValidationAccess;
+  friend class AnimatorChannelValidationAccess;
 };
 
 static_assert(sizeof(idTypesafeNumber<int, gameTimeUnique_t>) == 0x04,

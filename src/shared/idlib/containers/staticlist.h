@@ -10,11 +10,24 @@ public:
       noexcept
 #endif
   {
+#if defined(WOLFTNO_RETAIL_CUTTABLE_STATICLIST_CTOR_ABI)
+    this->size = Capacity;
+    this->num = 0;
+    this->list = staticList;
+    *reinterpret_cast<std::uint32_t*>(&this->granularity) = 0x01050001u;
+#elif defined(WOLFTNO_RETAIL_EFFECTS_STATICLIST_CTOR_ABI)
+    this->size = Capacity;
+    this->num = 0;
+    *reinterpret_cast<volatile std::uint16_t*>(&this->granularity) = 1;
+    this->list = staticList;
+    *reinterpret_cast<std::uint16_t*>(&this->memTag) = 0x0105;
+#else
     this->list = staticList;
     this->num = 0;
     this->size = Capacity;
     this->granularity = 1;
     this->listStatic = 1;
+#endif
   }
   idStaticList(const idStaticList& other) : idStaticList() {
     *this=other;

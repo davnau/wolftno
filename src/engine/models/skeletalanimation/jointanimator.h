@@ -28,7 +28,8 @@ enum jointModTransform_t : int {
   JOINTMOD_MODEL_OVERRIDE = 4,
 };
 
-struct idMat3x4 {
+class idMat3x4 {
+public:
   float mat[12]{};
 };
 

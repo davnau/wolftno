@@ -9,7 +9,25 @@
 
 class idBounds;
 class idClip;
+class idCollisionModel;
+struct idJointMat;
 class idTraceModelCache;
+
+class idPositionedCollisionModel {
+public:
+  idCollisionModel* model;
+  idJointMat* modelJoints;
+  bool* sphereActives;
+  idVec3 modelOrigin;
+  idMat3 modelAxis;
+  int modelEntityNum;
+  int modelPhysicsId;
+  int modelBodyId;
+  int modelContentsOverride;
+  float modelScale;
+  std::uint32_t recoveredPadding;
+  idCollisionQuery modelQuery;
+};
 
 struct idSPObjectMotion {
   bool valid;
@@ -23,8 +41,8 @@ struct idSPObjectMotion {
 
 class idSPObject {
 public:
-  idSPObject();
-  ~idSPObject() noexcept(false);
+  __declspec(noinline) idSPObject();
+  __declspec(noinline) ~idSPObject() noexcept(false);
 
   int id;
   int traceModelIndex;
@@ -42,7 +60,10 @@ public:
 
 class idEffectPhysicsBroadPhase {
 public:
-  struct idSPMarker {
+  class idSPMarker {
+  public:
+    using idListAllocReturnsReferenceMarker = void;
+
     short value;
     unsigned short data;
   };
@@ -59,12 +80,34 @@ public:
   void ApplyMotion(idSPObject* object, const idVec3& translation,
                    const idRotation& rotation);
   bool GetMotionResult(trace_t* result, idSPObject* object);
+  void SubmitQueries(bool worldCollisionModelOnly);
 
   idClip* clip;
   idTraceModelCache* traceModelCache;
   idList<idSPObject*, 59> objects;
   idList<idSPMarker, 59> markers[3];
+
+private:
+  void AddOverlappingPair(idSPObject* first, idSPObject* second);
+  void RemoveOverlappingPair(idSPObject* first, idSPObject* second);
+  int GetPositionedModels(const idSPObject* object,
+                          idPositionedCollisionModel* models,
+                          int maxModels) const;
+  void MoveObject(idSPObject* object);
+
+  friend class EffectPhysicsBroadPhaseValidationAccess;
 };
+
+static_assert(sizeof(idPositionedCollisionModel) == 0x68,
+              "positioned collision-model ABI drift");
+static_assert(offsetof(idPositionedCollisionModel, modelOrigin) == 0x18,
+              "positioned model origin offset drift");
+static_assert(offsetof(idPositionedCollisionModel, modelAxis) == 0x24,
+              "positioned model axis offset drift");
+static_assert(offsetof(idPositionedCollisionModel, modelEntityNum) == 0x48,
+              "positioned model entity offset drift");
+static_assert(offsetof(idPositionedCollisionModel, modelQuery) == 0x60,
+              "positioned model query offset drift");
 
 static_assert(sizeof(idSPObjectMotion) == 0x20,
               "spatial motion ABI drift");

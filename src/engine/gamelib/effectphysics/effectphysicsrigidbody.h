@@ -39,6 +39,12 @@ struct impactInfo_t {
 
 class idEffectPhysicsCollision {
 public:
+#if defined(WOLFTNO_RETAIL_CUTTABLE_COLLISION_CTOR_ABI)
+  idEffectPhysicsCollision() noexcept
+      : collisionPoint(vec3_origin), collisionNormalVelocity(vec3_origin),
+        collisionSurfaceType(0) {}
+#endif
+
   idVec3 collisionPoint;
   idVec3 collisionNormalVelocity;
   int collisionSurfaceType;
@@ -83,8 +89,6 @@ public:
   bool enabled;
 
 private:
-  friend struct EffectPhysicsRigidBodyValidation;
-
   void CapVelocity(float deltaTime, effectRBState_t& current) const;
   void Evolve(float deltaTime, float unused,
               const effectRBState_t& current, effectRBDelta_t& delta) const;

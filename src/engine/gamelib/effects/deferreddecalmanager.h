@@ -55,7 +55,7 @@ public:
 class idDeferredDecalManager {
 public:
   idDeferredDecalManager();
-  ~idDeferredDecalManager() = default;
+  ~idDeferredDecalManager();
 
   void Init(idClip* clip_, idRenderModelDecal* decalModel_);
   void Shutdown();

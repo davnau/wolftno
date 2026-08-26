@@ -8,7 +8,8 @@
 
 enum utf8Encoding_t { UTF8_INVALID, UTF8_ASCII, UTF8_ENCODED };
 
-struct va {
+class va {
+public:
   va() : buffer{} {}
   va(const char* format, ...);
   char buffer[16384];
@@ -32,7 +33,11 @@ public:
   explicit idStr(char value);
   explicit idStr(int value);
   explicit idStr(float value);
+#if defined(WOLFTNO_RETAIL_IDSTR_INLINE_FREEDATA_ABI)
+  __forceinline ~idStr() { FreeData(); }
+#else
   ~idStr();
+#endif
 
   idStr& operator=(const idStr& text);
   idStr& operator=(const va& text);

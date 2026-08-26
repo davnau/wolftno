@@ -7,7 +7,8 @@
 
 class idAnimWebScalar;
 class idMD6Node;
-struct idScalarMemBlock {
+class idScalarMemBlock {
+public:
   idScalarMemBlock() : floats(nullptr), num(0) {}
   ~idScalarMemBlock() { Free(); }
   void Alloc(int count);
@@ -23,7 +24,11 @@ public:
   enum flags_t : std::uint8_t { DECLARED = 1, READ_ONLY = 2 };
   idAnimWebScalar() : flags(0), scalarIndex(-1), scalarPtr(nullptr) {}
   void Init(const char* name, std::uint8_t flags, float* scalar = nullptr);
+#if defined(WOLFTNO_RETAIL_ANIMWEB_GETSCALAR_REFERENCE_ABI)
+  float GetScalar(const idScalarMemBlock& block) const;
+#else
   float GetScalar(const idScalarMemBlock* block) const;
+#endif
   void SetScalar(idScalarMemBlock* block, float value);
   void SetScalarPtr(float* scalar);
   void SetIndex(const idScalarMemBlock* block, std::int16_t index);
@@ -33,7 +38,8 @@ public:
   float* scalarPtr;
 };
 static_assert(sizeof(idAnimWebScalar)==24,"AnimWeb scalar ABI drift");
-struct idAnimWebScalarPair {
+class idAnimWebScalarPair {
+public:
   int scalarIndex=-1;
   int coordinateIndex=-1;
   idMD6Node* node=nullptr;

@@ -47,7 +47,8 @@ public:
 
 class idDeclAnimWebNode {
 public:
-  struct idModelInfo {
+  class idModelInfo {
+  public:
     idModelInfo();
     idModelInfo(const idModelInfo& other);
     idModelInfo& operator=(const idModelInfo& other);
@@ -75,7 +76,13 @@ public:
   idDeclAnimWebNode(animWebNodeIndex_t nodeIndex,animWebSubWebIndex_t subWebIndex,const animWebStateList_t& states);
   ~idDeclAnimWebNode();
   int MatchStates(const animWebStateList_t& states) const;
-  void GetName(const idDeclAnimWeb& web,idStr& name) const;
+  void GetName(
+#if defined(WOLFTNO_RETAIL_ANIMWEB_GETNAME_POINTER_ABI)
+      const idDeclAnimWeb* web,
+#else
+      const idDeclAnimWeb& web,
+#endif
+      idStr& name) const;
   void GetName(const idDeclAnimSubWeb& web,idStr& name) const;
   void GetPath(const idDeclAnimWeb& web,idAnimWebPath& path) const;
   void GetStateName(const idDeclAnimWeb& web,idStr& name) const;

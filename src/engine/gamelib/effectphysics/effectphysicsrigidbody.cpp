@@ -62,11 +62,11 @@ __forceinline idVec3 Cross(const idVec3& left, const idVec3& right) {
 __forceinline void LimitMomentum(idVec3& momentum, float oldLengthSquared) {
   const float newLengthSquared = LengthSquared(momentum);
   if (newLengthSquared > oldLengthSquared) {
-    const float scale =
-        ClampedLength(oldLengthSquared) * InverseLength(newLengthSquared);
-    momentum.x = scale * momentum.x;
-    momentum.y = scale * momentum.y;
-    momentum.z = scale * momentum.z;
+    const float inverseNewLength = InverseLength(newLengthSquared);
+    const float oldLength = ClampedLength(oldLengthSquared);
+    momentum.x = (oldLength * momentum.x) * inverseNewLength;
+    momentum.y = (oldLength * momentum.y) * inverseNewLength;
+    momentum.z = (oldLength * momentum.z) * inverseNewLength;
   }
 }
 
@@ -421,7 +421,10 @@ void idEffectPhysicsRigidBody::Evolve(float deltaTime, float,
   delta.rotation.angle = rotationAngle;
   delta.rotation.axisValid = false;
 
-  const float linearFriction = currentProperties->linearFriction;
+  const float waterFraction = 0.0f;
+  const float linearFriction =
+      (1.0f - waterFraction) * currentProperties->linearFriction +
+      currentProperties->linearFrictionWater * waterFraction;
   delta.linearForce.x =
       deltaTime * (current.externalForce.x -
                    linearFriction * current.linearMomentum.x);
@@ -434,7 +437,9 @@ void idEffectPhysicsRigidBody::Evolve(float deltaTime, float,
        linearFriction * current.linearMomentum.z) *
       deltaTime;
 
-  const float angularFriction = currentProperties->angularFriction;
+  const float angularFriction =
+      (1.0f - waterFraction) * currentProperties->angularFriction +
+      currentProperties->angularFrictionWater * waterFraction;
   delta.angularForce.x =
       (current.externalTorque.x -
        angularFriction * current.angularMomentum.x) *

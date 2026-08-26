@@ -18,6 +18,7 @@ struct idMath {
   static float Sin16(float a);
   static float Cos16(float a);
   static bool IsValid(float f);
+  static float AngleDelta(float angle1, float angle2);
   static void SinCos16(float a, float& s, float& c);
   static float ONE_OVER_TWO_PI;
 #if defined(WOLFTNO_RETAIL_IDMATH_CONSTANT_ABI)

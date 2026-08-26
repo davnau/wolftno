@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/decls/animwebs/declanimweb.h"
+#include "engine/gamelib/animstack/animweb/animator_animweb_abi.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -36,16 +37,6 @@ public:
   idAnimWebStateIndex si;
   int eventNum;
   priority_t priority;
-};
-
-class idAnimator_AnimWeb {
-public:
-  void TriggerEvent(const idDeclAnimWebNode* node,
-                    animWebEvent_t eventType,
-                    const idAnimWebEvent& event, int eventParm);
-
-  std::uint8_t recoveredPrefix[0x50];
-  const idDeclAnimWeb* decl;
 };
 
 class idAnimWebEventHandler_Zion {

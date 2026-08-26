@@ -2,7 +2,8 @@
 
 #include "engine/animation/md6.h"
 
-struct idMD6AnimProps {
+class idMD6AnimProps {
+public:
   enum wrapMode_t { WRAP_CLAMP, WRAP_LOOP };
   idMD6AnimProps() : anim(nullptr), aliasHandle(0xffff), wrap(WRAP_LOOP), rate(1.0f), tags(0) {}
   void SetAliasHandle(std::uint16_t handle);

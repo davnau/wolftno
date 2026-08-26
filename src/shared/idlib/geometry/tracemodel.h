@@ -19,6 +19,8 @@ enum traceModel_t {
   TRM_CUSTOM
 };
 
+class idEffectPhysicsBoxFountain;
+
 struct traceModelEdge_t {
   std::uint16_t v[2];
 };
@@ -80,7 +82,6 @@ public:
 
   void ClearUnused();
   bool IsClosedSurface() const;
-  void InitBox();
   void InitOctahedron();
   void InitDodecahedron();
   void InitBone();
@@ -113,6 +114,11 @@ public:
   void Shrink(float amount);
   void GetMassProperties(float density, float& mass, idVec3& centerOfMass,
                          idMat3& inertiaTensor) const;
+
+private:
+  void InitBox();
+
+  friend class idEffectPhysicsBoxFountain;
   void Swap();
 
   bool operator==(const idTraceModel& other) const { return Compare(other); }

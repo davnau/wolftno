@@ -27,6 +27,10 @@ class idParser;
 class idMD6AnimResourceList;
 struct idCachedJoint;
 class idMD6AnimEvent;
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_TICKS_ABI)
+enum gameTimeUnique_t : int;
+template <typename T, typename UniqueTag> class idTypesafeNumber;
+#endif
 class idMD6MorphSet;
 class idMD6Skel;
 class idRandom2;
@@ -179,6 +183,7 @@ public:
   void GetAnimationDelta(idVec3* deltaTranslation,
                          idMat3* deltaAxis) const;
   int GetDurationInGameTime(int gameHz) const;
+  int NumCompressedUserChannels() const;
   bool LoadBinary(const char* filename, bool allowDefaulted = false);
   bool WriteBinary(const char* filename) const;
   bool LoadText(char* filename,
@@ -305,7 +310,11 @@ public:
   const idMD6Alias* FindAlias(const char* aliasName,
                               bool includeInherited = true,
                               bool includeIncludes = true) const;
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_ANIMFORALIAS_ABI)
+  const idMD6Anim* AnimForAlias(const idAliasHandle_t& aliasHandle,
+#else
   const idMD6Anim* AnimForAlias(idAliasHandle_t aliasHandle,
+#endif
                                 bool load) const;
   idAliasHandle_t AddAlias(const idMD6Alias& alias, bool overload);
   void GetAliases(idList<const idMD6Alias*, 5>& list,
@@ -371,6 +380,13 @@ public:
   void Parse(idParser& source);
   void FreeData();
 
+#if defined(WOLFTNO_RETAIL_ANIMWEB_DECLMD6_LAYOUT_ABI)
+  std::uint8_t recoveredVptr[8];
+  idAtomicString name;
+  std::uint8_t recovered10[0x50];
+  idMD6Model* model;
+  std::uint8_t recovered68[0x4E0];
+#else
   idAtomicString name;
   idList<aliasEntry_t> aliases;
   idMD6Model* model = nullptr;
@@ -381,7 +397,16 @@ public:
   idBounds referenceBounds{};
   int userChannelWeightGroupOverride = 8;
   std::shared_ptr<void> recoveredState;
+#endif
 };
+
+#if defined(WOLFTNO_RETAIL_ANIMWEB_DECLMD6_LAYOUT_ABI)
+static_assert(sizeof(idDeclMD6) == 0x548, "AnimWeb MD6 declaration ABI drift");
+static_assert(offsetof(idDeclMD6, name) == 0x08,
+              "AnimWeb MD6 declaration name offset drift");
+static_assert(offsetof(idDeclMD6, model) == 0x60,
+              "AnimWeb MD6 declaration model offset drift");
+#endif
 
 // NEEDS_WORK(animation): declarations below are the MD6 tree ABI consumed by
 // AnimWeb. Their runtime algorithms belong to the animation folder.
@@ -452,7 +477,12 @@ public:
   bool GetJointsForAnimTime(idJointMat* joints, const idMD6Anim* anim,
                             int timeMS, const idVec3* offset,
                             bool removeOriginOffset) const;
-  bool GetUserChannelsForAnimFrame(float* userChannels,
+  bool GetUserChannelsForAnimFrame(
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USERCHANNEL_RESTRICT_ABI)
+                                   float* __restrict userChannels,
+#else
+                                   float* userChannels,
+#endif
                                    unsigned int userChannelsSize,
                                    const idMD6Anim* anim, float frame) const;
 
@@ -489,7 +519,12 @@ template <>
 int idTypedResourceList<idMD6Model>::AllocSize() const;
 class idMD6Leaf : public idMD6Node {
 public:
-  enum wrapMode_t : int { WRAP_CLAMP = 0, WRAP_LOOP = 1, WRAP_INVALID = 2 };
+  enum wrapMode_t : int {
+    WRAP_CLAMP = 0,
+    WRAP_LOOP = 1,
+    WRAP_REPEAT = WRAP_LOOP,
+    WRAP_INVALID = 2
+  };
 
   explicit idMD6Leaf(idMD6Node::nodeType_t nodeType = NODE_NONE);
   int GetFrameRate() const;
@@ -517,19 +552,32 @@ public:
             wrapMode_t animationWrapMode,
             md6WeightGroup_t animationWeightGroup);
 #endif
-  void Restart(int gameTime, int ticksPerSec, std::uint16_t frame,
+  void Restart(int gameTime, int ticksPerSec,
+#if defined(WOLFTNO_RETAIL_ANIMWEB_RESTART_FRAME_INT_ABI)
+               int frame,
+#else
+               std::uint16_t frame,
+#endif
                wrapMode_t animationWrapMode);
   void SetFrameTime(int gameTime, int targetTime);
   void SetFloatFrame(int gameTime, int ticksPerSec, float targetFrame);
   void SetFrame(int gameTime, int ticksPerSec, std::uint16_t targetFrame);
   int GetFrameTime(int gameTime) const;
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_TICKS_ABI)
+  idTypesafeNumber<int, gameTimeUnique_t> GetFrameTicks(int gameTime) const;
+#else
   int GetFrameTicks(int gameTime) const;
+#endif
   float GetNormalizedFrameTime(int gameTime, int ticksPerSec) const;
   float GetFloatFrame(int gameTime, int ticksPerSec) const;
   std::uint16_t GetFrame(int gameTime, int ticksPerSec) const;
   std::uint32_t GetLoopCount(int gameTime, int ticksPerSec) const;
   int GetAnimLength(int ticksPerSec, bool applyRateScale) const;
+#if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_TICKS_ABI)
+  idTypesafeNumber<int, gameTimeUnique_t> GetAnimTicks(int ticksPerSec) const;
+#else
   int GetAnimTicks(int ticksPerSec) const;
+#endif
   int GetClampTime(int gameTime, int ticksPerSec) const;
   float GetRateScale() const { return rateScale; }
   void SetRateScale(int gameTime, float newRateScale);

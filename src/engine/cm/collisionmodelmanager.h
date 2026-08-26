@@ -11,6 +11,7 @@ using cmHandle_t = int;
 
 class idCollisionQueryJobManager;
 class idCollisionQuery;
+class idPositionedCollisionModel;
 class idRenderModelSurface;
 
 class idCollisionGridState {
@@ -102,6 +103,13 @@ public:
   trace_t Motion(const idVec3& start, const idVec3& end, const idRotation& rotation,
                  const idTraceModel* traceModel, std::uint32_t contentsMask,
                  cmHandle_t model) const;
+  idCollisionQuery Motion(
+      trace_t* result, const idVec3& start, const idVec3& end,
+      const idRotation& rotation, const idBounds& globalBounds,
+      const idTraceModel** const traceModels, int numTraceModels,
+      const idMat3& traceModelAxis, int contentsMask,
+      const idPositionedCollisionModel* models, int numModels,
+      const char* userName);
   int Contents(const idVec3& point, const idTraceModel* traceModel, std::uint32_t contentsMask,
                cmHandle_t model) const;
   contactsResult_t Contacts(const queryParms_t& parms, float distance, cmHandle_t model) const;

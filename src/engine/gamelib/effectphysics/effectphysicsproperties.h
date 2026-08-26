@@ -4,8 +4,13 @@
 
 #include <cstddef>
 
+class idMaterial;
+class idTraceModel;
+
 class idTraceModelCache {
 public:
+  int AllocTraceModel(const idTraceModel& traceModel,
+                      const idMaterial* material);
   void GetMassProperties(int traceModelIndex, float density, float& mass,
                          idVec3& centerOfMass,
                          idMat3& inertiaTensor) const;
@@ -14,6 +19,7 @@ public:
 class idEffectPhysicsProperties {
 public:
   idEffectPhysicsProperties();
+  ~idEffectPhysicsProperties() { broadPhase = nullptr; }
 
   void Setup(idEffectPhysicsBroadPhase* broadPhase, int traceModelIndex,
              float mass);
