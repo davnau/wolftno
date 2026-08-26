@@ -8,7 +8,8 @@ class idSWF;
 
 class idSubtitles {
 public:
-  struct idPart {
+  class idPart {
+  public:
     idPart() : priority(0), language(0), startTime(0.0f), phrase() {}
     int priority;
     int language;
@@ -30,7 +31,7 @@ public:
   ~idSubtitleSequencer() = default;
   void Start(const char* text, float endTime);
   void Update(float newTime);
-  idStr GetCurrentString(unsigned languageMask);
+  idStr GetCurrentString(unsigned languageMask) const;
   void End() { current = parts.Num(); }
   int GetHighestPriority() { return highestPriority; }
   bool IsActive() { return active; }
@@ -58,8 +59,10 @@ public:
   void Start(const char* videoName, float length) override;
   void Render(idRenderModelGui* guiModel, float videoTime) override;
   void End() override;
+private:
   void SetText(const char* text);
 
+public:
   idSWF* swf;
   unsigned languageMask;
   idSubtitleSequencer sequencer;

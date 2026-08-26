@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/decls/animwebs/declanimweb.h"
+#include "engine/models/skeletalanimation/md6skel.h"
 #include "shared/idlib/math/vector.h"
 
 #include <cstddef>
@@ -8,23 +9,6 @@
 struct idJointMat {
   float mat[12];
   void Invert();
-};
-
-struct idMD6SkelData;
-
-class idMD6Skel {
-public:
-  idJointIndex_t GetJointIndex(const char* jointName) const;
-  idUserChannelIndex GetUserChannelIndex(const char* channelName) const;
-  const idMD6SkelData* data = nullptr;
-  idList<idAtomicString, 5> jointNames;
-  idAtomicString name;
-  // Resource identity consumed by idJointConversion.  The complete retail
-  // skeleton layout is supplied by md6skel.cpp; keeping the identity on the
-  // reconstructed model object lets this compiland preserve its exact
-  // compatibility predicate in the meantime.
-  std::uint16_t jointConversion = 0xffffu;
-  std::uint16_t jointConversionChecksum = 0xffffu;
 };
 
 using idMD6UtilAnimWebLookup = const idDeclAnimWeb* (*)(const char*);

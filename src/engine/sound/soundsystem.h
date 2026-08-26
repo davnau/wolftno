@@ -64,6 +64,9 @@ public:
   virtual void SoundSystemSlot17() {}
   virtual void SoundSystemSlot18() {}
   virtual void StopAllSounds() = 0;
+  virtual void* GetIXAudio2() = 0;
+  virtual void SoundSystemSlot21() {}
+  virtual int GetSpeakerMask() const = 0;
 
   std::int64_t GetSampleClock() const {
     const auto slots=*reinterpret_cast<const void* const* const*>(this);

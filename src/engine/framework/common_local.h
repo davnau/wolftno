@@ -44,12 +44,13 @@ public:
   ~idCommonLocal() override;
   void Init(int,const char**,const char*) override;
   void Shutdown(int) override;
-  bool IsTerminationThreadStopped() override;
+  bool IsTerminationThreadStopped() const override;
   void SyncAllBackgroundOperations(bool) override;
   void ActivateTool(bool) override;
   void RegisterMapChangeListener(idMapChangeListener*) override;
   void UnRegisterMapChangeListener(idMapChangeListener*) override;
   void Quit(int) override;
+private:
   void InitCommands();
   void SetCommandLineCVars(const idCmdArgs&,bool);
   void ResetMapHeap(bool);
@@ -58,63 +59,68 @@ public:
   void WriteSysEvent(const sysEvent_t&);
   bool ReadSysEvent(sysEvent_t&);
   void CheckStartupStorageRequirements();
+public:
   gameFrameParms_t GameFrameParms(int) override;
-  void PurgeOverlays();
-  int CalcSnapTimeBuffered(int*,int*);
+private:
+  void PurgeOverlays() override;
+  int CalcSnapTimeBuffered(int&,int&);
+public:
   void GetToolReferenceMap(toolFlag_t,idStr&) override {}
-  idLocalUser* GetMasterLocalUser() override;
+  idLocalUser* GetMasterLocalUser() const override;
   idPlayerProfile* GetProfileFromMasterLocalUser() override;
-  int GetMasterLocalUserInputDevice() override;
-  int GetMasterLocalUserPlayerId() override;
+  int GetMasterLocalUserInputDevice() const override;
+  int GetMasterLocalUserPlayerId() const override;
   idSWFHelper* GetSWFHelper() override;
-  bool IsInGame() override;
-  snapshotState_t SnapshotState() override;
-  bool IsToolActive() override;
+  bool IsInGame() const override;
+  snapshotState_t SnapshotState() const override;
+  bool IsToolActive() const override;
   bool IsDemoPlaying() override { return Field<int>(0x6D0)==3; }
   bool IsDemoRecording() override { return Field<int>(0x6D0)==1; }
   void InitLanguageDict();
   void WriteConfigToFile(const char*) override;
-  void RecordPlayback(bool,const char*);
-  idFile* DetachActiveReadSnapshotFile();
-  idFile* DetachActiveWriteSnapshotFile();
-  void QueueSnapshotMemFile(idFile_Memory*,unsigned int);
-  void ClearQueuedSnapshotFile();
-  void PlayQueuedSnapshotFile();
-  void StopSnapshotFileRecord();
-  void StopSnapshotFilePlayback();
-  void CloseSnapshotFiles();
-  void PlaySnapshotFile(idFile*,unsigned int);
-  void RecordSnapshotFile(idFile*,unsigned int);
-  void ResetPlayerInput(int);
-  void UpdateBotUserCmds(int,const usercmd_t&);
-  void VoiceRecognition_ClearUnprocessedCmd();
-  void VoiceRecognition_GetBareWordlist(idList<idStr,44>& outList);
+  void RecordPlayback(bool,const char*) override;
+  idFile* DetachActiveReadSnapshotFile() override;
+  idFile* DetachActiveWriteSnapshotFile() override;
+  void QueueSnapshotMemFile(idFile_Memory*,unsigned int) override;
+  void ClearQueuedSnapshotFile() override;
+  void PlayQueuedSnapshotFile() override;
+  void StopSnapshotFileRecord() override;
+  void StopSnapshotFilePlayback() override;
+  void CloseSnapshotFiles() override;
+  void PlaySnapshotFile(idFile*,unsigned int) override;
+  void RecordSnapshotFile(idFile*,unsigned int) override;
+  void ResetPlayerInput(int) override;
+  void UpdateBotUserCmds(int,const usercmd_t&) override;
+  void VoiceRecognition_ClearUnprocessedCmd() override;
+  void VoiceRecognition_GetBareWordlist(idList<idStr,5>& outList) override;
   void UpdateConsoleDisplay(bool drawGameGui) override;
-  static void Hitch_f(const idCmdArgs*);
-  static void Map_f(const idCmdArgs*);
-  static void ComboMap_f(const idCmdArgs*);
-  static void DevComboMap_f(const idCmdArgs*);
-  static void CheckLoad_f(const idCmdArgs*);
-  static void DevMap_f(const idCmdArgs*);
-  static void RestartMap_f(const idCmdArgs*);
-  static void RestartMapHere_f(const idCmdArgs*);
-  static void NextMap_f(const idCmdArgs*);
-  static void RestartLoadGame_f(const idCmdArgs*);
-  static void RestartPassMainMenu_f(const idCmdArgs*);
-  static void RestartMapAfterSwap_f(const idCmdArgs*);
-  static void RestartMultiplayerInvite_f(const idCmdArgs*);
-  static void Disconnect_f(const idCmdArgs*);
-  static void LeaveGame_f(const idCmdArgs*);
-  static void SaveGame_f(const idCmdArgs*);
-  static void LoadGame_f(const idCmdArgs*);
-  static void RecordDemo_f(const idCmdArgs*);
-  static void PlayDemo_f(const idCmdArgs*);
-  static void StopDemo_f(const idCmdArgs*);
-  static void CaptureDemoFrames_f(const idCmdArgs*);
-  static void CaptureDemoSounds_f(const idCmdArgs*);
-  static void CompressFile_f(const idCmdArgs*);
-  static void DecompressFile_f(const idCmdArgs*);
-  static void DeleteGenerated_f(const idCmdArgs*);
+private:
+  static void Hitch_f(const idCmdArgs&);
+  static void Map_f(const idCmdArgs&);
+  static void ComboMap_f(const idCmdArgs&);
+  static void DevComboMap_f(const idCmdArgs&);
+  static void CheckLoad_f(const idCmdArgs&);
+  static void DevMap_f(const idCmdArgs&);
+  static void RestartMap_f(const idCmdArgs&);
+  static void RestartMapHere_f(const idCmdArgs&);
+  static void NextMap_f(const idCmdArgs&);
+  static void RestartLoadGame_f(const idCmdArgs&);
+  static void RestartPassMainMenu_f(const idCmdArgs&);
+  static void RestartMapAfterSwap_f(const idCmdArgs&);
+  static void RestartMultiplayerInvite_f(const idCmdArgs&);
+  static void Disconnect_f(const idCmdArgs&);
+  static void LeaveGame_f(const idCmdArgs&);
+  static void SaveGame_f(const idCmdArgs&);
+  static void LoadGame_f(const idCmdArgs&);
+  static void RecordDemo_f(const idCmdArgs&);
+  static void PlayDemo_f(const idCmdArgs&);
+  static void StopDemo_f(const idCmdArgs&);
+  static void CaptureDemoFrames_f(const idCmdArgs&);
+  static void CaptureDemoSounds_f(const idCmdArgs&);
+  static void CompressFile_f(const idCmdArgs&);
+  static void DecompressFile_f(const idCmdArgs&);
+  static void DeleteGenerated_f(const idCmdArgs&);
+public:
   class idLogFileWriter : public idPrintListener {
   public:
     idLogFileWriter()
@@ -193,6 +199,9 @@ public:
   void ExecuteMapChange(const idGameSpawnInfo&,idFile*) override;
   void LeaveGame(bool);
   void Disconnect(bool);
+  void CanceledFinalizedMapChangeCleanUp();
+  void FinalizeMapChange(const idGameSpawnInfo&,idFile*);
+  void ExecuteMapChangeForSnapshotFile(const idGameSpawnInfo&,idFile*);
   void EndLevelLoad(bool);
   void ForceLoadingBlack();
   recordState_t GetRecordState() override;
@@ -210,25 +219,35 @@ public:
   void ClearDialogs(bool) override;
   bool IsDialogActive() override;
   idStr GetDialogMsg(gameDialogMessages_t);
+protected:
   void RemoveWaitDialogs();
   void ReleaseCallBacks(int);
+public:
   bool HandleDialogEvent(const sysEvent_t*);
-  bool CutScenePress(const sysEvent_t&,bool);
+  bool CutScenePress(sysEvent_t,bool);
+protected:
   void ShowDialog(idDialogInfo&,bool);
+public:
   void KillDialog();
+protected:
   void ShowNextDialog(bool);
+public:
   void InitDialog();
   void LoadMainMenu();
   void RenderDialog(bool);
+protected:
   void AddDialogInternal(idDialogInfo&);
+public:
   void DrawSnapshotMetrics(bool);
   void LoadingScreenSetup(idSWF*,idRenderModelGui*,const idGameSpawnInfo&);
-  void PrepareSnapshot(idSnapShot&,gameReturn_t&,idSnapShot*);
+  void PrepareSnapshot(idSnapShot&,gameReturn_t&,idSnapShot*) override;
+private:
   void RunNormalFrame(gameReturn_t&);
   void RunNetworkSnapshotFrame(gameReturn_t&);
   void ShowJobListTimeRanges(std::uint64_t);
   void CalcPerfTimings();
-  void Frame();
+public:
+  void Frame() override;
 
 private:
   void NetReceiveReliable(int,idBitMsg&,int) override;

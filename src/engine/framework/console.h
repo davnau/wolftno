@@ -9,10 +9,15 @@
 struct idColor;
 class idParallelJobList;
 class idDebugGraph;
+class idDebugHistoryGraph;
 class idRenderModelGui;
+class idStr;
+class idSnapShot;
+struct sysEvent_t;
 struct idConsole;
 
-struct idOverlayHandle {
+class idOverlayHandle {
+public:
   int index{-1};
   int time{};
 };
@@ -36,6 +41,13 @@ enum rangeId_t : int {
   RANGE_STREAM_OD = 15,
 };
 
+enum justify_t : int {
+  JUSTIFY_LEFT,
+  JUSTIFY_RIGHT,
+  JUSTIFY_CENTER_LEFT,
+  JUSTIFY_CENTER_RIGHT
+};
+
 struct idConsoleVTablePrefix {
   void* slotsBeforeAddTimeRange[17];
   void (*AddTimeRange)(idConsole* self, rangeId_t range,
@@ -51,133 +63,53 @@ struct idConsoleVTablePrefix {
 };
 
 struct idConsole {
-  const idConsoleVTablePrefix* vtable;
-
-  void Init() {
-    using Fn=void(*)(idConsole*);
-    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[1])(this);
-  }
-
-  void LoadGraphics() {
-    using Fn=void(*)(idConsole*);
-    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[4])(this);
-  }
-
-  void ClearNotifyLines() {
-    using Fn=void(*)(idConsole*);
-    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[8])(this);
-  }
-
-  bool IsActive() {
-    using Fn=bool(*)(idConsole*);
-    return reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[7])(this);
-  }
-  bool IsInitialized() {
-    using Fn=bool(*)(idConsole*);
-    const auto slots=reinterpret_cast<const void* const*>(vtable);
-    return reinterpret_cast<Fn>(slots[6])(this);
-  }
-  bool ProcessEvent(const struct sysEvent_t* event,bool forceAccept) {
-    using Fn=bool(*)(idConsole*,const sysEvent_t*,bool);
-    return reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[5])(
-        this,event,forceAccept);
-  }
-
-  void InitGuiModel() {
-    using Fn=void(*)(idConsole*);
-    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[3])(this);
-  }
-
-  void AddTimeRange(rangeId_t range, const idColor* color,
-                    std::uint64_t start, std::uint64_t end) {
-    vtable->AddTimeRange(this, range, color, start, end);
-  }
-
-  void SetTimeRangeLabel(rangeId_t range,const char* label) {
-    using Fn=void(*)(idConsole*,rangeId_t,const char*);
-    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[18])(
-        this,range,label);
-  }
-
-  void AddJobListTimeRange(rangeId_t range, const idColor* color,
-                           const idParallelJobList* jobList,
-                           std::uint64_t offset) {
-    vtable->AddJobListTimeRange(this, range, color, jobList, offset);
-  }
-
-  void BeginTimeRange(rangeId_t range, const idColor* color) {
-    vtable->BeginTimeRange(this, range, color);
-  }
-
-  idRenderModelGui* Gui() {
-    using Fn=idRenderModelGui*(*)(idConsole*);
-    const auto slots=reinterpret_cast<const void* const*>(vtable);
-    return reinterpret_cast<Fn>(slots[15])(this);
-  }
-
-  idDebugGraph* CreateGraph(int count) {
-    using Fn=idDebugGraph*(*)(idConsole*,int);
-    const auto slots=reinterpret_cast<const void* const*>(vtable);
-    return reinterpret_cast<Fn>(slots[22])(this,count);
-  }
-
-  void DestroyGraph(idDebugGraph* graph) {
-    using Fn = void (*)(idConsole*, idDebugGraph*);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[23])(this, graph);
-  }
-
-  void AddSnapObject(const char* name,int size,int changed,float fraction) {
-    using Fn=void(*)(idConsole*,const char*,int,int,float);
-    const auto slots=reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[26])(this,name,size,changed,fraction);
-  }
-
-  void ClearSnapshots() {
-    using Fn=void(*)(idConsole*);
-    const auto slots=reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[27])(this);
-  }
-
-  void Close(bool force) {
-    using Fn = void (*)(idConsole*, bool);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[10])(this, force);
-  }
-
-  void ClearEditLine() {
-    using Fn = void (*)(idConsole*);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[9])(this);
-  }
-
-  void Shutdown() {
-    using Fn = void (*)(idConsole*);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[2])(this);
-  }
-
-  void Dump(const char* fileName, idStr* text = nullptr) {
-    using Fn = void (*)(idConsole*, const char*, idStr*);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[12])(this, fileName, text);
-  }
-
-  void Draw(bool forceFullScreen, bool noNotifies) {
-    using Fn = void (*)(idConsole*, bool, bool);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[13])(this, forceFullScreen, noNotifies);
-  }
-
-  template <typename... Args>
-  void PrintOverlay(idOverlayHandle* handle, int justify, float x, float y,
-                    const char* format, Args... args) {
-    using Fn = void (*)(idConsole*, idOverlayHandle*, int, float, float,
-                        const char*, ...);
-    const auto slots = reinterpret_cast<const void* const*>(vtable);
-    reinterpret_cast<Fn>(slots[16])(this, handle, justify, x, y, format,
-                                    args...);
-  }
+  virtual ~idConsole() = default;
+  virtual void Init() = 0;
+  virtual void Shutdown() = 0;
+  virtual void InitGuiModel() = 0;
+  virtual void LoadGraphics() = 0;
+  virtual bool ProcessEvent(const sysEvent_t* event, bool forceAccept) = 0;
+  virtual bool IsInitialized() = 0;
+  virtual bool IsActive() = 0;
+  virtual void ClearNotifyLines() = 0;
+  virtual void ClearEditLine() = 0;
+  virtual void Close(bool clearNotify) = 0;
+  virtual void Print(const char* text) = 0;
+  virtual void Dump(const char* fileName, idStr* outString) = 0;
+  virtual void Draw(bool forceFullScreen, bool skipNotifyLines) = 0;
+  virtual bool WasLastFullScreen() = 0;
+  virtual idRenderModelGui* Gui() = 0;
+  virtual void PrintOverlay(idOverlayHandle& handle, justify_t justify,
+                            float bgopacity, float fgopacity,
+                            const char* format, ...) = 0;
+  virtual void AddTimeRange(rangeId_t range, const idColor& color,
+                            std::uint64_t start, std::uint64_t end) = 0;
+  virtual void SetTimeRangeLabel(rangeId_t range, const char* label) = 0;
+  virtual void AddJobListTimeRange(rangeId_t range, const idColor& color,
+                                   const idParallelJobList* jobList,
+                                   std::uint64_t offset) = 0;
+  virtual void BeginTimeRange(rangeId_t range, const idColor& color) = 0;
+  virtual idColor GetTimeRangeColor(rangeId_t range) = 0;
+  virtual idDebugGraph* CreateGraph(int count) = 0;
+  virtual void DestroyGraph(idDebugGraph* graph) = 0;
+  virtual idDebugHistoryGraph* CreateHistoryGraph(float minRange,
+                                                   float maxRange, int width,
+                                                   int height) = 0;
+  virtual void DestroyHistoryGraph(idDebugHistoryGraph* graph) = 0;
+  virtual void AddSnapObject(const char* name, int size, int changed,
+                             float fraction) = 0;
+  virtual void ClearSnapshots() = 0;
+  virtual void AddSnapshots(const idSnapShot* newSnapshot,
+                            const idSnapShot* oldSnapshot, int size, int peer,
+                            int sequence, int baseSequence) = 0;
+  virtual void AddPresentableObject(const char* name, int index,
+                                    bool skipReplication) = 0;
+  virtual void ClearPresentables() = 0;
+  virtual void SetBitmapConsole(unsigned char* frontBuffer0,
+                                unsigned char* frontBuffer1, int width,
+                                int height, int bytePitch) = 0;
+  virtual void DrawBitmapConsole() = 0;
+  virtual void MarkVBLTime() = 0;
 };
 
 extern idConsole* console;

@@ -6,6 +6,7 @@
 #include <cstddef>
 
 class idFile;
+class idFile_Memory;
 class idBitMsg;
 class idGame;
 class idGameSpawnInfo;
@@ -23,6 +24,8 @@ public:
 class idLocalUser;
 class idUserCmdMgr;
 class idSnapShot;
+class usercmd_t;
+struct gameReturn_t;
 class idSWFScriptFunction;
 class idSWFHelper;
 #ifndef ID_MILLISECOND_UNIQUE_T_DEFINED
@@ -66,9 +69,9 @@ public:
   virtual bool IsInitialized() const {return false;}                // 4
   virtual void BeginTerminationThread(){}                          // 5
   virtual void EndTerminationThread(){}                            // 6
-  virtual bool IsTerminationThreadStopped(){return false;}         // 7
+  virtual bool IsTerminationThreadStopped() const{return false;}   // 7
   virtual void SyncAllBackgroundOperations(bool){}                 // 8
-  virtual void CommonSlot09(){}
+  virtual void Frame()=0;
   virtual void InitTool(toolFlag_t){} virtual void UpdateTool(toolFlag_t){}
   virtual void GetToolReferenceMap(toolFlag_t,idStr&){}            // 12
   virtual void ActivateTool(bool){}                               // 13
@@ -84,23 +87,26 @@ public:
   virtual void SetLoadScreenInfo(const idStr&,const idStr&){}      // 23
   virtual const char* GetLoadMaterialForMission(const char*,bool){return "";} // 24
   virtual idPlayerProfile* GetProfileFromMasterLocalUser(){return nullptr;} // 25
-  virtual int GetMasterLocalUserInputDevice(){return -1;}           // 26
-  virtual int GetMasterLocalUserPlayerId(){return 0;}               // 27
-  virtual idLocalUser* GetMasterLocalUser(){return nullptr;}       // 28
+  virtual int GetMasterLocalUserInputDevice() const{return -1;}     // 26
+  virtual int GetMasterLocalUserPlayerId() const{return 0;}         // 27
+  virtual idLocalUser* GetMasterLocalUser() const{return nullptr;} // 28
   virtual idSWFHelper* GetSWFHelper(){return nullptr;}              // 29
   virtual bool AreWeRunningPC() const {return false;}               // 30
-  virtual void CommonSlot31(){}
-  virtual void CommonSlot32(){} virtual bool IsMainMenuActive(){return false;} // 33
+  virtual void ResetPlayerInput(int){}
+  virtual void UpdateBotUserCmds(int,const usercmd_t&){}
+  virtual bool IsMainMenuActive(){return false;} // 33
   virtual bool IsGamePaused(){return false;}                       // 34
-  virtual bool IsInGame(){return false;}                            // 35
-  virtual void CommonSlot36(){} virtual void CommonSlot37(){}
-  virtual void CommonSlot38(){} virtual snapshotState_t SnapshotState(){return SNAP_NONE;} // 39
-  virtual void CommonSlot40(){}
+  virtual bool IsInGame() const{return false;}                      // 35
+  virtual void CommonSlot36(){}
+  virtual void VoiceRecognition_ClearUnprocessedCmd(){}
+  virtual void VoiceRecognition_GetBareWordlist(idList<idStr,5>&){}
+  virtual snapshotState_t SnapshotState() const{return SNAP_NONE;} // 39
+  virtual void PrepareSnapshot(idSnapShot&,gameReturn_t&,idSnapShot*)=0;
   virtual bool IsServer(){return SnapshotState()!=SNAP_READING;}   // 41
   virtual bool IsClient(){return SnapshotState()==SNAP_READING;}   // 42
   virtual bool SnapshotsAreStalled(){return false;}                // 43
   virtual bool IsMultiplayer() const {return false;}                // 44
-  virtual bool IsToolActive(){return false;}                        // 45
+  virtual bool IsToolActive() const{return false;}                  // 45
   virtual bool AllowCheats(){return false;}                         // 46
   virtual void AddDialog(gameDialogMessages_t,dialogType_t,
                          idSWFScriptFunction*,idSWFScriptFunction*,bool,
@@ -131,29 +137,38 @@ public:
   virtual idRenderWorld* RW(){return nullptr;}                     // 65
   virtual idSoundWorld* SW(){return nullptr;}                      // 66
   virtual void ExecuteMapChange(const idGameSpawnInfo&,idFile*){}  // 67
-  virtual void CommonSlot68(){}
+  virtual void RecordPlayback(bool,const char*){}
   virtual recordState_t GetRecordState(){return RECORD_NONE;}       // 69
   virtual idRegression* GetRegression(){return nullptr;}           // 70
-  virtual void CommonSlot71(){}
-  virtual void CommonSlot72(){} virtual void CommonSlot73(){}
-  virtual void CommonSlot74(){} virtual void CommonSlot75(){}
-  virtual void CommonSlot76(){} virtual void CommonSlot77(){}
-  virtual void CommonSlot78(){} virtual bool IsDemoPlaying(){return false;} // 79
+  virtual void RecordSnapshotFile(idFile*,unsigned int){}
+  virtual void PlaySnapshotFile(idFile*,unsigned int){}
+  virtual void QueueSnapshotMemFile(idFile_Memory*,unsigned int){}
+  virtual void ClearQueuedSnapshotFile(){}
+  virtual void PlayQueuedSnapshotFile(){}
+  virtual void StopSnapshotFilePlayback(){}
+  virtual void StopSnapshotFileRecord(){}
+  virtual void CloseSnapshotFiles(){}
+  virtual bool IsDemoPlaying(){return false;} // 79
   virtual bool IsDemoRecording(){return false;}                    // 80
-  virtual void CommonSlot81(){}
-  virtual void CommonSlot82(){} virtual void CommonSlot83(){}
-  virtual void CommonSlot84(){}
+  virtual idFile* DetachActiveReadSnapshotFile(){return nullptr;}
+  virtual idFile* DetachActiveWriteSnapshotFile(){return nullptr;}
+  virtual idFile* GetActiveReadSnapshotFile(){return nullptr;}
+  virtual idFile* GetActiveWriteSnapshotFile(){return nullptr;}
   virtual void NetReceiveReliable(int,idBitMsg&,int){}              // 85
   virtual void NetReceiveSnapshot(idSnapShot&){}                    // 86
   virtual void NetReceiveUsercmds(idBitMsg&){}                      // 87
   virtual int GetSnapRate(){return 0;}                              // 88
   virtual bool IsLosingConnectionToHost(){return false;}            // 89
   virtual idRenderVideoOverlay* VideoOverlay(){return nullptr;}     // 90
-  virtual void CommonSlot91(){} virtual bool IsPurgeOverlaysPending(){return false;} // 92
+  virtual void PurgeOverlays(){}
+  virtual bool IsPurgeOverlaysPending(){return false;} // 92
   virtual idFile* GetLogfile(){return nullptr;}                     // 93
-  virtual void CommonSlot94(){} virtual void CommonSlot95(){}
-  virtual void CommonSlot96(){} virtual void CommonSlot97(){}
-  virtual void CommonSlot98(){} virtual bool ShouldDelayShutdown(){return false;} // 99
+  virtual void InformEditorOfMapChange(){}
+  virtual void InformEditorOfTimelineTick(const char*,int,int){}
+  virtual bool EditorRequestsStopTime(){return false;}
+  virtual int GetTimeLineWindowMS(){return 0;}
+  virtual int GetAndClearFastForwardMSRequest(){return 0;}
+  virtual bool ShouldDelayShutdown(){return false;} // 99
   virtual void SetShouldDelayShutdown(bool){}                      // 100
   virtual bool GetAbnormalFileRead(){return false;}                // 101
   virtual void SetAbnormalFileRead(bool){}                         // 102

@@ -37,8 +37,8 @@ public:
 
   void Clear();
   void NoteFrame();
-  void NoteCacheLineRequest(const idFile* f, int fileLine, int priority);
-  void BeginIO(sflDrive_t drive, sflIO_t io, const idFile* f,
+  void NoteCacheLineRequest(const idFile* const f, int fileLine, int priority);
+  void BeginIO(sflDrive_t drive, sflIO_t io, const idFile* const f,
                std::int64_t offset, std::int64_t length, int priority);
   void EndIO(sflDrive_t drive);
 
@@ -65,4 +65,3 @@ static_assert(offsetof(idStreamFileLog, driveState) == 0x18,
               "idStreamFileLog::driveState ABI drift");
 static_assert(offsetof(idStreamFileLog, currentEntry) == 0x28,
               "idStreamFileLog::currentEntry ABI drift");
-

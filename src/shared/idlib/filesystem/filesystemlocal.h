@@ -24,6 +24,23 @@ public:
     const auto slots=*reinterpret_cast<const void* const* const*>(this);
     reinterpret_cast<Fn>(slots[4])(this,callback);
   }
+  void SetFileCacheCallbackRetail(void* loadCallback,void* statCallback) {
+    using Fn=void(*)(idFileSystem*,void*,void*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[6])(this,loadCallback,statCallback);
+  }
+  idFile* OpenOSFileReadRetail(const char* rootPath,const char* fileName) {
+    using Fn=idFile*(*)(idFileSystem*,const char*,const char*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[32])(this,rootPath,fileName);
+  }
+  bool OSFileExistsRetail(const char* rootPath,const char* fileName,
+                          bool caseSensitive) {
+    using Fn=bool(*)(idFileSystem*,const char*,const char*,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[33])(
+        this,rootPath,fileName,caseSensitive);
+  }
   virtual idFile* OpenFileRead(const char* path) = 0;
   virtual idFile* OpenFileWrite(const char* path) = 0;
   virtual idFile* OpenFileAppend(const char* path, fsPath_t basePath) = 0;
@@ -173,6 +190,13 @@ public:
     using Fn=void(*)(idFileSystem*,const char*);
     const auto slots=*reinterpret_cast<const void* const* const*>(this);
     reinterpret_cast<Fn>(slots[16])(this,path);
+  }
+  void RelativePathToOSPathRetail(const char* relativePath,char* output,
+                                  int outputLength,fsPath_t basePath) {
+    using Fn=void(*)(idFileSystem*,const char*,char*,int,fsPath_t);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[13])(
+        this,relativePath,output,outputLength,basePath);
   }
   // NEEDS_WORK(shared/idlib/filesystem): this is the renderer-facing retail
   // boundary. Recover the platform/path-selection implementation with the

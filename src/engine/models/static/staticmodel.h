@@ -2,6 +2,7 @@
 
 #include "engine/decls/decl.h"
 #include "engine/models/rendermodel.h"
+#include "engine/models/sourcesurface.h"
 #include "engine/models/skinremap.h"
 
 #include <cstddef>
@@ -11,14 +12,6 @@ class idASEModel;
 class idOBJModel;
 struct st_lwLayer;
 struct st_lwObject;
-
-struct sourceSurface_t {
-  const idMaterial* mtr{};
-  int mtrChecksum{};
-  int renderSurface{};
-  int firstVertex{};
-  int lastVertex{};
-};
 
 class idStaticModelSurface : public idRenderModelSurface {
 public:

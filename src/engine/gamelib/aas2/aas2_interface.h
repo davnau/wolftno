@@ -3,9 +3,15 @@
 #include <cstddef>
 
 class idVec3;
+class idClipModel;
+class idAASClipLink;
+struct aas2Area_t;
 struct aas2ChokePoint_t;
 struct aas2Cover_t;
 struct aas2HintNode_t;
+struct obstacleEdge_t;
+struct obstacleRoute_t;
+struct obstacleVertex_t;
 
 class idAAS2 {
 public:
@@ -51,7 +57,7 @@ public:
   ID_AAS2_RECOVERED_SLOT(38);
   virtual int GetNumAreas() const = 0;
   ID_AAS2_RECOVERED_SLOT(40);
-  ID_AAS2_RECOVERED_SLOT(41);
+  virtual const aas2Area_t& GetArea(int areaNum) const = 0;
   ID_AAS2_RECOVERED_SLOT(42);
   ID_AAS2_RECOVERED_SLOT(43);
   ID_AAS2_RECOVERED_SLOT(44);
@@ -71,13 +77,20 @@ public:
   ID_AAS2_RECOVERED_SLOT(58);
   ID_AAS2_RECOVERED_SLOT(59);
   ID_AAS2_RECOVERED_SLOT(60);
-  ID_AAS2_RECOVERED_SLOT(61);
-  ID_AAS2_RECOVERED_SLOT(62);
-  ID_AAS2_RECOVERED_SLOT(63);
-  ID_AAS2_RECOVERED_SLOT(64);
-  ID_AAS2_RECOVERED_SLOT(65);
-  ID_AAS2_RECOVERED_SLOT(66);
-  ID_AAS2_RECOVERED_SLOT(67);
+  virtual const unsigned char* GetObstaclePVS(int areaNum) const = 0;
+  virtual int GetObstaclePVSWallEdges(int areaNum, int edgeFlags,
+                                      int* edges, int maxEdges) const = 0;
+  virtual int GetObstaclePVSClipModels(int areaNum,
+                                       idClipModel** clipModels,
+                                       int maxClipModels) const = 0;
+  virtual void GetObstaclePVSObstacles(
+      int startAreaNum, int edgeFlags, obstacleVertex_t* vertices,
+      int& maxVertices, obstacleEdge_t* edges, int& maxEdges,
+      idClipModel** clipModels, int& maxClipModels,
+      obstacleRoute_t* route) const = 0;
+  virtual void FreeClipLinks() = 0;
+  virtual idAASClipLink* LinkClipModel(idClipModel* clipModel) = 0;
+  virtual idAASClipLink* UnLinkClipModel(idAASClipLink* links) = 0;
 #undef ID_AAS2_RECOVERED_SLOT
 
   virtual int GetNumCoverPoints() const = 0;

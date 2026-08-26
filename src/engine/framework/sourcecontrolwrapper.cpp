@@ -47,11 +47,11 @@ bool idSourceControlWrapper::GetSilentCheckIn() {
   return Init() && sc->GetSilentCheckIn();
 }
 
-bool idSourceControlWrapper::IsConnected() {
+bool idSourceControlWrapper::IsConnected() const {
   return sc != nullptr && sc->IsConnected();
 }
 
-bool idSourceControlWrapper::IsInitialized() {
+bool idSourceControlWrapper::IsInitialized() const {
   return sc != nullptr && sc->IsInitialized();
 }
 

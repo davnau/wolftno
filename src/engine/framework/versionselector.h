@@ -42,7 +42,6 @@ public:
   int numBuildOptions;
   int combinedMask;
 
-private:
   void Assign(int versionBits, idStr str);
   void Finalize();
   int Parse(idParser& src, const char* context);

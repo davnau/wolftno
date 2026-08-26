@@ -628,8 +628,8 @@ void idJointAnimator::DrawJoints(
     return false;
   };
   auto jointName = [skeleton](int joint) -> const char* {
-    return joint >= 0 && joint < skeleton->jointNames.Num()
-               ? skeleton->jointNames[joint].str
+    return joint >= 0 && joint < skeleton->NumJoints()
+               ? skeleton->GetJointName(joint)
                : nullptr;
   };
   auto worldOrigin = [&origin, &axis, &scale](const idJointMat& joint) {

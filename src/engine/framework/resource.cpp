@@ -71,7 +71,7 @@ void idResource::LoadResource() {
 
 bool idResource::ReloadIfStale() { return false; }
 
-void idResource::WriteResourceFile() {
+void idResource::WriteResourceFile() const {
   idLib::FatalError("resource type '%s' has not implemented WriteResourceFile()",
                     GetResourceTypeName());
 }
@@ -114,7 +114,7 @@ void idResource::SetResourceError(const char* format, ...) {
   va_end(arguments);
 }
 
-void idResource::Print() {
+void idResource::Print() const {
   if (resourceError != nullptr)
     idLib::Printf("%s:%s:%s\n", GetResourceTypeName(), name.str,
                   resourceError);

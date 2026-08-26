@@ -183,6 +183,8 @@ public:
   const char* FindEnumValueName(const idEnumInfo&, int) const;
   const char* GetEnumName(const char* enumTypeName, int enumValue,
                           const char* defaultValue) const;
+  bool GetEnumBitFlags(int value,const char* enumTypeName,idStr& result,
+                       const char* separator) const;
   int FindClassIndex(const char*) const;
   const idClassInfo* FindClassInfo(const char*) const;
   const idClassVariableInfo* FindClassVariableInfo(const idClassInfo&, const char*) const;

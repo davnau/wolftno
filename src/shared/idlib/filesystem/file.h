@@ -107,6 +107,20 @@ public:
   bool ownsData;
 };
 
+class idFile_Stat : public idFile {
+public:
+  idFile_Stat(const char* name,std::int64_t size,std::uint32_t timestamp);
+  const char* GetName() const override { return fileName.data; }
+  const char* GetFullPath() const override { return fileName.data; }
+  std::int64_t Length() const override;
+  std::uint32_t Timestamp() const override { return fileTimestamp; }
+  idStr fileName;
+  std::int64_t fileSize;
+  std::uint32_t fileTimestamp;
+};
+
+static_assert(sizeof(idFile_Stat)==72,"stat file ABI drift");
+
 class idFile_String : public idFile_Memory {
 public:
   explicit idFile_String(const char* fileName = "string") : idFile_Memory(fileName) {}

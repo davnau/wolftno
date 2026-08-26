@@ -10,6 +10,7 @@
 #include <zlib.h>
 
 class idResource;
+class idResourceList;
 
 struct idPlatformStreamData {
   std::byte lang[16];
@@ -20,10 +21,16 @@ struct idPlatformStreamData {
   void* streamData;
 };
 
-struct idResourceFileEntry {
+class idResourceFileEntry {
+public:
+  idResourceFileEntry();
+  idResourceFileEntry(const idResourceFileEntry& other);
+  ~idResourceFileEntry();
+  idResourceFileEntry& operator=(const idResourceFileEntry& other);
+  std::size_t Read(idFile* file);
   int resourceIndex;
   int padding;
-  void* resourceList;
+  idResourceList* resourceList;
   idStrStatic<64> typeName;
   idStrStatic<256> resourceName;
   idStrStatic<256> filename;
@@ -116,9 +123,11 @@ public:
   void SpawnThreads();
   void DestroyThreads();
   idFile* GetFile(const char* filename);
-  void SkipPastResource(idResource* resource);
+  void SkipPastResource(const idResource* resource);
+private:
   void DetermineNextReadBlock();
-  void BeginBackgroundLoads(idFile* resourceFile,
+public:
+  void BeginBackgroundLoads(idFile& resourceFile,
       const idList<idResourceFileEntry,101>& fileTable);
   void EndBackgroundLoads();
 

@@ -119,7 +119,7 @@ void usercmd_t::ClearMoveCmds() {
   rightmoveSec=0;
 }
 
-void usercmd_t::Print() {
+void usercmd_t::Print() const {
   idLib::Printf("Frame: %d\n",clientGameFrame);
   idLib::Printf("Server game time: %d\n",serverGameTime);
   idLib::Printf("Buttons: %x, Buttons2: %x\n",buttons,buttons2);
@@ -176,9 +176,9 @@ void idUsercmdGenLocal::ClearAngles() {
   for(auto& device:devices) device.angles=idAngles{};
 }
 
-bool idUsercmdGenLocal::GetUseAimAssist(){return aimAssist;}
-bool idUsercmdGenLocal::GetMouseDetected(){return mouseDetected;}
-bool idUsercmdGenLocal::GetJoystickDetected(){return joystickDetected;}
+bool idUsercmdGenLocal::GetUseAimAssist() const{return aimAssist;}
+bool idUsercmdGenLocal::GetMouseDetected() const{return mouseDetected;}
+bool idUsercmdGenLocal::GetJoystickDetected() const{return joystickDetected;}
 
 void idUsercmdGenLocal::Mouse(int inputDeviceNum) {
   if(currentDeviceNum!=0) return;
@@ -295,7 +295,7 @@ void idUsercmdGenLocal::MouseMove() {
   }
 }
 
-void idUsercmdGenLocal::CircleToSquare(float& x,float& y) {
+void idUsercmdGenLocal::CircleToSquare(float& x,float& y) const {
   const bool negativeX=x<0,negativeY=y<0;
   x=std::fabs(x); y=std::fabs(y);
   const bool swapped=y>x;
@@ -313,7 +313,7 @@ void idUsercmdGenLocal::CircleToSquare(float& x,float& y) {
   }
 }
 
-cmdGenButton_t idUsercmdGenLocal::BindStringUsercmdAction(const char* text) {
+cmdGenButton_t idUsercmdGenLocal::BindStringUsercmdAction(const char* text) const {
   idCmdArgs args;
   if(text!=nullptr) args.TokenizeString(text,true);
   cmdGenButton_t button=UB_NONE;
@@ -331,7 +331,7 @@ cmdGenButton_t idUsercmdGenLocal::BindStringUsercmdAction(const char* text) {
   return button;
 }
 
-bool idUsercmdGenLocal::HasCompoundBinding(const char* text) {
+bool idUsercmdGenLocal::HasCompoundBinding(const char* text) const {
   idCmdArgs args;
   if(text!=nullptr) args.TokenizeString(text,true);
   int matches=0;

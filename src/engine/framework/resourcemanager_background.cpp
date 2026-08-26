@@ -311,7 +311,7 @@ idFile* idBackgroundLoader::GetFile(const char* filename) {
   return file;
 }
 
-void idBackgroundLoader::SkipPastResource(idResource* resource) {
+void idBackgroundLoader::SkipPastResource(const idResource* resource) {
   if (resourceFile==nullptr)
     idLib::FatalError(
       "idBackgroundLoader::SkipPastResource() called ouside a background load");
@@ -355,9 +355,9 @@ void idBackgroundLoader::DetermineNextReadBlock() {
 }
 
 void idBackgroundLoader::BeginBackgroundLoads(
-    idFile* resourceFile_,const idList<idResourceFileEntry,101>& fileTable_) {
+    idFile& resourceFile_,const idList<idResourceFileEntry,101>& fileTable_) {
   startForegroundTime=static_cast<int>(Sys_Milliseconds());
-  resourceFile=resourceFile_;
+  resourceFile=&resourceFile_;
   fileTable=&fileTable_;
   idMem::Singleton()->PushMapHeap();
   for (int index=0;index<2;++index) {

@@ -14,7 +14,7 @@ struct idVideoDesc;
 
 class idResourceManager {
 public:
-  virtual ~idResourceManager() = default;
+  virtual ~idResourceManager();
   virtual void Init() {}
   virtual void Init2(bool) {}
   virtual void Shutdown() {}
@@ -22,9 +22,9 @@ public:
   virtual void CloseOpenFileHandles() {}
   virtual bool ReOpenFileHandles() { return false; }
   virtual void OpenDLCFileHandles() {}
-  virtual void StartupComplete() {}
-  virtual void SetFileHook() {}
-  virtual void ReleaseFileHook() {}
+  virtual void StartupComplete() const {}
+  virtual void SetFileHook() const {}
+  virtual void ReleaseFileHook() const {}
   virtual void EnableInGameResourceLoad() {}
   virtual void DisableInGameResourceLoad() {}
   virtual bool AllocGameWithResourceFile(idGame*&, const idGameSpawnInfo&,
@@ -42,7 +42,7 @@ public:
   virtual int GetContainerIdForCacheFile(const char*) { return -1; }
   virtual int GetContainerIdForMap(const char*) { return -1; }
   virtual idFile* GetCacheFile(int) { return nullptr; }
-  virtual bool IsContainerDLC(int) { return false; }
+  virtual bool IsContainerDLC(int) const { return false; }
   virtual idFile* GetStreamFile(int) { return nullptr; }
   virtual idFile* GetCachedStreamFile() { return nullptr; }
   virtual idFile* GetLocalizedStreamFile(int) { return nullptr; }

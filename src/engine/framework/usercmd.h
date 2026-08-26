@@ -15,7 +15,7 @@ public:
   usercmd_t() { std::memset(this,0,sizeof(*this)); }
   void ClearMoveCmds();
   void ClearButtons() { buttons=0;buttons2=0; }
-  void Print();
+  void Print() const;
 
   std::uint32_t buttons;
   std::uint16_t buttons2;

@@ -37,6 +37,11 @@ public:
     cvarCallback_t* next;
   };
   idCVar();
+#if defined(WOLFTNO_RETAIL_CVAR_INLINE_FREEDATA_ABI)
+  ~idCVar() noexcept(false) { valueString.FreeData(); }
+#else
+  ~idCVar() = default;
+#endif
   idCVar(const char* name, const char* value, int flags,
          const char* description, argCompletion_t completion = nullptr);
   // Retail overload used by gamelib CVars whose completion callback accepts
@@ -79,7 +84,13 @@ public:
   float GetFloat() const { return valueFloat; }
   static void RegisterStaticVars();
   static idCVar* StaticVars();
+#if defined(WOLFTNO_RETAIL_CVAR_INLINE_FREEDATA_ABI)
+  union {
+    idStr valueString;
+  };
+#else
   idStr valueString;
+#endif
   int valueInteger{};
   float valueFloat{};
   const char* name{};

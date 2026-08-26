@@ -26,6 +26,12 @@ public:
   static const idColor colorOrange;
   static const idColor colorPurple;
   static const idColor colorMagenta;
+  static const idColor colorDarkRed;
+  static const idColor colorDarkGreen;
+  static const idColor colorPink;
+  static const idColor colorBrown;
+  static const idColor colorMdGrey;
+  static const idColor colorDkGrey;
   static const idColor colorXAxis;
   static const idColor colorYAxis;
   static const idColor colorZAxis;

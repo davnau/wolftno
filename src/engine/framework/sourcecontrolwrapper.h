@@ -15,8 +15,8 @@ public:
   bool GetSilentCheckOut() override;
   void SetSilentCheckIn(bool set) override;
   bool GetSilentCheckIn() override;
-  bool IsConnected() override;
-  bool IsInitialized() override;
+  bool IsConnected() const override;
+  bool IsInitialized() const override;
   int CheckOut(const idList<idStr>& files) override;
   int UndoCheckOut(const idList<idStr>& files) override;
   int Import(const idList<idStr>& files, bool keepCheckedOut, bool submit,

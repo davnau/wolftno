@@ -9,6 +9,9 @@
 
 class idDeclFreezeJoints;
 class idTreeAnimator;
+class idCVar;
+
+extern idCVar anim_enableFreezeJoints;
 
 class idAnimatorParms_FreezeJoints : public idAnimatorParms_Base {
 public:
@@ -33,7 +36,6 @@ public:
     idJoint() : index() {}
 
     idJointIndex_t index;
-    std::uint8_t indexPadding[2];
     idVec3 originalPosition;
     idMat3 originalRotation;
   };
@@ -77,7 +79,6 @@ protected:
 
 public:
   bool enabled;
-  std::uint8_t enabledPadding[7];
   idList<idJoint, 5> joints;
   idTreeAnimator* animator;
   idMD6LeafPause animLeaf;

@@ -77,32 +77,32 @@ public:
   void SetTimeScale(const float newScale, const gameTimeType_t type);
   static void SetGameHz(const int hertz);
   bool IsInSlowMotion() { return inSlowMotion; }
-  int GetGameHz(gameTimeType_t type);
+  int GetGameHz(gameTimeType_t type) const;
   int GetGameFrame() { return framenum; }
-  int GetGameMs(gameTimeType_t type);
+  int GetGameMs(gameTimeType_t type) const;
   float GetGameSec(gameTimeType_t type) { return GetGameMs(type) * 0.001f; }
-  int GetPreviousGameMs(gameTimeType_t type);
+  int GetPreviousGameMs(gameTimeType_t type) const;
   float GetPreviousGameSec(gameTimeType_t type) {
     return GetPreviousGameMs(type) * 0.001f;
   }
-  int GetGameMsPerFrame(gameTimeType_t type);
+  int GetGameMsPerFrame(gameTimeType_t type) const;
   float GetGameSecPerFrame(gameTimeType_t type) {
     return GetGameMsPerFrame(type) * 0.001f;
   }
   int GetRealMs() { return time[GAMETIME_NORMAL]; }
   float GetRealSec() { return GetRealMs() * 0.001f; }
-  float GetRealMsPerFrame(gameTimeType_t type);
+  float GetRealMsPerFrame(gameTimeType_t type) const;
   float GetRealSecPerFrame(gameTimeType_t type) {
     return GetRealMsPerFrame(type) * 0.001f;
   }
-  float GetTimeScale(gameTimeType_t type);
+  float GetTimeScale(gameTimeType_t type) const;
   int GetGameMsPerRealSec() {
     return timeManager.gameTimePerSecond.value;
   }
   const idTypesafeNumber<int, millisecondUnique_t>
-  ConvertTimeGameToReal(idTypesafeNumber<int, gameTimeUnique_t> ticks);
+  ConvertTimeGameToReal(idTypesafeNumber<int, gameTimeUnique_t> ticks) const;
   const idTypesafeNumber<int, gameTimeUnique_t>
-  ConvertTimeRealToGame(idTypesafeNumber<int, millisecondUnique_t> ms);
+  ConvertTimeRealToGame(idTypesafeNumber<int, millisecondUnique_t> ms) const;
   void StartSlowmotion(const slowmoParms_t& parms);
   void StopSlowmotion();
   void SetCurrentAndPreviousGameMs(const int current, const int previous) {

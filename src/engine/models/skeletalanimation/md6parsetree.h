@@ -99,6 +99,9 @@ using idMD6ParseTreeBranchUpdate = void (*)(idMD6Branch*, bool,
                                              const idMD6Skel* skeleton);
 void SetMD6ParseTreeModelCompatible(idMD6ParseTreeModelCompatible compatible);
 void SetMD6ParseTreeBranchUpdate(idMD6ParseTreeBranchUpdate update);
+bool DispatchMD6ParseTreeBranchUpdate(idMD6Branch* branch, bool forceUpdate,
+                                      int timeMSec, int ticksPerSec,
+                                      const idMD6Skel* skeleton);
 
 int ParseTree(const idMD6Model* model, int lastTimeMSec, int timeMSec,
               int ticksPerSec, idMD6Node* tree, md6AnimCommand_t* commands,

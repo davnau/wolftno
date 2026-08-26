@@ -38,9 +38,14 @@ private:
 
 class idSnapshotMetrics {
 public:
+  void ProcessEvent(const struct sysEvent_t* event);
   void LogSnapshotDelta(const idSnapShot& snapshot,const idSnapShot* base,
                         int sequence,int baseSequence,int visIndex,int size,
                         bool fullSnapshot);
+  void GenerateReport(idSnapShot* snapshot,idSnapShot* oldSnapshot,
+                      int sequence,int baseSequence,int peer,
+                      class idRenderModelGui* gui,bool reportMetrics,
+                      bool printConsole);
 private:
   std::byte storage[1440];
 };

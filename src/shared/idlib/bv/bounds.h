@@ -20,6 +20,7 @@ public:
   idVec3& operator[](int index) { return b[index]; }
   const idVec3& operator[](int index) const { return b[index]; }
   bool operator==(const idBounds& other) const;
+  bool operator!=(const idBounds& other) const;
   void Clear();
   bool IsZero() const {
     return b[0].x == 0.0f && b[0].y == 0.0f && b[0].z == 0.0f &&

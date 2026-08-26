@@ -187,8 +187,10 @@ void idRenderManager::UpdateConsole() {
                             true, false, false);
 }
 
-void idRenderManager::BuildGameFrame(const gameReturn_t* gameReturn,
-                                     idGame* game, int frameNumber) {
+void idRenderManager::BuildGameFrame(const gameReturn_t& gameReturnRef,
+                                     idGame& gameRef, int frameNumber) {
+  const gameReturn_t* gameReturn=&gameReturnRef;
+  idGame* game=&gameRef;
   idRenderWorld* world = game->GetRenderWorld();
   int viewIndexToPlayerIndex[4]{};
   int playerCount = 0;
@@ -354,7 +356,7 @@ void idRenderManager::BuildGameFrame(const gameReturn_t* gameReturn,
     AddGlobalGui(commonLocal.DialogGuiModel());
   }
 
-  console->BeginTimeRange(RANGE_MAIN, &idColor::colorBlack);
+  console->BeginTimeRange(RANGE_MAIN, idColor::colorBlack);
   const int height = renderSystem->GetHeight();
   const int width = renderSystem->GetWidth();
   console->Gui()->SetViewport(0, 0, width, height);

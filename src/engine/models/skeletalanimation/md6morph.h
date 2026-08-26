@@ -34,6 +34,7 @@ public:
 
 class idMD6Morph {
 public:
+  ~idMD6Morph();
   void Write_Binary(idFile* file) const;
   void Load_Binary(idFile* file, unsigned int magic);
   idMD6MorphSet& AllocSet();

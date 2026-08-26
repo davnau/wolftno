@@ -168,7 +168,7 @@ void idSubtitleSequencer::Update(float newTime) {
     active = false;
 }
 
-idStr idSubtitleSequencer::GetCurrentString(unsigned languageMask) {
+idStr idSubtitleSequencer::GetCurrentString(unsigned languageMask) const {
   if (current == -1 || current >= parts.Num())
     return idStr("");
   idStr text;

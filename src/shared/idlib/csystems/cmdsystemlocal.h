@@ -20,6 +20,12 @@ public:
   virtual void Shutdown() = 0;
   virtual void AddCommand(const char*, commandFunction_t, const char*,
                           argCompletion_t = nullptr) = 0;
+  void AddCommand(const char* name, commandFunctionRef_t function,
+                  const char* description,
+                  argCompletion_t completion = nullptr) {
+    AddCommand(name, reinterpret_cast<commandFunction_t>(function),
+               description, completion);
+  }
   virtual const char* GetCommandDescription(const char*) const = 0;
   virtual bool CommandExists(const char*, bool searchForString = false) const = 0;
   virtual void FindCommands(const char*, idList<idStr>&) const = 0;

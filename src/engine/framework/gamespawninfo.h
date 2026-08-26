@@ -20,7 +20,7 @@ public:
   void ReadLayersFromCommaSeparatedStrings(const char* activeString,
                                             const char* deactiveString);
   void WriteLayersToCommaSeparatedStrings(idStr& activeString,
-                                           idStr& deactiveString);
+                                           idStr& deactiveString) const;
   const idStrStatic<1024>& GetSpawnSpot() const;
   void SetSpawnSpot(const char* spawnSpot);
   void SetSpawnSpotOverride(const char* spawnSpot);

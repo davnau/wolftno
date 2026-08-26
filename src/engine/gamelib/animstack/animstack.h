@@ -21,6 +21,7 @@ public:
 
   void ClearAnimatorFlag(const idAnimator_Base* animator,
                          animatorFlag_t flag);
+  idAnimator_Base* GetAnimatorByIndex(int index) const;
 
   idMD6Allocator* GetAllocator() {
     return reinterpret_cast<idMD6Allocator*>(

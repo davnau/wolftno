@@ -28,6 +28,18 @@ public:
     using Fn=void(*)(idGameSystem*,idGame*&);
     reinterpret_cast<Fn>(vtable[7])(this,game);
   }
+  bool AllocGame(class idGame*& game,const class idGameSpawnInfo& spawnInfo,
+                 struct gameFrameParms_t parms,class idFile* file,
+                 const class idVideoDesc* videoDesc) {
+    using Fn=bool(*)(idGameSystem*,idGame*&,const idGameSpawnInfo&,
+                     gameFrameParms_t,idFile*,const idVideoDesc*);
+    return reinterpret_cast<Fn>(vtable[6])(
+        this,game,spawnInfo,parms,file,videoDesc);
+  }
+  void MinimalGameCleanup(class idGame*& game) {
+    using Fn=void(*)(idGameSystem*,idGame*&);
+    reinterpret_cast<Fn>(vtable[8])(this,game);
+  }
 };
 
 extern idGameSystem* gameSystem;

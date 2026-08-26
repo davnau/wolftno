@@ -29,7 +29,6 @@ public:
     ERR = 5,
   };
 
-  idPlayerProfile();
   virtual ~idPlayerProfile();
   virtual void PrepareForNewUser() = 0;
   virtual bool Serialize(idSerializer& serializer) = 0;
@@ -51,7 +50,7 @@ public:
   void LoadSettings();
   state_t GetState() { return state; }
   state_t GetRequestedState() { return requestedState; }
-  bool GetAchievement(int id);
+  bool GetAchievement(int id) const;
   void SetAchievement(int id);
   void ClearAchievement(int id);
   int GetDlcReleaseVersion() { return dlcReleaseVersion; }
@@ -72,13 +71,20 @@ public:
         return false;
     return seenDLCItems.Append(item) >= 0;
   }
-  void StatSetInt(int stat, int value);
-  void StatSetFloat(int stat, float value);
-  int StatGetInt(int stat);
-  float StatGetFloat(int stat);
   void SetState(state_t value) { state = value; }
   void SetRequestedState(state_t value) { requestedState = value; }
+
+protected:
+  idPlayerProfile();
   void SetDefaultsImpl();
+
+private:
+  void StatSetInt(int stat, int value);
+  void StatSetFloat(int stat, float value);
+  int StatGetInt(int stat) const;
+  float StatGetFloat(int stat) const;
+
+public:
 
   state_t state;
   state_t requestedState;

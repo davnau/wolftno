@@ -55,6 +55,7 @@ enum animationPose_t {
 
 enum jointModTransform_t {
   JOINTMOD_NONE = 0,
+  JOINTMOD_LOCAL_OVERRIDE = 2,
   JOINTMOD_MODEL_OVERRIDE = 4
 };
 
@@ -70,6 +71,11 @@ public:
   bool GetModelSpaceJointTransform(animationPose_t pose,
                                    idJointIndex_t jointIndex,
                                    idVec3& origin, idMat3& axis) const;
+  bool GetModelSpaceJointAxis(animationPose_t pose,
+                              idJointIndex_t jointIndex,
+                              idMat3& axis) const;
+  bool GetLocalSpaceJointBindAxis(idJointIndex_t jointIndex,
+                                  idMat3& axis) const;
   void SetJointMat3x4(animationPose_t pose, idJointIndex_t jointIndex,
                       jointModTransform_t transform,
                       const idMat3x4& matrix, bool markDirty);

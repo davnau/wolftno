@@ -67,6 +67,21 @@ public:
   virtual void Initialize() = 0;
   virtual void Shutdown() = 0;
   virtual void FreeDynamic() = 0;
+  virtual idJointConversionHandle_t LoadJointConversion(const char* name) = 0;
+  virtual idJointConversionHandle_t FindJointConversionHandle(
+      const char* name) = 0;
+  virtual const char* GetJointConversionName(
+      idJointConversionHandle_t handle) const = 0;
+  virtual idCrcHandle_t GetJointConversionCrc(
+      idJointConversionHandle_t handle) const = 0;
+  virtual idJointIndex_t GetJointIndex(idJointConversionHandle_t conversion,
+                                       const char* jointName) const = 0;
+  virtual idUserChannelIndex GetUserChannelIndex(
+      idJointConversionHandle_t conversion,
+      const char* channelName) const = 0;
+  virtual void MakeDefaultJointConversion(
+      const char* name, const idList<idStr, 5>& joints,
+      const idList<idStr, 5>& channels) = 0;
 };
 
 class idJointResource : public idResource {
@@ -99,22 +114,25 @@ public:
   void UnregisterJointConversion(idJointConversion* conversion) override;
 
   int GetNumUserChannels() const;
-  idJointConversionHandle_t LoadJointConversion(const char* name);
-  idJointConversionHandle_t FindJointConversionHandle(const char* name);
-  const char* GetJointConversionName(idJointConversionHandle_t handle) const;
+  idJointConversionHandle_t LoadJointConversion(const char* name) override;
+  idJointConversionHandle_t FindJointConversionHandle(
+      const char* name) override;
+  const char* GetJointConversionName(
+      idJointConversionHandle_t handle) const override;
   idCrcHandle_t GetJointConversionCrc(
-      idJointConversionHandle_t handle) const;
+      idJointConversionHandle_t handle) const override;
   idJointIndex_t GetJointIndex(idJointConversionHandle_t conversion,
                                idJointHandle_t joint) const;
   idJointIndex_t GetJointIndex(idJointConversionHandle_t conversion,
-                               const char* jointName) const;
+                               const char* jointName) const override;
   idJointIndex_t GetJointIndex(const char* conversion,
                                const char* jointName);
   idUserChannelIndex GetUserChannelIndex(
       idJointConversionHandle_t conversion,
       idUserChannelHandle_t channel) const;
   idUserChannelIndex GetUserChannelIndex(
-      idJointConversionHandle_t conversion, const char* channelName) const;
+      idJointConversionHandle_t conversion,
+      const char* channelName) const override;
   idUserChannelIndex GetUserChannelIndex(const char* conversion,
                                          const char* channelName);
   const idCompressionGroup* GetCompressionGroup(
@@ -124,7 +142,7 @@ public:
   int GetNumCompressionGroups(idJointConversionHandle_t conversion) const;
   void MakeDefaultJointConversion(const char* name,
                                   const idList<idStr, 5>& joints,
-                                  const idList<idStr, 5>& channels);
+                                  const idList<idStr, 5>& channels) override;
 
   idAliasHandle_t RegisterAlias(const idDeclMD6* decl,
                                 const char* aliasName);

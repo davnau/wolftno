@@ -1,6 +1,11 @@
 #pragma once
 
+#include "engine/decls/decl.h"
+#include "engine/models/skeletalanimation/md6morph.h"
+#include "engine/models/sourcesurface.h"
 #include "shared/idlib/containers/list.h"
+#include "shared/idlib/containers/array.h"
+#include "shared/idlib/containers/index.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/bv/bounds.h"
 #include "shared/idlib/bv/boundsshort.h"
@@ -10,8 +15,10 @@
 #include <cstdint>
 #include <memory>
 
-class idResourceList;
-template <typename T> class idTypedResourceList;
+template <typename First, typename Second> struct idPair {
+  First first{};
+  Second second{};
+};
 template <typename T, typename InvalidTag, T InvalidValue> class idHandle;
 template <int MaxArgs> class idVarArgs;
 class idAnimEvents;
@@ -30,12 +37,6 @@ struct idJointMat;
 struct idDeclAnimWebTagGroup;
 enum invalidUserChannelIndex_t { INVALID_USER_CHANNEL_INDEX };
 enum invalidJointIndex_t { INVALID_JOINT_INDEX = -1 };
-template <typename T, typename InvalidTag> class idIndex {
-public:
-  T value = static_cast<T>(-1);
-  constexpr idIndex() = default;
-  constexpr explicit idIndex(T initial) : value(initial) {}
-};
 using idUserChannelIndex =
     idIndex<std::int16_t, invalidUserChannelIndex_t>;
 using idJointIndex_t = idIndex<std::int16_t, invalidJointIndex_t>;
@@ -256,7 +257,8 @@ struct idMD6AliasEntry {
   const idMD6Anim* anim = nullptr;
 };
 using idMD6AliasMapping = idMD6AliasEntry;
-struct idMD6Alias {
+class idMD6Alias {
+public:
   idMD6Alias();
   bool IsInherited(const idMD6Alias* other) const;
   void LoadAnims(const class idDeclMD6* decl);
@@ -287,7 +289,11 @@ public:
                             bool removeOriginOffset) const;
   idAliasHandle_t FindAliasHandle(const char* aliasName) const;
   const char* FindAliasName(idAliasHandle_t aliasHandle) const;
+#if defined(WOLFTNO_RETAIL_FACETRACKS_FIND_ALIAS_ABI)
+  const idMD6Alias* FindAlias(const idAliasHandle_t& aliasHandle,
+#else
   const idMD6Alias* FindAlias(idAliasHandle_t aliasHandle,
+#endif
                               bool includeInherited = true,
                               bool includeIncludes = true) const;
   const idMD6Alias* FindAlias(std::uint16_t handle) const {
@@ -403,12 +409,32 @@ enum md6WeightGroup_t {
   MD6_WEIGHTGROUP_MAX=8
 };
 class idMD6Skel;
-class idMD6Model {
+class idMD6Model : public idResource {
 public:
   static idTypedResourceList<idMD6Model> resourceList;
-  void* vtable = nullptr;
-  idAtomicString name;
-  std::uint8_t resourceBase[32]{};
+
+  idMD6Model();
+  ~idMD6Model() noexcept(false) override;
+  idResourceList* GetResourceList() const override;
+  void LoadResource() override;
+  bool ReloadIfStale() override;
+  void Print() override;
+  void List() const override;
+  void Free();
+  bool LoadBinary(const char* binaryFileName, bool explicitFile);
+  bool LoadFileNoRemap(const char* modelFileName);
+  void RemapSourceSurfaces();
+  static bool RewriteText(char* fileName);
+  bool GetJointsForAnimFrame(idJointMat* joints, const idMD6Anim* anim,
+                             int frame, const idVec3* offset,
+                             bool removeOriginOffset) const;
+  bool GetJointsForAnimTime(idJointMat* joints, const idMD6Anim* anim,
+                            int timeMS, const idVec3* offset,
+                            bool removeOriginOffset) const;
+  bool GetUserChannelsForAnimFrame(float* userChannels,
+                                   unsigned int userChannelsSize,
+                                   const idMD6Anim* anim, float frame) const;
+
   idStr filename;
   std::uint32_t timestamp = 0;
   std::uint32_t skelTimestamp = 0;
@@ -421,7 +447,9 @@ public:
   std::int32_t numMeshesBeforeSplitting = 0;
   idList<idMD6Mesh*, 19> meshes;
   idList<std::uint8_t, 19> jointRemap;
-  std::uint8_t modelListsTail[72]{};
+  idMD6Morph morphSets;
+  idList<sourceSurface_t, 5> sourceSurfaces;
+  idList<const idMaterial*, 5> materials;
   idMD6Skel* skeleton = nullptr;
   idVec3 minBoundsExpansion{};
   idVec3 maxBoundsExpansion{};
@@ -432,16 +460,50 @@ public:
   bool IsValid() const;
   std::uint8_t type=NODE_NONE;
 };
+
+template <>
+idMD6Model* idTypedResourceList<idMD6Model>::Alloc(
+    const char* resourceName) const;
+template <>
+int idTypedResourceList<idMD6Model>::AllocSize() const;
 class idMD6Leaf : public idMD6Node {
 public:
-  enum wrapMode_t : int { WRAP_CLAMP = 0, WRAP_LOOP = 1 };
+  enum wrapMode_t : int { WRAP_CLAMP = 0, WRAP_LOOP = 1, WRAP_INVALID = 2 };
 
+  explicit idMD6Leaf(idMD6Node::nodeType_t nodeType = NODE_NONE);
   int GetFrameRate() const;
+  int GetLength(int ticksPerSec) const;
   const idMD6Anim*anim=nullptr;std::uint8_t weightGroup=0;std::uint8_t wrapMode=0;std::uint8_t initCounter=0;std::uint8_t pad=0;
 };
 class idMD6LeafPlay : public idMD6Leaf {
 public:
+  idMD6LeafPlay() : idMD6Leaf(NODE_LEAF_PLAY) { Clear(); }
+  void Clear();
+  void Init(const idMD6Anim* animation, int gameTime, int ticksPerSec,
+            std::uint16_t frame, float animationRateScale,
+            wrapMode_t animationWrapMode,
+            md6WeightGroup_t animationWeightGroup);
+  void Restart(int gameTime, int ticksPerSec, std::uint16_t frame,
+               wrapMode_t animationWrapMode);
+  void SetFrameTime(int gameTime, int targetTime);
+  void SetFloatFrame(int gameTime, int ticksPerSec, float targetFrame);
+  void SetFrame(int gameTime, int ticksPerSec, std::uint16_t targetFrame);
   int GetFrameTime(int gameTime) const;
+  int GetFrameTicks(int gameTime) const;
+  float GetNormalizedFrameTime(int gameTime, int ticksPerSec) const;
+  float GetFloatFrame(int gameTime, int ticksPerSec) const;
+  std::uint16_t GetFrame(int gameTime, int ticksPerSec) const;
+  std::uint32_t GetLoopCount(int gameTime, int ticksPerSec) const;
+  int GetAnimLength(int ticksPerSec, bool applyRateScale) const;
+  int GetAnimTicks(int ticksPerSec) const;
+  int GetClampTime(int gameTime, int ticksPerSec) const;
+  float GetRateScale() const { return rateScale; }
+  void SetRateScale(int gameTime, float newRateScale);
+  bool IsPlaying(int gameTime, int ticksPerSec) const;
+  bool IsPlaying(int gameTime, int ticksPerSec,
+                 bool clampIgnoreExtraFrame) const;
+  bool IsPlaying(int gameTime, int ticksPerSec,
+                 wrapMode_t animationWrapMode) const;
   int startTime=0;float rateScale=1.0f;std::uint8_t syncGroup=0;std::uint8_t syncEnabled=0;
 };
 class idMD6LeafPause : public idMD6Leaf {
@@ -451,6 +513,11 @@ public:
   void Init(const idMD6Anim* animation, float animationFrame,
             idMD6Leaf::wrapMode_t animationWrapMode,
             md6WeightGroup_t animationWeightGroup);
+  void Clear();
+  void SetUseStackTop(bool set);
+  void SetClearNonModWeights(bool set);
+  void SetOverrideFrameBounds(bool set);
+  void SetNumAnimMods(int count);
 
   int currentDeferred=0;
   std::uint8_t deferredPadding[4]{};
@@ -463,11 +530,29 @@ public:
 class idMD6Branch : public idMD6Node {
 public:
   enum blendType_t : int { BLEND_LINEAR=0,BLEND_EASEIN=1,BLEND_EASEOUT=2,BLEND_EASEIN_EASEOUT=3,BLEND_TYPE_COUNT=4 };
+  idMD6Branch() : idMD6Node{NODE_BRANCH} {}
+  void Clear();
+  void Init(idMD6Node* leftNode, idMD6Node* rightNode,
+            idMD6Blend::blendOp_t blendOp,
+            idMD6Blend::originBlend_t animationOriginBlend,
+            float startAlpha, float endAlpha, float blendRate,
+            md6WeightGroup_t animationFilterGroup,
+            blendType_t animationBlendType);
+  bool IsBlendFinished() const;
+  bool IsChildBlendedOut(const idMD6Node* child) const;
+  bool IsBlendingOut() const;
+  bool IsBlendingIn() const;
   void UpdateCurrentAlpha(int timeMSec,int lastTimeMSec,int ticksPerSec);
-  idMD6Node*left=nullptr;idMD6Node*right=nullptr;int leftTimeOverride=0;int rightTimeOverride=0;std::uint8_t filterGroup=0;std::uint8_t op=0;std::uint8_t originBlend=0;float currentAlpha=0.0f;float targetAlpha=0.0f;float alphaRate=0.0f;int blendType=BLEND_LINEAR;
+  idMD6Node*left=nullptr;idMD6Node*right=nullptr;int leftTimeOverride=-1;int rightTimeOverride=-1;std::uint8_t filterGroup=MD6_WEIGHTGROUP_MAX;std::uint8_t op=idMD6Blend::BOP_MAX;std::uint8_t originBlend=idMD6Blend::ORIGINBLEND_BRANCH;float currentAlpha=0.0f;float targetAlpha=0.0f;float alphaRate=0.0f;int blendType=BLEND_LINEAR;
 };
 class idMD6BlendBranch_Base : public idMD6Branch {
 public:
+  struct Coordinate_t {
+    int size = 0;
+    int padding = 0;
+    const float* data = nullptr;
+  };
+
   ~idMD6BlendBranch_Base();
   int GetNumAnimations() const { return animationList.num; }
   idMD6Node* GetAnimation(int index) const {
@@ -478,6 +563,11 @@ public:
   idList<float,30> coordinateList;
   idList<idMD6Node*,30> animationList;
 
+  void InitCoordinateNodePairs(int numDimensions,
+                               const idList<float, 5>& coordinates,
+                               const idList<idMD6Node*, 5>& animations,
+                               std::uint8_t flags);
+
 protected:
   explicit idMD6BlendBranch_Base(idMD6Node::nodeType_t nodeType);
 };
@@ -485,7 +575,26 @@ class idMD6BlendBranch : public idMD6BlendBranch_Base {
 public:
   idMD6BlendBranch();
   ~idMD6BlendBranch();
+  void Init(std::uint8_t dimensions,
+            const idList<idUserChannelIndex, 30>& channels,
+            const idList<float, 5>& coordinates,
+            const idList<idMD6Node*, 5>& animations,
+            const idList<float, 5>& coordinate,
+            md6WeightGroup_t weightGroup, std::uint8_t flags);
   void Update(bool forceUpdate,bool isSorted);
+  void FindAnimation(bool isSorted, idMD6Node** leftAnimation,
+                     idMD6Node** rightAnimation, float* alpha);
+  bool BuildPointList(idList<int, 5>& indices,
+                      idArray<float, 6>& normal,
+                      bool isFillerPoint) const;
+  void FindBarycentric(idList<idPair<float, idMD6Node*>, 5>& leaves);
+  void Solve_Gaussian(idArray<float, 6>& values,
+                      idArray<float, 36>& matrix,
+                      idArray<float, 6>& solution) const;
+  void UpdateNormal(const idArray<float, 6>& point0,
+                    const idArray<float, 6>& point1,
+                    const idArray<float, 6>& inputNormal,
+                    idArray<float, 6>& outputNormal) const;
   idList<float,30> currentCoordinate;
   idList<idUserChannelIndex,30> userChannelIndices;
   idList<float,30> activeCoordinate;
@@ -501,7 +610,11 @@ class idMD6BlendAdditiveBranch : public idMD6BlendBranch_Base {
 public:
   idMD6BlendAdditiveBranch()
       : idMD6BlendBranch_Base(idMD6Node::NODE_BLENDA_BRANCH) {}
+  void Init(idMD6Node* base, const idList<float, 5>& coordinates,
+            const idList<idMD6Node*, 5>& animations, float coordinate,
+            md6WeightGroup_t weightGroup);
   void Update(bool forceUpdate);
+  void FindAnimation(idMD6Node** rightAnimation, float* alpha) const;
   float currentCoordinate=0.0f;
   float activeCoordinate=0.0f;
   idMD6Node*baseAnimation=nullptr;
@@ -510,12 +623,38 @@ class idMD6FusionBranch : public idMD6BlendBranch {
 public:
   idMD6FusionBranch();
   ~idMD6FusionBranch();
+  void Init(std::uint8_t dimensions,
+            const idList<idUserChannelIndex, 30>& channels,
+            const idList<float, 5>& coordinates,
+            const idList<idMD6Node*, 5>& animations,
+            const idList<float, 5>& coordinate,
+            md6WeightGroup_t weightGroup, std::uint8_t flags);
   void Update(bool forceUpdate,int gameTime,int ticksPerSec,const idMD6Skel* skeleton);
   idList<std::uint16_t,30> phaseToFrameLookupData;
 };
 class idMD6Filter : public idMD6Node {};
-class idMD6TagFilter : public idMD6Filter { public: const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned tagMask=0;std::uint8_t tagGroupIndex=0;std::uint8_t tagBias=0; };
-class idMD6BestLeaf : public idMD6Node { public: ~idMD6BestLeaf();idList<idMD6Node*,30> leafList;idList<unsigned,30>tagList;idList<idMD6Filter*,30>filterList;idMD6TagFilter tagGroupFilter;std::uint8_t debugFilterLogicHelper=0;std::uint8_t debugPadding[7]{};const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned desiredTag=0;unsigned activeTag=0;unsigned defaultTag=0;std::uint16_t bestLeafIndex=0;std::uint8_t tagBias=0;std::uint8_t tagGroupIndex=0; };
+class idMD6TagFilter : public idMD6Filter {
+public:
+  idMD6TagFilter();
+  void Init(std::uint8_t inputTagBias, unsigned inputTagMask,
+            std::uint8_t inputTagGroupIndex,
+            const idDeclAnimWebTagGroup* inputTagGroup);
+  const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned tagMask=0;std::uint8_t tagGroupIndex=0;std::uint8_t tagBias=0;
+};
+class idMD6BestLeaf : public idMD6Node {
+public:
+  idMD6BestLeaf();
+  ~idMD6BestLeaf();
+  void Init(std::uint8_t inputTagBias, unsigned inputTagMask,
+            std::uint8_t inputTagGroupIndex,
+            const idList<idMD6Node*, 30>& leaves,
+            const idList<unsigned, 30>& tags,
+            const idList<idMD6Filter*, 30>& filters,
+            unsigned inputDefaultTag,
+            const idDeclAnimWebTagGroup* inputTagGroup);
+  void Update();
+  idList<idMD6Node*,30> leafList;idList<unsigned,30>tagList;idList<idMD6Filter*,30>filterList;idMD6TagFilter tagGroupFilter;std::uint8_t debugFilterLogicHelper=0;std::uint8_t debugPadding[7]{};const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned desiredTag=0;unsigned activeTag=0;unsigned defaultTag=0;std::uint16_t bestLeafIndex=0;std::uint8_t tagBias=0;std::uint8_t tagGroupIndex=0;
+};
 static_assert(sizeof(idMD6Node)==1);
 static_assert(sizeof(idMD6Blend::jointMod_t)==64);
 static_assert(sizeof(idMD6Leaf)==24);

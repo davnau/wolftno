@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shared/idlib/bv/bounds.h"
+#include "shared/idlib/containers/index.h"
 #include "shared/idlib/math/plane.h"
 #include "shared/idlib/text/str.h"
 
@@ -10,6 +11,9 @@
 
 class idFile;
 class idLexer;
+
+enum invalidAASTree_t : int { INVALID_AAS_TREE = -1 };
+using idAASTreeIndex = idIndex<int, invalidAASTree_t>;
 
 enum aas2AreaFlags_t : std::uint16_t {
   AAS2_AREA_REACHABLE = 1u << 0,
@@ -199,6 +203,8 @@ public:
   int PointAreaNum(int tree, const idVec3* origin) const;
   int PointAreaNumMaxheight(int tree, const idVec3* origin, float maxHeight) const;
   int BoundsAreaNums(int tree, const idBounds* bounds, int* output, int maxAreas) const;
+  int BoundsAreaNums(idAASTreeIndex tree, const idBounds& bounds,
+                    int* output, int maxAreas) const;
   void FlagBoundsAreas(int tree, const idBounds* bounds, bool* areasTouched) const;
   int BoundsReachableAreaNum(int tree, const idBounds* bounds,
                              std::uint16_t areaFlags, int excludeTravelFlags) const;

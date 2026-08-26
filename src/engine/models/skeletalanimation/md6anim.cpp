@@ -263,11 +263,9 @@ std::uint32_t DecodeRLE(const std::uint8_t* rle, std::uint16_t sentinel,
 
 idJointIndex_t SkeletonJointIndex(const idMD6Skel* skeleton,
                                   const char* name) {
-  if (skeleton != nullptr && name != nullptr)
-    for (int index = 0; index < skeleton->jointNames.num; ++index)
-      if (idStr::Icmp(skeleton->jointNames[index].str, name) == 0)
-        return idJointIndex_t(static_cast<std::int16_t>(index));
-  return idJointIndex_t(-1);
+  return skeleton != nullptr && name != nullptr
+             ? skeleton->GetJointIndex(name)
+             : idJointIndex_t(-1);
 }
 
 } // namespace
@@ -341,10 +339,10 @@ void idMD6Anim::idCompressionSettings::SetupJointTolerance(
     if (rule == nullptr || !rule->enabled || rule->userChannel)
       continue;
     for (int joint = 0;
-         joint < std::min(numPaddedJoints, skeleton->jointNames.num); ++joint) {
+         joint < std::min(numPaddedJoints, skeleton->NumJoints()); ++joint) {
       const bool matches = std::strcmp(rule->name.str, "*") == 0 ||
                            idStr::Icmp(rule->name.str,
-                                       skeleton->jointNames[joint].str) == 0;
+                                       skeleton->GetJointName(joint)) == 0;
       if (!matches)
         continue;
       for (int frame = 0; frame < numFrames; ++frame)
@@ -674,13 +672,13 @@ int GenerateJointRLE(const idMD6Skel* sourceSkeleton,
   const int numValues = (sourceSkeleton->data->numJoints + 7) & ~7;
   std::vector<std::int16_t> mapping(static_cast<std::size_t>(numValues), -1);
   for (int source = 0;
-       source < std::min(sourceSkeleton->jointNames.num, numValues); ++source) {
+       source < std::min(sourceSkeleton->NumJoints(), numValues); ++source) {
     if (sourceSkeleton == targetSkeleton)
       mapping[source] = static_cast<std::int16_t>(source);
     else
       mapping[source] = SkeletonJointIndex(
                             targetSkeleton,
-                            sourceSkeleton->jointNames[source].str)
+                            sourceSkeleton->GetJointName(source))
                             .value;
   }
   const auto unmapped = static_cast<std::uint8_t>(
@@ -871,9 +869,9 @@ bool idMD6Anim::AnimIsOkForSkeleton(const idMD6Skel* skeleton) const {
   std::memcpy(&parentTableCrc, bytes + sizeof(idMD6AnimData),
               sizeof(parentTableCrc));
   return (skeleton->data->parentTblCrc.value == parentTableCrc &&
-          skeleton->jointConversion == 0xffffu) ||
-         (skeleton->jointConversion != 0xffffu &&
-          skeleton->jointConversionChecksum == jointConversionChecksum);
+          skeleton->jointConversion.value == 0xffffu) ||
+         (skeleton->jointConversion.value != 0xffffu &&
+          skeleton->jointConversionChecksum.value == jointConversionChecksum);
 }
 
 bool idMD6Anim::AnimIsOkForModel(const idMD6Model* model) const {
@@ -1282,10 +1280,10 @@ void idMD6Anim::MakeDefault(const idMD6Skel* skeleton) {
       animData->frameSetOffsetTblOffset);
   frameOffsets[0] = 11;
   jointConversionHandle = skeleton != nullptr
-                              ? skeleton->jointConversion
+                              ? skeleton->jointConversion.value
                               : 0xffffu;
   jointConversionChecksum = skeleton != nullptr
-                                ? skeleton->jointConversionChecksum
+                                ? skeleton->jointConversionChecksum.value
                                 : 0xffffu;
   postedForGeneration = false;
 }
@@ -1518,8 +1516,8 @@ void idMD6Anim::CompressAnim(
   animData = AllocateAnimData(image.size());
   if (animData != nullptr)
     std::memcpy(animData, image.data(), image.size());
-  jointConversionHandle = skeleton->jointConversion;
-  jointConversionChecksum = skeleton->jointConversionChecksum;
+  jointConversionHandle = skeleton->jointConversion.value;
+  jointConversionChecksum = skeleton->jointConversionChecksum.value;
   postedForGeneration = false;
 }
 

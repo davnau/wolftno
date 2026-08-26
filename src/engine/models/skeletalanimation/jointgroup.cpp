@@ -48,9 +48,9 @@ idJointIndex_t JointIndexForName(const idDeclMD6* decl, const char* name) {
 const char* JointNameForIndex(const idDeclMD6* decl, idJointIndex_t index) {
   if (decl == nullptr || decl->model == nullptr ||
       decl->model->skeleton == nullptr || index.value < 0 ||
-      index.value >= decl->model->skeleton->jointNames.Num())
+      index.value >= decl->model->skeleton->NumJoints())
     return "";
-  return decl->model->skeleton->jointNames[index.value].str;
+  return decl->model->skeleton->GetJointName(index.value);
 }
 
 struct SurfaceName {

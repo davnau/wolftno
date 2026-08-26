@@ -29,7 +29,7 @@ void idStreamFileLog::NoteFrame() {
   entry.microseconds = static_cast<std::int64_t>(Sys_Microseconds());
 }
 
-void idStreamFileLog::NoteCacheLineRequest(const idFile* f, int fileLine,
+void idStreamFileLog::NoteCacheLineRequest(const idFile* const f, int fileLine,
                                            int priority) {
   if (entries == nullptr) return;
 
@@ -52,7 +52,8 @@ void idStreamFileLog::NoteCacheLineRequest(const idFile* f, int fileLine,
   entry.microseconds = static_cast<std::int64_t>(Sys_Microseconds());
 }
 
-void idStreamFileLog::BeginIO(sflDrive_t drive, sflIO_t io, const idFile* f,
+void idStreamFileLog::BeginIO(sflDrive_t drive, sflIO_t io,
+                              const idFile* const f,
                               std::int64_t offset, std::int64_t length,
                               int priority) {
   driveState[drive] = io;
@@ -83,4 +84,3 @@ void idStreamFileLog::EndIO(sflDrive_t drive) {
 }
 
 idStreamFileLog streamFileLog;
-

@@ -27,7 +27,7 @@ public:
 
   void Clear();
   void BuildGuiFrame(idRenderModelGui*, bool);
-  void BuildGameFrame(const gameReturn_t*, idGame*, int);
+  void BuildGameFrame(const gameReturn_t&, idGame&, int);
   void UpdateConsole();
   void RenderFrame();
   void RenderFrameAndBeginAutomaticBackgroundSwaps(bool, bool);

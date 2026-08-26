@@ -867,7 +867,7 @@ void idStreamControlThread::ProcessRequests() {
   const std::uint64_t processEnd=Sys_Microseconds();
   const std::uint64_t elapsed=processEnd-processStart;
   if(elapsed>500)
-    console->AddTimeRange(RANGE_STREAM_CT,&idColor::colorRed,processStart,
+    console->AddTimeRange(RANGE_STREAM_CT,idColor::colorRed,processStart,
                           processEnd);
   if(elapsed>4000 && fc_printProcessRequestsPerformanceWarning.GetInteger()!=0)
     idLib::Printf("idStreamControlThread::ProcessRequests() took %1.1f msec\n",
@@ -942,7 +942,7 @@ void ProcessUncached(idStreamControlThread* control,std::size_t queueOffset,
     stats.uncachedOpticalDiskReadSize+=request.length;
   }
   console->AddTimeRange(drive==SFL_HARD_DRIVE?RANGE_STREAM_HD:RANGE_STREAM_OD,
-                        &idColor::colorBlue,begin,end);
+                        idColor::colorBlue,begin,end);
   start=(static_cast<unsigned short>(start)+1)&0x3FFF;
 }
 }
@@ -977,7 +977,7 @@ void idHardDiskStreamThread::ProcessIO() {
       stats.hardDiskCacheTotalWriteTime+=elapsed;
       if(stats.hardDiskCacheMinWriteTime>elapsed) stats.hardDiskCacheMinWriteTime=elapsed;
       if(stats.hardDiskCacheMaxWriteTime<elapsed) stats.hardDiskCacheMaxWriteTime=elapsed;
-      console->AddTimeRange(RANGE_STREAM_HD,&idColor::colorYellow,begin,end);
+      console->AddTimeRange(RANGE_STREAM_HD,idColor::colorYellow,begin,end);
     }
     controlThread->Field<idLocklessCacheLineQueueS>(5382360).Add(write);
     controlThread->Field<bool>(89)=true;
@@ -1113,7 +1113,7 @@ void idHardDiskStreamThread::ProcessIO() {
   Sys_InterlockedDecrement(const_cast<int*>(&line->modifyLock.value));
   controlThread->Field<idLocklessCacheLineQueueS>(5382360).Add(line);
   console->AddTimeRange(RANGE_STREAM_HD,
-      selectedHdc!=-1?&idColor::colorRed:&idColor::colorPurple,begin,end);
+      selectedHdc!=-1?idColor::colorRed:idColor::colorPurple,begin,end);
   controlThread->Field<bool>(89)=true;
   controlThread->SignalWork();
 }
@@ -1226,7 +1226,7 @@ void idOpticalDiskStreamThread::ProcessIO() {
                          0x7FFF;
     readQueue.queue[readQueue.queueStart]=line;
     Sys_InterlockedIncrement(const_cast<int*>(&readQueue.numLines.value));
-    console->AddTimeRange(RANGE_STREAM_OD,&idColor::colorYellow,begin,end);
+    console->AddTimeRange(RANGE_STREAM_OD,idColor::colorYellow,begin,end);
     signalResults();
     return;
   }
@@ -1271,7 +1271,7 @@ void idOpticalDiskStreamThread::ProcessIO() {
     controlThread->Field<bool>(89)=true;
     controlThread->SignalWork();
   }
-  console->AddTimeRange(RANGE_STREAM_OD,&idColor::colorRed,begin,end);
+  console->AddTimeRange(RANGE_STREAM_OD,idColor::colorRed,begin,end);
 }
 
 int idOpticalDiskStreamThread::Run() {

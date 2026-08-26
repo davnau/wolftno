@@ -4,6 +4,7 @@ class idCmdArgs;
 class idAutoComplete;
 
 using commandFunction_t = void (*)(const idCmdArgs*);
+using commandFunctionRef_t = void (*)(const idCmdArgs&);
 using argCompletion_t = void (*)(idAutoComplete*);
 using argCompletionRef_t = void (*)(idAutoComplete&);
 
@@ -16,6 +17,11 @@ struct idCommandLink {
 
   idCommandLink(const char* commandName, commandFunction_t function, const char* description,
                 argCompletion_t completion);
+  idCommandLink(const char* commandName, commandFunctionRef_t function,
+                const char* description, argCompletion_t completion)
+      : idCommandLink(commandName,
+                      reinterpret_cast<commandFunction_t>(function),
+                      description, completion) {}
 };
 
 idCommandLink* CommandLinks();

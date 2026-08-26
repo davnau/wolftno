@@ -7,6 +7,8 @@
 #include <cstring>
 #include <new>
 
+class idTraceModelCache;
+
 template <typename T, int BlockSize, int Tag> class idBlockAlloc {
 public:
   union element_t {
@@ -89,6 +91,8 @@ public:
   int GetFreeCount() const { return total - active; }
 
 private:
+  friend class idTraceModelCache;
+
   void AllocNewBlock() {
 #if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
     idMem* const memory = &idMem::Singleton();

@@ -38,7 +38,35 @@ struct idSoundFade {
   float GetVolume(int soundTime) const;
 };
 
-struct soundDebugInfo_t {};
+struct soundDebugInfo_t {
+  soundDebugInfo_t() = default;
+  soundDebugInfo_t(const soundDebugInfo_t&) = default;
+  ~soundDebugInfo_t() = default;
+  soundDebugInfo_t& operator=(const soundDebugInfo_t&) = default;
+
+  const class idSoundEmitter* emitter{};
+  bool hardwareVoice{};
+  bool playing{};
+  bool looping{};
+  unsigned char padding0{};
+  float volume{};
+  float voiceVolume{};
+  float voiceDryVolume{};
+  float voiceWetVolume{};
+  float distance{};
+  float pitch{};
+  unsigned int padding1{};
+  const class idSoundShader* shader{};
+  int channel{};
+  unsigned int padding2{};
+  idStr sample;
+  bool isdefault{};
+  bool iscompressed{};
+  bool isstereo{};
+  unsigned char padding3{};
+  int startTime{};
+};
+static_assert(sizeof(soundDebugInfo_t)==104,"sound debug info ABI drift");
 struct listener_t {
   listener_t();
   ~listener_t();
@@ -552,9 +580,9 @@ public:
   void OnReloadSound(const idDecl* sound);
   void StopAllSounds() override;
   void StopVoicesWithSample(const idSoundSample* sample);
-  void* GetIXAudio2();
+  void* GetIXAudio2() override;
   int GetNumSpeakers() const;
-  int GetSpeakerMask() const;
+  int GetSpeakerMask() const override;
   std::int64_t GetSampleClock() const;
   int GetSampleRate() const;
   idSoundVoice_XAudio2* AllocateVoice(const idSoundSample* leadin,

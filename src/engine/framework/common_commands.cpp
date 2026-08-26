@@ -132,33 +132,33 @@ void idCmdSystem::ArgCompletion_DemoFile(idAutoComplete* completion) {
 idCVar com_exitAfterTests("com_exitAfterTests","0",CVAR_BOOL|CVAR_ROM,
     "if set, exits game after regression tests complete",nullptr);
 
-void idStudio_f(const idCmdArgs*) {
+void idStudio_f(const idCmdArgs&) {
   idLib::Warning("idStudio does not run in 32 bit mode!  Use the x64 build instead.");
 }
 
-void Com_Break_f(const idCmdArgs*) {
+static void Com_Break_f(const idCmdArgs&) {
   AssertFailed("w:\\build\\tech5\\engine\\framework\\Common_commands.cpp",
                359,"Com_Break_f",true);
 }
 
-void Com_Trace_f(const idCmdArgs*) {
+static void Com_Trace_f(const idCmdArgs&) {
   float value=7.0f;
   idStr text("str");
   SampleTrace(2,&value,&text);
 }
 
-void Com_Quit_f(const idCmdArgs*) {
+static void Com_Quit_f(const idCmdArgs&) {
   idLib::Printf("\n You intentionally quit the game \n");
   commonLocal.Quit(0);
 }
 
-void Com_TestStatsBegin_f(const idCmdArgs*) {
+void Com_TestStatsBegin_f(const idCmdArgs&) {
   *reinterpret_cast<bool*>(reinterpret_cast<std::byte*>(&commonLocal)+688)=true;
   com_showFPS.SetBool(true,true);
   SetErrorMode(3);
 }
 
-void R_VidRestart_f(const idCmdArgs*) {renderSystem->Restart();}
+void R_VidRestart_f(const idCmdArgs&) {renderSystem->Restart();}
 
 void idCmdSystem::ArgCompletion_FileName(idAutoComplete* completion) {
   cmdSystem->ArgCompletion_FolderExtension(completion,"/","",true);
@@ -173,12 +173,14 @@ void idCmdSystem::ArgCompletion_DemoFile(idAutoComplete* completion) {
   cmdSystem->ArgCompletion_FolderExtension(completion,"demos/","demo",false);
 }
 
-[[noreturn]] void Com_Error_f(const idCmdArgs* args) {
+[[noreturn]] static void Com_Error_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc>1) idLib::FatalError("Testing fatal error");
   idLib::Error("Testing drop error");
 }
 
-void Com_Freeze_f(const idCmdArgs* args) {
+static void Com_Freeze_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc==2) {
     const float seconds=static_cast<float>(std::atof(args->argv[1]));
     const int start=static_cast<int>(Sys_Milliseconds());
@@ -189,20 +191,22 @@ void Com_Freeze_f(const idCmdArgs* args) {
   }
 }
 
-void Com_Crash_f(const idCmdArgs* args) {
+static void Com_Crash_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc==2 && std::atol(args->argv[1])>0) {
     idCmdArgs newArgs;
     newArgs.AppendArg(args->argc>0?args->argv[0]:"");
     newArgs.AppendArg(va("%d",static_cast<int>(std::atol(
         args->argc>1?args->argv[1]:""))-1).buffer);
-    Com_Crash_f(&newArgs);
+    Com_Crash_f(newArgs);
   } else {
     idLib::Printf("\n You intentionally crashed the game \n");
     *static_cast<volatile int*>(nullptr)=0x12345678;
   }
 }
 
-void Com_WriteConfig_f(const idCmdArgs* args) {
+void Com_WriteConfig_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr filename;
   if(args->argc==2) {
     filename=args->argv[1];
@@ -214,14 +218,17 @@ void Com_WriteConfig_f(const idCmdArgs* args) {
   }
 }
 
-void Com_RecordEvents_f(const idCmdArgs* args) {
+void Com_RecordEvents_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   commonLocal.RecordPlayback(true,args->argc<2?nullptr:args->argv[1]);
 }
-void Com_PlayEvents_f(const idCmdArgs* args) {
+void Com_PlayEvents_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   commonLocal.RecordPlayback(false,args->argc<2?nullptr:args->argv[1]);
 }
 
-void Com_TestStatsEnd_f(const idCmdArgs* args) {
+void Com_TestStatsEnd_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   *reinterpret_cast<bool*>(reinterpret_cast<std::byte*>(&commonLocal)+688)=false;
   idGame* const game=*reinterpret_cast<idGame**>(
       reinterpret_cast<std::byte*>(&commonLocal)+464);
@@ -261,19 +268,21 @@ void Com_TestStatsEnd_f(const idCmdArgs* args) {
              platformName.data,Sys_DateStr(true),buildNumber.data,fileName.data,
              static_cast<float>(time_mapLoadMS)/1000.0f,time_FPS);
   static idOverlayHandle handle;
-  console->PrintOverlay(&handle,1,1.0f,1.0f,mapName.data);
+  console->PrintOverlay(handle,JUSTIFY_RIGHT,1.0f,1.0f,mapName.data);
   cmdSystem->ExecuteCommandText("wait 120");
   cmdSystem->ExecuteCommandText(va("screenshot %s.jpg",outputName.data).buffer);
   cmdSystem->ExecuteCommandText("wait 5");
   console->Dump(va("%s.log",outputName.data).buffer,nullptr);
 }
 
-void DumpWarnings_f(const idCmdArgs* args) {
+void DumpWarnings_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc==2) commonLocal.DumpWarnings(args->argv[1]);
   else idLib::Printf("USAGE: com_dumpWarnings <file name>\n");
 }
 
-void writeEntitiesFile_f(const idCmdArgs* args) {
+void writeEntitiesFile_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc!=2) {
     idLib::Printf("USAGE: writeEntitiesFile <mapname>\n");
     return;
@@ -329,9 +338,10 @@ void idCommonLocal::InitLanguageDict() {
   }
 }
 
-void Com_ReloadLanguage_f(const idCmdArgs*) { commonLocal.InitLanguageDict(); }
+void Com_ReloadLanguage_f(const idCmdArgs&) { commonLocal.InitLanguageDict(); }
 
-void Com_StripStrings_f(const idCmdArgs* args) {
+void Com_StripStrings_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc!=2) {
     idLib::Printf("USAGE: stripStrings <match string>\n");
     return;
@@ -368,7 +378,8 @@ void Com_StripStrings_f(const idCmdArgs* args) {
   }
 }
 
-void Com_Find_f(const idCmdArgs* args) {
+void Com_Find_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc!=2) {
     idLib::Printf("Usage: find <search string>\n");
     return;

@@ -27,6 +27,7 @@ class idFile;
 class idSysMutex;
 struct idDeclSource;
 class idAutoComplete;
+class idResourceManagerLocal;
 
 class idResourceList {
 public:
@@ -80,6 +81,7 @@ protected:
 
 private:
   friend class idBaseCodeResource;
+  friend class idResourceManagerLocal;
   void Add_Locked(idResource* resource);
   void Remove_Locked(idResource* resource);
   idResource* Lookup(const char* name) const;
@@ -169,7 +171,9 @@ public:
   void SetStaticResource() { staticResource = true; }
   void SetStaleCount(const int value) { staleCount = value; }
   int GetStaleCount() const { return staleCount; }
+protected:
   void SetResourceError(const char* format, ...);
+public:
   static const char* GetLocalizedName(const char* inName, char* outName,
                                       const int sizeOfOutName);
   static const char* GetLocalizedName(const char* sourceLanguage,
@@ -341,7 +345,8 @@ enum scFileType_t {
 
 class idSourceControl {
 public:
-  struct idSourceControlWorkspace {
+  class idSourceControlWorkspace {
+  public:
     idStr name;
     idStr lastAccessTime;
     idStr owner;
@@ -355,8 +360,8 @@ public:
   virtual bool GetSilentCheckOut() = 0;
   virtual void SetSilentCheckIn(bool set) = 0;
   virtual bool GetSilentCheckIn() = 0;
-  virtual bool IsConnected() = 0;
-  virtual bool IsInitialized() = 0;
+  virtual bool IsConnected() const = 0;
+  virtual bool IsInitialized() const = 0;
   virtual int CheckOut(const idList<idStr>& files) = 0;
   virtual int UndoCheckOut(const idList<idStr>& files) = 0;
   virtual int Import(const idList<idStr>& files, bool keepCheckedOut,

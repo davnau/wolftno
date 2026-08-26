@@ -38,9 +38,8 @@ public:
   void Shutdown();
   void SetImage(const char* imagePath);
 
-  static void DecodeImageJob(const decodeImageJobParms_t* parms);
-
 private:
+  static void DecodeImageJob(const decodeImageJobParms_t* parms);
   bool StartRead(const char* textureName);
 
 public:
@@ -71,4 +70,3 @@ static_assert(offsetof(idBackgroundImageLoader, state) == 0xA0,
               "idBackgroundImageLoader::state ABI drift");
 static_assert(offsetof(idBackgroundImageLoader, dataBuffer) == 0xB0,
               "idBackgroundImageLoader::dataBuffer ABI drift");
-

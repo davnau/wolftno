@@ -395,7 +395,7 @@ idCommonLocal::~idCommonLocal() {
 idCommonLocal commonLocal;
 idCommon* common=&commonLocal;
 
-bool idCommonLocal::IsTerminationThreadStopped() {
+bool idCommonLocal::IsTerminationThreadStopped() const {
   const auto* const thread=Field<TerminationThreadView*>(0x34728);
   return thread!=nullptr && thread->threadStopped;
 }

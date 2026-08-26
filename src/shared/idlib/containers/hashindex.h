@@ -15,8 +15,8 @@ public:
 
   idHashIndex(int initialHashSize = 1024, int initialIndexSize = 1024);
   ~idHashIndex();
-  idHashIndex(const idHashIndex&) = delete;
-  idHashIndex& operator=(const idHashIndex&) = delete;
+  idHashIndex(const idHashIndex& other);
+  idHashIndex& operator=(const idHashIndex& other);
 
   void InternalInit(int initialHashSize, int initialIndexSize);
   void InternalFree();

@@ -59,7 +59,7 @@ extern idCVar win_pauseOnAltTab;
 extern bool Sys_IsGameWindowActive();
 extern void Sys_SetClipboardData(const char*);
 [[noreturn]] extern void Sys_Quit(unsigned int);
-extern void Com_TestStatsEnd_f(const idCmdArgs*);
+extern void Com_TestStatsEnd_f(const idCmdArgs&);
 extern void Sys_SoundCaptureStart(const char*);
 extern idCVar com_capturePath;
 extern idCVar com_captureTGA;
@@ -247,7 +247,7 @@ void idCommonLocal::ShowJobListTimeRanges(std::uint64_t displayStartTime) {
       idParallelJobList* list=parallelJobManager->GetJobList(listIndex);
       end+=list->GetUnitProcessingTimeMicroSec(unit);
       end+=list->GetUnitWastedTimeMicroSec(unit);
-      console->AddTimeRange(static_cast<rangeId_t>(unit+16),list->color,start,end);
+      console->AddTimeRange(static_cast<rangeId_t>(unit+16),*list->color,start,end);
       start=end;
       wasted+=list->GetUnitWastedTimeMicroSec(unit);
     }
@@ -308,10 +308,10 @@ idLocalUser* idSignInManagerBase::GetMasterLocalUser() {
   return GetNumLocalUsers()>0 ? GetLocalUserByIndex(0) : nullptr;
 }
 
-int idCommonLocal::CalcSnapTimeBuffered(int* totalBufferedTime,
-                                        int* totalRecvTime) {
-  *totalBufferedTime=static_cast<int>(Field<std::uint32_t>(0x728));
-  *totalRecvTime=Field<int>(0x740);
+int idCommonLocal::CalcSnapTimeBuffered(int& totalBufferedTime,
+                                        int& totalRecvTime) {
+  totalBufferedTime=static_cast<int>(Field<std::uint32_t>(0x728));
+  totalRecvTime=Field<int>(0x740);
   int readIndex=Field<int>(0x34730);
   int time=Field<idSnapShot>(0x34C58).GetTime();
   int recvTime=Field<idSnapShot>(0x34C58).GetRecvTime();
@@ -319,19 +319,19 @@ int idCommonLocal::CalcSnapTimeBuffered(int* totalBufferedTime,
     const idSnapShot& snap=Field<idSnapShot>(
         0x34738+(readIndex%16)*sizeof(idSnapShot));
     ++readIndex;
-    *totalBufferedTime+=snap.GetTime()-time;
+    totalBufferedTime+=snap.GetTime()-time;
     time=snap.GetTime();
-    *totalRecvTime+=snap.GetRecvTime()-recvTime;
+    totalRecvTime+=snap.GetRecvTime()-recvTime;
     recvTime=snap.GetRecvTime();
   }
-  if(*totalRecvTime<1) *totalRecvTime=1;
-  *totalRecvTime=static_cast<int>(
+  if(totalRecvTime<1) totalRecvTime=1;
+  totalRecvTime=static_cast<int>(
       static_cast<float>(Game()->GetGameMsPerRealSec())*
-      (static_cast<float>(*totalRecvTime)/1000.0f));
+      (static_cast<float>(totalRecvTime)/1000.0f));
   int currentTime=static_cast<int>(Field<std::uint64_t>(0x750));
   const int snapRate=static_cast<int>(Field<std::uint32_t>(0x728));
   if(snapRate<currentTime) currentTime=snapRate;
-  return *totalBufferedTime-currentTime;
+  return totalBufferedTime-currentTime;
 }
 
 gameFrameParms_t idCommonLocal::GameFrameParms(int gameFrameFlags) {
@@ -514,7 +514,7 @@ void idCommonLocal::RunNetworkSnapshotFrame(gameReturn_t& gameReturn) {
       InterpolateSnapshot(gameReturn,SnapPrevious(),SnapCurrent(),fraction,false);
       float interpolationRate=net_interpolationBaseRate.valueFloat;
       Field<float>(0x34664)=static_cast<float>(CalcSnapTimeBuffered(
-          &Field<int>(0x3466C),&Field<int>(0x34670)));
+          Field<int>(0x3466C),Field<int>(0x34670)));
       Field<float>(0x34668)=static_cast<float>(Field<int>(0x3466C))/
                            static_cast<float>(Field<int>(0x34670));
       if(net_minBufferedSnapPCT_Static.valueFloat>0.0f)
@@ -697,13 +697,13 @@ void idCommonLocal::Frame() try {
   static int lastTime=static_cast<int>(Sys_Milliseconds());
   static const idColor colorDarkRed{0.5f,0.0f,0.0f,1.0f};
 
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorBlue);
-  console->BeginTimeRange(RANGE_MAIN,&colorDarkRed);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorBlue);
+  console->BeginTimeRange(RANGE_MAIN,colorDarkRed);
   soundSystem->WaitForSoundThread();
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorPurple);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorPurple);
   renderSystem->AllowBackgroundSwaps(false);
   streamingInstallMgr->Pump();
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorWhite);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorWhite);
   pLog.Clear();
 
   if(com_timescale.valueFloat<1.0f ||
@@ -781,7 +781,7 @@ void idCommonLocal::Frame() try {
       }
     }
     if(Game()==nullptr) {
-      console->BeginTimeRange(RANGE_MAIN,&idColor::colorBlack);
+      console->BeginTimeRange(RANGE_MAIN,idColor::colorBlack);
       return;
     }
     if(checkpointReload) {
@@ -853,7 +853,7 @@ void idCommonLocal::Frame() try {
   }
 
   Sys_Microseconds();
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorYellow);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorYellow);
   Game()->UpdateFrameState();
   {
   gameReturn_t gameReturn;
@@ -894,17 +894,17 @@ void idCommonLocal::Frame() try {
     if(player>=0 && gameReturn.players[player].valid)
       activePlayers[numActivePlayers++]=player;
   }
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorOrange);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorOrange);
   if(Game()->Shell_IsActive()) {
     idRenderModelGui* gui=Game()->Shell_Render();
     if(renderSystem->BinkVideoIsPlaying()) gui=nullptr;
     renderManager.BuildGuiFrame(gui,false);
   } else {
-    renderManager.BuildGameFrame(&gameReturn,Game(),renderSystem->FrameNumber());
+    renderManager.BuildGameFrame(gameReturn,*Game(),renderSystem->FrameNumber());
   }
   renderSystem->AllowBackgroundSwaps(true);
 
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorPurple);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorPurple);
   const std::uint64_t soundStart=Sys_Microseconds();
   if(Sys_IsGameWindowActive() ||
      (!Sys_IsGameWindowActive() && win_pauseOnAltTab.valueInteger!=0) ||
@@ -945,7 +945,7 @@ void idCommonLocal::Frame() try {
   }
   time_gameFrame+=static_cast<int>(Sys_Microseconds()-soundStart);
 
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorCyan);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorCyan);
   for(int device=0;device<4;++device) {
     int low=0,high=0,left=0,right=0;
     if(in_joystickRumble.valueInteger!=0 && !Game()->Shell_IsActive() &&
@@ -978,12 +978,12 @@ void idCommonLocal::Frame() try {
     idLib::Printf("starting sound cap\n");
   }
 
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorRed);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorRed);
   const std::uint64_t syncStart=Sys_Microseconds();
   renderSystem->SyncRenderThread(false);
   time_renderThreadSync=static_cast<int>((Sys_Microseconds()-syncStart)/1000);
   static const idColor colorBrown{0.4f,0.35f,0.08f,1.0f};
-  console->BeginTimeRange(RANGE_MAIN,&colorBrown);
+  console->BeginTimeRange(RANGE_MAIN,colorBrown);
   session->Pump();
   session->ProcessSnapAckQueue();
   common->SetRefreshOnPrint(false);
@@ -1052,10 +1052,10 @@ void idCommonLocal::Frame() try {
         session->GetSaveGameManager()->Pump();
         Field<bool>(0x162)=false;
         debugHUD->Frame();
-        console->BeginTimeRange(RANGE_MAIN,&idColor::colorPurple);
+        console->BeginTimeRange(RANGE_MAIN,idColor::colorPurple);
         soundSystem->Render(true);
         static const idColor colorMdGrey{0.5f,0.5f,0.5f,1.0f};
-        console->BeginTimeRange(RANGE_MAIN,&colorMdGrey);
+        console->BeginTimeRange(RANGE_MAIN,colorMdGrey);
         if(Field<int>(0x5ADE8)>0 || (com_editors&0x400000)!=0)
           idRenderModelGui::StartFrame();
         else
@@ -1139,7 +1139,7 @@ void idCommonLocal::Frame() try {
     }
   }
   }
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorBlack);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorBlack);
 } catch(idFatalException&) {
   throw;
 } catch(idException&) {
@@ -1153,7 +1153,7 @@ void idCommonLocal::Frame() try {
     const auto slots=*reinterpret_cast<const void* const* const*>(regression);
     if(reinterpret_cast<bool(*)(idRegression*)>(slots[13])(regression)) {
       idCmdArgs args;
-      Com_TestStatsEnd_f(&args);
+      Com_TestStatsEnd_f(args);
       Sys_Quit(static_cast<unsigned int>(-1));
     }
   }
@@ -1173,5 +1173,5 @@ void idCommonLocal::Frame() try {
     AddDialog(GDM_DISCONNECTED,DIALOG_ACCEPT,nullptr,nullptr,false,"",0,
               true,true,false,0);
   }
-  console->BeginTimeRange(RANGE_MAIN,&idColor::colorBlack);
+  console->BeginTimeRange(RANGE_MAIN,idColor::colorBlack);
 }

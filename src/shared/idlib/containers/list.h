@@ -9,6 +9,7 @@
 #include <utility>
 
 class idMD6MorphSet;
+class idAnimator_FaceTracks;
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -24,6 +25,7 @@ struct idListAllocReturnsReference<
 
 template <typename T, int DefaultTag = 5> class idList {
 public:
+  friend class idAnimator_FaceTracks;
   T* list;
   int num;
   int size;
@@ -126,11 +128,12 @@ public:
   void ClearFree() {
     if (listStatic == 0 || listStatic == 2) {
       if (list != nullptr) {
+        T* const allocation = list;
         if constexpr (!std::is_trivially_destructible_v<T>) {
           for (int index = 0; index < size; ++index)
             list[index].~T();
         }
-        idMem::Singleton()->Free(list, ALIGN_16);
+        idMem::Singleton()->Free(allocation, ALIGN_16);
       }
       list = nullptr;
       size = 0;

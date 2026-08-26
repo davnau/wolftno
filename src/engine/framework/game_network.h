@@ -170,6 +170,9 @@ public:
   bool Shell_IsActive() {
     return Slot<bool(*)(idGame*)>(61)(this);
   }
+  void Shell_CreateMenu(bool inGame) {
+    Slot<void(*)(idGame*,bool)>(60)(this,inGame);
+  }
   bool Shell_ShouldUnlockMouse() {
     return Slot<bool(*)(idGame*)>(67)(this);
   }
@@ -184,6 +187,9 @@ public:
   }
   const idGameSpawnInfo* GetGameSpawnInfo() {
     return Slot<const idGameSpawnInfo*(*)(idGame*)>(12)(this);
+  }
+  idFile_SaveGame* GetMapStartInfoFile() {
+    return Slot<idFile_SaveGame*(*)(idGame*)>(29)(this);
   }
   idFile_SaveGame* CheckpointGetSaveFile() {
     return Slot<idFile_SaveGame*(*)(idGame*)>(37)(this);
@@ -266,6 +272,9 @@ public:
   }
   idRenderModelGui* Shell_Render() {
     return Slot<idRenderModelGui*(*)(idGame*)>(63)(this);
+  }
+  idMapFile* GetLevelMap() {
+    return Slot<idMapFile*(*)(idGame*)>(179)(this);
   }
   bool Shell_HandleGuiEvent(const sysEvent_t& event) {
     return Slot<bool(*)(idGame*,const sysEvent_t&)>(62)(this,event);

@@ -2,19 +2,25 @@
 
 #include "engine/framework/discswapmanager.h"
 #include "engine/framework/console.h"
+#include "engine/framework/loadscreen.h"
 #include "engine/framework/gamesystem.h"
+#include "engine/framework/resourcemanager.h"
 #include "engine/framework/gamespawninfo.h"
 #include "engine/framework/keyinput.h"
 #include "engine/framework/playerprofile.h"
 #include "engine/framework/session.h"
 #include "engine/framework/rendermanager.h"
 #include "engine/framework/swfhelper.h"
+#include "engine/framework/versionselector.h"
+#include "engine/decls/declmapinfo.h"
 #include "engine/network/snapshot.h"
 #include "engine/renderer/renderersystem.h"
+#include "engine/renderer/rendersystem_bink.h"
 #include "engine/sound/soundsystem.h"
 #include "engine/sys/sys_signin.h"
 #include "engine/sys/sys_lobby_types.h"
 #include "engine/sys/sys_public.h"
+#include "engine/sys/sys_savegame.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 #include "shared/idlib/csystems/cmdsystemlocal.h"
 #include "shared/idlib/exception.h"
@@ -29,22 +35,72 @@
 #include <cstdlib>
 
 extern int com_editors;
-extern idCVar si_spawnspot;
 extern idCVar com_captureFrames;
 extern idCVar com_captureSounds;
+extern idCVar com_capturePath;
 extern idCVar com_production;
 extern idCVar discSwapper_verbose;
-extern idCVar si_nextlayeractive;
-extern idCVar si_nextlayerdeactive;
-extern idCVar si_stopWatch;
-extern idCVar si_swapTeams;
-extern idCVar si_teamCount;
-extern idCVar si_scoreLimit;
-extern idCVar si_timeLimit;
-extern idCVar si_minRespawnDelay;
+extern idCVar com_newLoadScreen;
+extern int time_mapLoadMS;
 extern void Sys_SoundCaptureStop();
 extern void Sys_PumpEvents();
-extern idSysMutex mutexHitch;
+extern void Cmd_GetViewpos_f(const idCmdArgs* args);
+extern void Cmd_SetViewpos_f(const idCmdArgs* args);
+
+idCVar si_timeLimit("si_timeLimit","0",4,"Time limit",nullptr);
+idCVar si_scoreLimit("si_scoreLimit","0",2,"Score limit",nullptr);
+idCVar si_teamCount("si_teamCount","2",2,"How many teams, 0 for FFA",nullptr);
+idCVar si_minRespawnDelay(
+    "si_minRespawnDelay","5",4,
+    "Minimum respawn delay after player death in MP game",nullptr);
+idCVar si_swapTeams(
+    "si_swapTeams","0",1,"Swap teams and do two rounds",nullptr);
+idCVar si_stopWatch(
+    "si_stopWatch","0",1,
+    "If swap teams is enabled, do stopwatch as well",nullptr);
+idCVar si_oneFlagCTF(
+    "si_oneFlagCTF","0",1,
+    "If swap teams is enabled and is CTF, it will do one flag",nullptr);
+idCVar com_profileLevelLoad("com_profileLevelLoad","0",0,"",nullptr);
+idCVar si_spawnspot(
+    "si_spawnspot","player_start",0,
+    "name of the spawn spot to use with the map command",nullptr);
+idCVar si_nextlayeractive(
+    "si_nextlayeractive","",0,
+    "game play layers to use with map the map command",nullptr);
+idCVar si_nextlayerdeactive(
+    "si_nextlayerdeactive","",0,
+    "game play layers to use with map the map command",nullptr);
+idCVar si_devspawninventory(
+    "si_devspawninventory","0",2,
+    "if 0 dont give inventory, if 1 gets reset after first checkpoint, if 2 wont "
+    "get reset and inventory will be updated on each checkpoint",nullptr);
+idCVar si_jobDebugName_Error(
+    "si_jobDebugName_Error","0",1,
+    "if set and we don't find the requested si_jobDebugName error instead of warn",
+    nullptr);
+idCVar si_loadAllJobsOnBuild(
+    "si_loadAllJobsOnBuild","0",1,
+    "if true the jobmanager will load all possible jobs on a build game.",nullptr);
+idCVar si_giveSPInventoryOnBuild(
+    "si_giveSPInventoryOnBuild","0",1,
+    "if true the jobmanager will give the list of possible single player items.",
+    nullptr);
+idCVar saveGame_allowOlderVersions(
+    "saveGame_allowOlderVersions","0",2,
+    "allows loading of savegames from previous versions of the game",nullptr);
+idCVar com_useEntitiesFiles(
+    "com_useEntitiesFiles","1",1,
+    "if set use .entities files instead of .map files for production and buildgame "
+    "loads",nullptr);
+idCVar com_useExpandedEntityDefs(
+    "com_useExpandedEntityDefs","1",1,
+    "if set use entity defs with expanded inheritance for production and buildgame "
+    "loads",nullptr);
+idCVar si_multiplayerTestWeapons(
+    "si_multiPlayerTestWeapons","0",65537,
+    "when true starts with with devmap equipment",nullptr);
+idSysMutex mutexHitch;
 
 struct idVRAction {
   const char* phrases[3];
@@ -83,11 +139,13 @@ void WaitOnSession(unsigned int waitingOnState,float pacifierProgress,
   }
 }
 
-void idCommonLocal::RestartPassMainMenu_f(const idCmdArgs* args) {
+void idCommonLocal::RestartPassMainMenu_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   commonLocal.Game()->RestartPassMainMenu(*args);
 }
 
-void idCommonLocal::RestartMultiplayerInvite_f(const idCmdArgs* args) {
+void idCommonLocal::RestartMultiplayerInvite_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(args->argc==2) {
     idLib::Printf("Restarting with multiplayer invite\n");
     discSwapMgr->Reset();
@@ -101,7 +159,8 @@ void idCommonLocal::RestartMultiplayerInvite_f(const idCmdArgs* args) {
   }
 }
 
-void idCommonLocal::RestartLoadGame_f(const idCmdArgs* args) {
+void idCommonLocal::RestartLoadGame_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idLib::Printf("DISCSWAP      :  RestartLoadGame_f\n");
   if(args->argc==3) {
     idLib::PrintfIf(discSwapper_verbose.valueInteger!=0,
@@ -119,7 +178,8 @@ void idCommonLocal::RestartLoadGame_f(const idCmdArgs* args) {
   }
 }
 
-void idCommonLocal::RestartMapAfterSwap_f(const idCmdArgs* args) {
+void idCommonLocal::RestartMapAfterSwap_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idLib::PrintfIf(discSwapper_verbose.valueInteger!=0,
                   "[%s]:","idCommonLocal::RestartMapAfterSwap_f");
   for(int index=0;index<args->argc;++index)
@@ -166,18 +226,20 @@ void idCommonLocal::PrepareForMapChange() {
   session->SetUserSignedOutDuringLoading(false);
 }
 
-void idCommonLocal::LeaveGame_f(const idCmdArgs*) {
+void idCommonLocal::LeaveGame_f(const idCmdArgs&) {
   if(session->GetActingGameStateLobbyBase().IsHost()) session->EndMatch(false);
 }
 
-void idCommonLocal::LoadGame_f(const idCmdArgs* args) {
+void idCommonLocal::LoadGame_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr saveName(args->Argv(1));
   if(saveName.IsEmpty()) saveName=session->GetCurrentSaveSlot();
   si_spawnspot.SetString("",true);
   commonLocal.Game()->LoadGame(saveName.c_str());
 }
 
-void idCommonLocal::SaveGame_f(const idCmdArgs* args) {
+void idCommonLocal::SaveGame_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr saveName(args->Argv(1));
   if(saveName.IsEmpty()) saveName=session->GetCurrentSaveSlot();
   commonLocal.Game()->RequestSaveGame(saveName.c_str(),true,false);
@@ -203,11 +265,11 @@ idFile* idCommonLocal::DetachActiveWriteSnapshotFile() {
   return result;
 }
 
-bool idCommonLocal::IsInGame() {
+bool idCommonLocal::IsInGame() const {
   return !Field<bool>(0x162) && Game()!=nullptr && Game()->IsGameActive(true);
 }
 
-snapshotState_t idCommonLocal::SnapshotState() {
+snapshotState_t idCommonLocal::SnapshotState() const {
   if(Field<idFile*>(0x6E8)!=nullptr) return SNAP_READING;
   if(!session->GetActingGameStateLobbyBase().IsHost() &&
      session->GetActingGameStateLobbyBase().HasActivePeers())
@@ -219,7 +281,7 @@ snapshotState_t idCommonLocal::SnapshotState() {
   return SNAP_NONE;
 }
 
-bool idCommonLocal::IsToolActive() { return com_editors!=0; }
+bool idCommonLocal::IsToolActive() const { return com_editors!=0; }
 
 void idCommonLocal::QueueSnapshotMemFile(idFile_Memory* file,unsigned int tag) {
   Field<idFile_Memory*>(0x34678)=file;
@@ -289,7 +351,7 @@ void idCommonLocal::CloseSnapshotFiles() {
   Game()->OnCloseSnapshot();
 }
 
-void idCommonLocal::StopDemo_f(const idCmdArgs*) { commonLocal.CloseSnapshotFiles(); }
+void idCommonLocal::StopDemo_f(const idCmdArgs&) { commonLocal.CloseSnapshotFiles(); }
 
 idPlayerProfile* idCommonLocal::GetProfileFromMasterLocalUser() {
   idPlayerProfile* profile=session->GetProfileFromMasterLocalUser();
@@ -305,7 +367,7 @@ void idCommonLocal::VoiceRecognition_ClearUnprocessedCmd() {
   session->VoiceRecognition_ClearUnprocessedPhrases();
 }
 
-void idCommonLocal::VoiceRecognition_GetBareWordlist(idList<idStr,44>& outList) {
+void idCommonLocal::VoiceRecognition_GetBareWordlist(idList<idStr,5>& outList) {
   for(const idVRAction& action : vrIngameActions) {
     for(const char* phrase : action.phrases) {
       if(phrase!=nullptr) outList.Append(idStr(phrase));
@@ -322,7 +384,7 @@ void idCommonLocal::VoiceRecognition_GetBareWordlist(idList<idStr,44>& outList) 
   }
 }
 
-bool idCommonLocal::CutScenePress(const sysEvent_t& event,bool pressAlready) {
+bool idCommonLocal::CutScenePress(sysEvent_t event,bool pressAlready) {
   if(event.evType!=SE_KEY || (event.evValue2&1)!=0) return false;
   if(!pressAlready) {
     if(idKeyInput::KeyIsBoundToMulti(event.inputDevice,BIND_DEFAULT,
@@ -340,19 +402,19 @@ bool idCommonLocal::CutScenePress(const sysEvent_t& event,bool pressAlready) {
   return false;
 }
 
-int idCommonLocal::GetMasterLocalUserInputDevice() {
+int idCommonLocal::GetMasterLocalUserInputDevice() const {
   idSignInManagerBase& signIn=session->GetSignInManager();
   if(signIn.GetMasterLocalUser()==nullptr) return -1;
   return signIn.GetMasterLocalUser()->GetInputDevice();
 }
 
-int idCommonLocal::GetMasterLocalUserPlayerId() {
+int idCommonLocal::GetMasterLocalUserPlayerId() const {
   const int player=Game()->GetPlayerIndexFromInputDevice(
       GetMasterLocalUserInputDevice());
   return player==-1 ? 0 : player;
 }
 
-idLocalUser* idCommonLocal::GetMasterLocalUser() {
+idLocalUser* idCommonLocal::GetMasterLocalUser() const {
   return session->GetSignInManager().GetMasterLocalUser();
 }
 
@@ -476,7 +538,7 @@ void idGameSpawnInfo::SetSpawnSpotOverride(const char* value) {
 }
 
 void idGameSpawnInfo::WriteLayersToCommaSeparatedStrings(
-    idStr& activeString,idStr& deactiveString) {
+    idStr& activeString,idStr& deactiveString) const {
   activeString="";
   for(int index=0;index<activeLayers.Num()-1;++index) {
     activeString+=activeLayers[index];
@@ -493,7 +555,8 @@ void idGameSpawnInfo::WriteLayersToCommaSeparatedStrings(
     deactiveString+=deactiveLayers[deactiveLayers.Num()-1];
 }
 
-void idCommonLocal::Hitch_f(const idCmdArgs* args) {
+void idCommonLocal::Hitch_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idSoundWorld* playingWorld=soundSystem->GetPlayingSoundWorld();
   if(playingWorld!=nullptr) {
     soundSystem->SetMute(true);
@@ -520,7 +583,8 @@ void idCommonLocal::UpdateConsoleDisplay(bool) {
   }
 }
 
-void idCommonLocal::CompressFile_f(const idCmdArgs* args) {
+void idCommonLocal::CompressFile_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr name;
   idTimer timer;
   timer.Start();
@@ -555,7 +619,8 @@ void idCommonLocal::CompressFile_f(const idCmdArgs* args) {
                 static_cast<float>(timer.Milliseconds()));
 }
 
-void idCommonLocal::DecompressFile_f(const idCmdArgs* args) {
+void idCommonLocal::DecompressFile_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr name(args->Argv(1));
   idTimer timer;
   timer.Start();
@@ -691,7 +756,8 @@ void idCommonLocal::RecordSnapshotFile(idFile* file,unsigned int tag) {
   Field<std::uint64_t>(0x738)=0;
 }
 
-void idCommonLocal::RecordDemo_f(const idCmdArgs* args) {
+void idCommonLocal::RecordDemo_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idStr demoName(args->Argv(1));
   if(demoName.IsEmpty()) {
     int lastNumber=0;
@@ -715,7 +781,7 @@ void idCommonLocal::RecordDemo_f(const idCmdArgs* args) {
     commonLocal.Field<int>(0x6D0)=2;
 }
 
-void idCommonLocal::DeleteGenerated_f(const idCmdArgs*) {
+void idCommonLocal::DeleteGenerated_f(const idCmdArgs&) {
   idFileList* files=fileSystem->ListFilesTreeRetail("generated","*.*",false);
   idLib::Printf("Removing generated files...\n");
   for(int index=0;index<files->list.Num();++index) {
@@ -726,7 +792,8 @@ void idCommonLocal::DeleteGenerated_f(const idCmdArgs*) {
   fileSystem->FreeFileListRetail(files);
 }
 
-void idCommonLocal::Map_f(const idCmdArgs* args) {
+void idCommonLocal::Map_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   bool comboMap=false;
   bool devmap=false;
   bool forceHeapReset=false;
@@ -847,33 +914,38 @@ void idCommonLocal::Map_f(const idCmdArgs* args) {
   fileSystem->ClearZipCacheRetail();
 }
 
-void idCommonLocal::DevMap_f(const idCmdArgs* args) {
+void idCommonLocal::DevMap_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   si_spawnspot.SetString("player_start_1",true);
   idCmdArgs copy(*args);
   copy.AppendArg("dev");
-  Map_f(&copy);
+  Map_f(copy);
 }
 
-void idCommonLocal::ComboMap_f(const idCmdArgs* args) {
+void idCommonLocal::ComboMap_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idCmdArgs copy(*args);
   copy.AppendArg("combo");
-  Map_f(&copy);
+  Map_f(copy);
 }
 
-void idCommonLocal::DevComboMap_f(const idCmdArgs* args) {
+void idCommonLocal::DevComboMap_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idCmdArgs copy(*args);
   copy.AppendArg("dev");
   copy.AppendArg("combo");
-  Map_f(&copy);
+  Map_f(copy);
 }
 
-void idCommonLocal::CheckLoad_f(const idCmdArgs* args) {
+void idCommonLocal::CheckLoad_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   idCmdArgs copy(*args);
   copy.AppendArg("check");
-  Map_f(&copy);
+  Map_f(copy);
 }
 
-void idCommonLocal::NextMap_f(const idCmdArgs* args) {
+void idCommonLocal::NextMap_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
   if(commonLocal.Game()->IsGameActive(true)) {
     if(args->argc==7) {
       idGameSpawnInfo gameSpawnInfo("",0);
@@ -884,5 +956,542 @@ void idCommonLocal::NextMap_f(const idCmdArgs* args) {
     }
   } else {
     idLib::Printf("nextMap only works if a map is running!");
+  }
+}
+
+void idCommonLocal::LoadMainMenu() {
+  ResetMapHeap(false);
+  gameFrameParms_t parms=GameFrameParms(1);
+  idGameSpawnInfo spawnInfo("",1);
+  gameSystem->AllocGame(Field<idGame*>(0x1D0),spawnInfo,parms,nullptr,nullptr);
+  if(!idLib::headless || com_production.valueInteger==1)
+    GetProfileFromMasterLocalUser();
+  renderManager.RenderFrame();
+  renderSystem->BeginAutomaticBackgroundSwaps(
+      renderSystem->GetGameWindow(),false,false);
+  Game()->CheckpointBlockOnLoad();
+  renderSystem->EndAutomaticBackgroundSwaps();
+  Game()->Shell_CreateMenu(IsInGame());
+  renderManager.BuildGuiFrame(Game()->Shell_Render(),false);
+  renderManager.RenderFrame();
+  if(session->GetUserSignedOutDuringLoading()) {
+    ClearDialog(static_cast<gameDialogMessages_t>(72),nullptr,0);
+    AddDialog(static_cast<gameDialogMessages_t>(173),DIALOG_CONTINUE,
+              nullptr,nullptr,false,nullptr,0,false,false,false,0);
+  }
+}
+
+void idCommonLocal::LeaveGame(bool cancelProcessors) {
+  CloseSnapshotFiles();
+  Field<bool>(0x163)=false;
+  renderManager.Clear();
+  SyncAllBackgroundOperations(false);
+  if(cancelProcessors)
+    session->GetSaveGameManager()->CancelAllProcessors(true);
+  for(int index=0;index<4;++index) {
+    sys->Joystick()->ResetColor(index);
+    sys->Joystick()->SetRumble(index,0,0,0,0);
+  }
+  StopLevelLoad(false);
+  gameSystem->FreeGame(Field<idGame*>(0x1D0));
+  idList<idMapChangeListener*,5>& listeners=
+      Field<idList<idMapChangeListener*,5>>(0x34CA8);
+  for(int index=0;index<listeners.Num();++index)
+    listeners[index]->MapDisconnected();
+  ResetNetworkingState();
+  LoadMainMenu();
+}
+
+void idCommonLocal::CanceledFinalizedMapChangeCleanUp() {
+  if(renderSystem->BinkVideoIsLoaded()) renderSystem->FreeBinkVideo();
+  renderSystem->EndAutomaticBackgroundSwaps();
+  session->GetSaveGameManager()->CancelAllProcessors(true);
+  StopLevelLoad(false);
+  if(Game()!=nullptr) gameSystem->FreeGame(Field<idGame*>(0x1D0));
+  session->QuitMatchToTitle();
+  if(!IsDialogActive()) LoadMainMenu();
+}
+
+void idCommonLocal::Disconnect(bool cancelAllProcessors) {
+  const bool consoleActive=console->IsActive();
+  session->MoveToPressStart();
+  LeaveGame(cancelAllProcessors);
+  if(consoleActive) cmdSystem->ExecuteCommandText("activateConsole 0.5");
+}
+
+void idCommonLocal::Disconnect_f(const idCmdArgs&) {
+  const bool consoleActive=console->IsActive();
+  session->MoveToPressStart();
+  commonLocal.LeaveGame(true);
+  if(consoleActive) cmdSystem->ExecuteCommandText("activateConsole 0.5");
+}
+
+void idCommonLocal::ExecuteMapChangeForSnapshotFile(
+    const idGameSpawnInfo& gameSpawnInfo,idFile* saveGameFile) {
+  PrepareForMapChange();
+  ClearWarnings(gameSpawnInfo.mapName.c_str());
+  if(session->GetState()!=6) {
+    std::uint32_t encoded=0xFFFFFFFFU;
+    Field<idCompressor*>(0x6D8)->Read(&encoded,sizeof(encoded));
+    const int gameMap=static_cast<int>(Big32(encoded));
+    encoded=0xFFFFFFFFU;
+    Field<idCompressor*>(0x6D8)->Read(&encoded,sizeof(encoded));
+    const int gameMode=static_cast<int>(Big32(encoded));
+    idMatchParameters matchParms(
+        session->GetActingGameStateLobbyBase().GetMatchParms());
+    matchParms.gameMap=gameMap;
+    matchParms.gameMode=gameMode;
+    matchParms.numSlots=gameSpawnInfo.numPlayers;
+    matchParms.SetMapName(gameSpawnInfo.mapName.c_str());
+    session->ClearSessionOption(-1);
+    session->CreateMatch(matchParms);
+    WaitOnSession(5,-1.0f,0);
+    session->StartMatch();
+    WaitOnSession(6,-1.0f,0);
+  }
+  FinalizeMapChange(gameSpawnInfo,saveGameFile);
+}
+
+void idCommonLocal::PlaySnapshotFile(idFile* file,unsigned int tag) {
+  Field<idFile*>(0x6E8)=file;
+  if(file==nullptr) {
+    idLib::Printf("PlaySnapshotFile: invalid file\n");
+    return;
+  }
+  idLib::Printf("Playing %s\n",file->GetName());
+  Field<idCompressor*>(0x6E0)=idCompressor::AllocLZW();
+  Field<idCompressor*>(0x6E0)->Init(Field<idFile*>(0x6E8),false,8);
+  Field<idCompressor*>(0x6D8)=idCompressor::AllocRunLength_ZeroBased();
+  Field<idCompressor*>(0x6D8)->Init(Field<idCompressor*>(0x6E0),false,8);
+  idCompressor* compressor=Field<idCompressor*>(0x6D8);
+
+  std::uint32_t encoded=0;
+  compressor->Read(&encoded,sizeof(encoded));
+  const unsigned int fileTag=Big32(encoded);
+  if(fileTag!=tag) {
+    StopSnapshotFilePlayback();
+    StopSnapshotFileRecord();
+    Field<unsigned int>(0x34680)=0;
+    idLib::Error("invalid demo TAG %i",tag);
+  }
+  compressor->Read(&encoded,sizeof(encoded));
+  const unsigned int version=Big32(encoded);
+  if(version!=3) {
+    StopSnapshotFilePlayback();
+    StopSnapshotFileRecord();
+    Field<unsigned int>(0x34680)=0;
+    idLib::Error("incompatible demo version: %d, should be %d",version,3);
+  }
+
+  const int gameFlags=tag==0x44454D4FU ? 64 : 28;
+  idStrStatic<1024> recordedMapName;
+  compressor->ReadString(recordedMapName);
+  bool comboMap=false;
+  bool devmap=false;
+  compressor->Read(&comboMap,sizeof(comboMap));
+  compressor->Read(&devmap,sizeof(devmap));
+  compressor->Read(&encoded,sizeof(encoded));
+  const int numPlayers=static_cast<int>(Big32(encoded));
+  compressor->Read(&encoded,sizeof(encoded));
+  const int gameSpawnFlags=static_cast<int>(Big32(encoded));
+  compressor->Read(&encoded,sizeof(encoded));
+  const int currentCheckpointSlot=static_cast<int>(Big32(encoded));
+  compressor->ReadBig(Field<std::uint64_t>(0x728));
+
+  idGameSpawnInfo spawnInfo("",gameFlags);
+  spawnInfo.comboMap=comboMap;
+  spawnInfo.devmap=devmap;
+  spawnInfo.forceHeapReset=false;
+  spawnInfo.gameSpawnFlags=gameSpawnFlags;
+  spawnInfo.numPlayers=numPlayers;
+  spawnInfo.currentCheckpointSlot=currentCheckpointSlot;
+  spawnInfo.FixupFeatureLayers();
+  spawnInfo.MakeNamesCanonical();
+
+  int num=0;
+  compressor->Read(&encoded,sizeof(encoded));
+  num=static_cast<int>(Big32(encoded));
+  spawnInfo.activeLayers.SetNum(num);
+  for(int index=0;index<num;++index)
+    compressor->ReadString(spawnInfo.activeLayers[index]);
+  spawnInfo.deactiveLayers.SetNum(num);
+  for(int index=0;index<num;++index)
+    compressor->ReadString(spawnInfo.deactiveLayers[index]);
+
+  ExecuteMapChangeForSnapshotFile(spawnInfo,nullptr);
+  if(tag==0x44454D4FU) Field<int>(0x6D0)=3;
+  else if(tag==0x5454524CU) Field<int>(0x6D0)=4;
+
+  void* memory=idMem::Singleton()->AllocWithLocation(
+      __FILE__,sizeof(idSnapShot),static_cast<memTag_t>(57),false,ALIGN_16,
+      HEAP_DEFAULTHEAP);
+  Field<idSnapShot*>(0x6F0)=memory!=nullptr ? new(memory) idSnapShot() : nullptr;
+  Field<std::uint32_t>(0x6F8)=0;
+  Field<std::uint64_t>(0x730)=Field<std::uint64_t>(0x728);
+  Field<std::uint64_t>(0x738)=0;
+  Field<std::uint64_t>(0x750)=Field<std::uint64_t>(0x728)+1;
+
+  if(com_captureSounds.valueInteger!=0) {
+    idStr outPath("screenshots/");
+    outPath+=com_capturePath.valueString;
+    idStr work(file->GetName());
+    work.StripPath();
+    outPath.AppendPath(work.c_str());
+    outPath.StripFileExtension();
+    outPath.SetFileExtension("wav");
+    char osPath[256];
+    fileSystem->RelativePathToOSPathRetail(
+        outPath.c_str(),osPath,sizeof(osPath),FSPATH_SAVE);
+    fileSystem->CreateOSPathRetail(osPath);
+    com_capturePath.SetString(osPath,true);
+  }
+}
+
+void idCommonLocal::PlayDemo_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
+  idMem::Singleton()->PushHeap(HEAP_SYSTEMHEAP);
+  idStr demoName(args->Argv(1));
+  idMem::Singleton()->PopHeap();
+  if(demoName.IsEmpty()) {
+    idLib::Printf("Syntax: playDemo <demoName>\n");
+    return;
+  }
+  demoName.DefaultFileExtension("demo");
+  if(commonLocal.Field<int>(0x6D0)!=0) {
+    commonLocal.StopSnapshotFilePlayback();
+    commonLocal.StopSnapshotFileRecord();
+    commonLocal.Game()->OnCloseSnapshot();
+  }
+  idMem::Singleton()->PushHeap(HEAP_SYSTEMHEAP);
+  idFile* file=fileSystem->OpenFileReadRetail(demoName.c_str(),true,false);
+  idMem::Singleton()->PopHeap();
+  commonLocal.PlaySnapshotFile(file,0x44454D4FU);
+}
+
+void idCommonLocal::CaptureDemoSounds_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
+  if(args->argc<3) {
+    idLib::Printf("Syntax: captureDemoSounds demo outname");
+    return;
+  }
+  idStr demoName(args->Argv(1));
+  idStr outName(args->Argv(2));
+  demoName.DefaultFileExtension("demo");
+  cvarSystem->SetCVarInteger("r_windowWidth",320,0);
+  cvarSystem->SetCVarInteger("r_windowHeight",240,0);
+  cvarSystem->SetCVarBool("r_fullscreen",false,0);
+  cmdSystem->ExecuteCommandText("vid_restart");
+  com_captureFrames.SetInteger(0,true);
+  com_captureSounds.SetInteger(1,true);
+  cvarSystem->SetCVarString("com_capturePath",(outName+"/sound/").c_str(),0);
+  cvarSystem->SetCVarInteger("ai_debugLevel",0,0);
+  cvarSystem->SetCVarBool("con_noPrint",true,0);
+  cvarSystem->SetCVarFloat("s_volume_db",0.0f,0);
+  if(commonLocal.Field<int>(0x6D0)!=0) {
+    commonLocal.StopSnapshotFilePlayback();
+    commonLocal.StopSnapshotFileRecord();
+    commonLocal.Game()->OnCloseSnapshot();
+  }
+  idFile* file=fileSystem->OpenFileReadRetail(demoName.c_str(),true,false);
+  commonLocal.PlaySnapshotFile(file,0x44454D4FU);
+}
+
+void idCommonLocal::CaptureDemoFrames_f(const idCmdArgs& argsRef) {
+  const idCmdArgs* args=&argsRef;
+  if(args->argc<3) {
+    idLib::Printf("Syntax: captureDemoFrames demo outpath [fast]");
+    return;
+  }
+  idStr demoName(args->Argv(1));
+  idStr outName(args->Argv(2));
+  idStr work(args->Argv(3));
+  const bool fast=work.Icmp("fast")==0;
+  outName.StripFileExtension();
+  demoName.DefaultFileExtension("demo");
+  cvarSystem->SetCVarInteger("r_windowWidth",fast ? 424 : 1280,0);
+  cvarSystem->SetCVarInteger("r_windowHeight",fast ? 240 : 720,0);
+  cvarSystem->SetCVarBool("r_fullscreen",false,0);
+  cmdSystem->ExecuteCommandText("vid_restart");
+  com_captureFrames.SetInteger(1,true);
+  com_captureSounds.SetInteger(0,true);
+  cvarSystem->SetCVarBool("com_captureTGA",!fast,0);
+  cvarSystem->SetCVarString(
+      "com_capturePath",(outName+(fast ? "/fast/" : "/frames/")).c_str(),0);
+  cvarSystem->SetCVarInteger("ai_debugLevel",0,0);
+  cvarSystem->SetCVarBool("con_noPrint",true,0);
+  if(commonLocal.Field<int>(0x6D0)!=0) {
+    commonLocal.StopSnapshotFilePlayback();
+    commonLocal.StopSnapshotFileRecord();
+    commonLocal.Game()->OnCloseSnapshot();
+  }
+  idFile* file=fileSystem->OpenFileReadRetail(demoName.c_str(),true,false);
+  commonLocal.PlaySnapshotFile(file,0x44454D4FU);
+}
+
+void idCommonLocal::ExecuteMapChange(const idGameSpawnInfo& gameSpawnInfo,
+                                     idFile* saveGameFile) {
+  idStr active;
+  idStr deactive;
+  gameSpawnInfo.WriteLayersToCommaSeparatedStrings(active,deactive);
+  idLib::Printf("ExecuteMapChange: %s a: %s d: %s\n",
+                gameSpawnInfo.mapName.c_str(),active.c_str(),deactive.c_str());
+  const bool activePeers=session->GetGameLobbyBase().HasActivePeers() ||
+      session->GetGameStateLobbyBase().HasActivePeers();
+  if(session->GetState()==7 && activePeers) {
+    session->EndMatch(false);
+    WaitOnSession(5,-1.0f,0);
+    session->StartMatch();
+    WaitOnSession(6,-1.0f,0);
+    return;
+  }
+
+  idResourceList::AllowStaleChecks();
+  PrepareForMapChange();
+  ClearWarnings(gameSpawnInfo.mapName.c_str());
+  if(session->GetState()!=6) {
+    gameSpawnInfo.WriteLayersToCommaSeparatedStrings(active,deactive);
+    idMatchParameters matchParms(
+        -1,-1,-1,0,gameSpawnInfo.numPlayers,0,gameSpawnInfo.mapName,
+        active,deactive,gameSpawnInfo.GetSpawnSpot(),gameSpawnInfo.loadingScreen,
+        si_minRespawnDelay.valueFloat,si_timeLimit.valueFloat,
+        si_scoreLimit.valueInteger,si_teamCount.valueInteger,
+        si_swapTeams.valueInteger!=0,si_stopWatch.valueInteger!=0,
+        gameSpawnInfo.comboMap,gameSpawnInfo.devmap,
+        (gameSpawnInfo.gameSpawnFlags&0x10)!=0,gameSpawnInfo.forceHeapReset,
+        gameSpawnInfo.currentCheckpointSlot,false);
+    session->ClearSessionOption(-1);
+    session->CreateMatch(matchParms);
+    WaitOnSession(5,-1.0f,0);
+    session->StartMatch();
+    WaitOnSession(6,-1.0f,0);
+  }
+  FinalizeMapChange(gameSpawnInfo,saveGameFile);
+}
+
+void idCommonLocal::FinalizeMapChange(const idGameSpawnInfo& gameSpawnInfo,
+                                      idFile* saveGameFile) {
+  const int loadingID=session->GetLoadingID();
+  ResetNetworkingState();
+  resourceManager->SetFileHook();
+  if(!fileSystem->FileExistsRetail(
+         va("maps/%s/_combo/world.bcm",gameSpawnInfo.mapName.c_str()),true) &&
+     !fileSystem->FileExistsRetail(
+         va("%s/_combo/world.bcm",gameSpawnInfo.mapName.c_str()),true)) {
+    idLib::Printf("Map '%s' does not exist\n",gameSpawnInfo.mapName.c_str());
+    resourceManager->ReleaseFileHook();
+    Disconnect(true);
+    return;
+  }
+  resourceManager->ReleaseFileHook();
+
+  float loadProgress=-1.0f;
+  try {
+    const int loadStart=static_cast<int>(Sys_Milliseconds());
+    idVideoDesc videoDesc;
+    videoDesc.fadeFromColor.r=-1.0f;
+    videoDesc.fadeFromColor.g=-1.0f;
+    videoDesc.fadeFromColor.b=-1.0f;
+    videoDesc.fadeFromColor.a=-1.0f;
+    idStrStatic<1024> mapName(gameSpawnInfo.mapName);
+    char remappedName[512];
+    const char* name=idDeclMapInfo::resourceList.RemapResourceName(
+        remappedName,sizeof(remappedName),mapName.c_str());
+    idDeclMapInfo* mapInfo=static_cast<idDeclMapInfo*>(
+        idDeclMapInfo::resourceList.Load(name,false,false));
+    if(mapInfo!=nullptr) {
+      for(int index=0;index<mapInfo->loadingVideos.Num();++index) {
+        const idDeclMapInfo::loadingVideos_t& loading=
+            mapInfo->loadingVideos[index];
+        const char* layers=loading.layerMask.str;
+        bool allLayersActive=true;
+        while(layers!=nullptr && *layers!='\0') {
+          const int comma=idStr::Find(layers,',',0,-1);
+          char layer[256];
+          if(comma==-1) {
+            std::strncpy(layer,layers,sizeof(layer));
+            layer[sizeof(layer)-1]='\0';
+            layers=nullptr;
+          } else {
+            std::strncpy(layer,layers,static_cast<std::size_t>(comma));
+            layer[comma]='\0';
+            layers+=comma+1;
+          }
+          bool active=false;
+          for(int activeIndex=0;
+              activeIndex<gameSpawnInfo.activeLayers.Num();++activeIndex) {
+            if(idStr::Icmp(gameSpawnInfo.activeLayers[activeIndex].c_str(),
+                           layer)==0) {
+              active=true;
+              break;
+            }
+          }
+          if(!active) allLayersActive=false;
+        }
+        if(allLayersActive) {
+          videoDesc.videoFile=va("bink/%s",loading.videoFile.str);
+          videoDesc.fadeFromColor=loading.fadeFromColor;
+          break;
+        }
+      }
+    }
+    videoDesc.videoFile=idVersionSelector::RemapVideoName(
+        remappedName,sizeof(remappedName),videoDesc.videoFile.c_str());
+    if((gameSpawnInfo.gameSpawnFlags&1)==0) videoDesc.videoFile.Empty();
+
+    if(!IsDialogActive()) {
+      SetShouldDelayShutdown(true);
+      SetAbnormalFileRead(false);
+      const idVideoDesc* selectedVideo=videoDesc.videoFile.IsEmpty()
+          ? nullptr : &videoDesc;
+      if(!resourceManager->AllocGameWithResourceFile(
+             Field<idGame*>(0x1D0),gameSpawnInfo,saveGameFile,selectedVideo)) {
+        StopLevelLoad(false);
+        gameSystem->MinimalGameCleanup(Field<idGame*>(0x1D0));
+        if(!IsDialogActive()) idLib::Error("Unable to allocate game");
+      }
+      SetShouldDelayShutdown(false);
+    }
+
+    if(Game()==nullptr || IsDialogActive()) {
+      CanceledFinalizedMapChangeCleanUp();
+      if(IsDialogActive()) return;
+    } else {
+      Game()->Shell_CreateMenu(true);
+      if(idStr::Icmp(gameSpawnInfo.mapName.c_str(),"outro")==0) {
+        const bool consoleActive=console->IsActive();
+        session->MoveToPressStart();
+        LeaveGame(false);
+        if(consoleActive) cmdSystem->ExecuteCommandText("activateConsole 0.5");
+        return;
+      }
+      time_mapLoadMS=static_cast<int>(Sys_Milliseconds())-loadStart;
+      idLib::Printf("%.1f seconds to load %s\n",
+                    static_cast<float>(time_mapLoadMS)*0.001f,
+                    gameSpawnInfo.mapName.c_str());
+    }
+  } catch(idException* exception) {
+    idLib::Printf("Caught an exception in FinalizeMapChange\n");
+    SetShouldDelayShutdown(false);
+    CanceledFinalizedMapChangeCleanUp();
+    idException copy=*exception;
+    throw &copy;
+  }
+
+  Game()->GenerateInputToPlayerIndexRouting();
+  if(session->GetState()!=6 || session->GetLoadingID()!=loadingID ||
+     session->GetUserSignedOutDuringLoading()) {
+    StopLevelLoad(false);
+    gameSystem->FreeGame(Field<idGame*>(0x1D0));
+    if(com_newLoadScreen.valueInteger!=0) loadScreen.LevelLoadCompleted();
+    LoadMainMenu();
+    if(session->GetUserSignedOutDuringLoading()) {
+      std::strncpy(idException::error,"Loading aborted due to sign-out",
+                   idException::MAX_ERROR_LEN);
+      idNetworkLoadException exception;
+      throw &exception;
+    }
+    if(session->GetLoadingID()!=loadingID) {
+      std::strncpy(idException::error,
+          "FinalizeMapChange: Started loading a new map from within an existing map load.",
+          idException::MAX_ERROR_LEN);
+      idNetworkLoadException exception;
+      throw &exception;
+    }
+    idStr::snPrintf(idException::error,idException::MAX_ERROR_LEN,
+        "FinalizeMapChange: State was %s but expected LOADING.",
+        session->GetStateString());
+    idNetworkLoadException exception;
+    throw &exception;
+  }
+
+  session->LoadingFinished();
+  try {
+    if(session->GetActingGameStateLobbyBase().HasActivePeers())
+      loadProgress=1.0f;
+    WaitOnSession(7,loadProgress,18);
+  } catch(idNetworkLoadException* exception) {
+    renderSystem->EndAutomaticBackgroundSwaps();
+    session->GetSaveGameManager()->CancelAllProcessors(true);
+    StopLevelLoad(false);
+    gameSystem->FreeGame(Field<idGame*>(0x1D0));
+    if(com_newLoadScreen.valueInteger!=0) loadScreen.LevelLoadCompleted();
+    LoadMainMenu();
+    idNetworkLoadException copy=*exception;
+    throw &copy;
+  }
+
+  if(session->GetActingGameStateLobbyBase().IsHost() &&
+     session->GetActingGameStateLobbyBase().HasActivePeers()) {
+    gameReturn_t gameReturn;
+    idSnapShot snapshot;
+    Game()->RunFrame(GameFrameParms(1),&gameReturn);
+    PrepareSnapshot(snapshot,gameReturn,nullptr);
+    session->SendSnapshot(snapshot);
+    while(!session->GetActingGameStateLobbyBase().EnsureAllPeersHaveBaseState()) {
+      UpdateLevelLoadPacifier(1.0f,static_cast<pacifierState_t>(18),true,true);
+      Sys_Sleep(10);
+    }
+  }
+  if(session->GetActingGameStateLobbyBase().HasActivePeers())
+    UpdateLevelLoadPacifier(1.0f,PACIFIER_STATE_0,true,false);
+
+  if(com_newLoadScreen.valueInteger!=0) {
+    gameReturn_t gameReturn;
+    Game()->RunFrame(GameFrameParms(1),&gameReturn);
+    loadScreen.LevelLoadCompleted();
+  }
+  std::memset(&UserCmdMgr(),0,0x26000);
+  std::memset(UserCmdMgr().writeFrame,0,sizeof(UserCmdMgr().writeFrame));
+  std::memset(UserCmdMgr().readFrame,-1,sizeof(UserCmdMgr().readFrame));
+  console->ClearNotifyLines();
+  sys->ClearEvents();
+  fileSystem->ClearZipCacheRetail();
+  if((gameSpawnInfo.gameSpawnFlags&0x10)==0)
+    Game()->RequestSaveGame(SAVEGAME_AUTOSAVE_FOLDER,true,false);
+  idList<idMapChangeListener*,5>& listeners=
+      Field<idList<idMapChangeListener*,5>>(0x34CA8);
+  for(int index=0;index<listeners.Num();++index)
+    listeners[index]->MapLoaded(Game()->GetLevelMap());
+}
+
+void idCommonLocal::RestartMap_f(const idCmdArgs&) {
+  if(commonLocal.Game()->IsGameActive(true)) {
+    cvarSystem->SetCVarBool("g_stopTime",false,0);
+    idGameSpawnInfo gameSpawnInfo(*commonLocal.Game()->GetGameSpawnInfo());
+    gameSpawnInfo.spawnSpot="";
+    if(commonLocal.Game()->GetMapStartInfoFile()!=nullptr)
+      commonLocal.Game()->GetMapStartInfoFile()->MakeReadOnly();
+    if(commonLocal.Game()->CheckpointGetSpawninfoFromSlot(0,gameSpawnInfo)) {
+      gameSpawnInfo.currentCheckpointSlot=0;
+      commonLocal.Game()->CheckpointCapFileData(0);
+    }
+    gameSpawnInfo.gameSpawnFlags|=0x10;
+    commonLocal.ExecuteMapChange(
+        gameSpawnInfo,commonLocal.Game()->GetMapStartInfoFile());
+  } else {
+    idLib::Printf("restartMap only works if a map is running!");
+  }
+}
+
+void idCommonLocal::RestartMapHere_f(const idCmdArgs&) {
+  if(commonLocal.Game()->IsGameActive(true)) {
+    cvarSystem->SetCVarBool("g_stopTime",false,0);
+    idCmdArgs viewArgs;
+    viewArgs.argc=0;
+    Cmd_GetViewpos_f(&viewArgs);
+    idGameSpawnInfo gameSpawnInfo(*commonLocal.Game()->GetGameSpawnInfo());
+    gameSpawnInfo.currentCheckpointSlot=-1;
+    gameSpawnInfo.spawnSpotOverride="";
+    if(commonLocal.Game()->GetMapStartInfoFile()!=nullptr)
+      commonLocal.Game()->GetMapStartInfoFile()->MakeReadOnly();
+    gameSpawnInfo.gameSpawnFlags|=0x10;
+    commonLocal.ExecuteMapChange(
+        gameSpawnInfo,commonLocal.Game()->GetMapStartInfoFile());
+    idGameLock gameLock(commonLocal.Game());
+    viewArgs.AppendArg("setviewpos");
+    viewArgs.AppendArg("last");
+    Cmd_SetViewpos_f(&viewArgs);
+  } else {
+    idLib::Printf("restartMapHere only works if a map is running!");
   }
 }

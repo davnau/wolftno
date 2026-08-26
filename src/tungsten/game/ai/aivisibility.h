@@ -1,18 +1,12 @@
 #pragma once
 
 #include "engine/cm/collisionmodel.h"
+#include "engine/gamelib/idspawnid_abi.h"
 #include "engine/gamelib/physics/clip.h"
 #include "tungsten/game/game_runtime.h"
 
 #include <cstdint>
 #include <unordered_map>
-
-struct idSpawnId {
-  int value{0x1fff};
-
-  int GetEntityNumber() const { return value & 0x1fff; }
-  bool IsValid() const { return value != 0x1fff; }
-};
 
 struct aiLatchedState_t;
 struct aiLatchedEvent_t;

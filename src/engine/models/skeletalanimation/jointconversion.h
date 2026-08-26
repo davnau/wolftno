@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/decls/decl.h"
-#include "engine/models/skeletalanimation/md6util.h"
+#include "engine/animation/md6.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/filesystem/file.h"
 

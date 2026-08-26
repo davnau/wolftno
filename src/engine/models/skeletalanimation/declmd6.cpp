@@ -709,40 +709,22 @@ bool idDeclMD6::IsChildOf(const idDeclMD6* candidate) const {
 
 int idDeclMD6::NumJoints() const {
   return model != nullptr && model->skeleton != nullptr
-             ? model->skeleton->jointNames.Num()
+             ? model->skeleton->NumJoints()
              : 0;
 }
 
 const char* idDeclMD6::GetJointName(idJointIndex_t index) const {
   if (model == nullptr || model->skeleton == nullptr || index.value < 0 ||
-      index.value >= model->skeleton->jointNames.Num())
+      index.value >= model->skeleton->NumJoints())
     return nullptr;
-  return model->skeleton->jointNames[index.value].str;
+  return model->skeleton->GetJointName(index.value);
 }
 
 void idDeclMD6::GetJointList(const char* jointNames,
                              idList<idJointIndex_t, 5>& jointList) const {
   if (model == nullptr || model->skeleton == nullptr || jointNames == nullptr)
     return;
-  std::string names(jointNames);
-  if (names == "*") {
-    for (int index = 0; index < model->skeleton->jointNames.Num(); ++index)
-      jointList.Append(idJointIndex_t(static_cast<std::int16_t>(index)));
-    return;
-  }
-  std::size_t start = 0;
-  while (start < names.size()) {
-    start = names.find_first_not_of(" ,\t\r\n", start);
-    if (start == std::string::npos)
-      break;
-    const std::size_t end = names.find_first_of(" ,\t\r\n", start);
-    const std::string jointName = names.substr(start, end - start);
-    const idJointIndex_t index =
-        model->skeleton->GetJointIndex(jointName.c_str());
-    if (index.value >= 0)
-      jointList.Append(index);
-    start = end;
-  }
+  model->skeleton->GetJointList(model, jointNames, jointList);
 }
 
 int idDeclMD6::GetUserChannelWeightGroup() const {

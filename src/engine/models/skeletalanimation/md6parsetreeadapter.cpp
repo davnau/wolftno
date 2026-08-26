@@ -17,66 +17,13 @@ void SetMD6ParseTreeBranchUpdate(idMD6ParseTreeBranchUpdate update) {
   g_branchUpdate = update;
 }
 
-bool idMD6Node::IsValid() const {
-  if (this == nullptr)
+bool DispatchMD6ParseTreeBranchUpdate(idMD6Branch* branch, bool forceUpdate,
+                                      int timeMSec, int ticksPerSec,
+                                      const idMD6Skel* skeleton) {
+  if (g_branchUpdate == nullptr)
     return false;
-  if (type == NODE_LEAF_PAUSE || type == NODE_LEAF_PLAY)
-    return static_cast<const idMD6Leaf*>(this)->weightGroup !=
-           MD6_WEIGHTGROUP_MAX;
-  if (type == NODE_BEST_LEAF)
-    return static_cast<const idMD6BestLeaf*>(this)->leafList.num > 0;
-  if (type != NODE_BRANCH && type != NODE_BLEND_BRANCH &&
-      type != NODE_BLENDA_BRANCH && type != NODE_FUSION_BRANCH)
-    return false;
-  const auto* branch = static_cast<const idMD6Branch*>(this);
-  return branch->right != nullptr && branch->left != nullptr;
-}
-
-int idMD6Leaf::GetFrameRate() const {
-  return anim != nullptr && anim->animData != nullptr
-             ? anim->animData->frameRate
-             : 30;
-}
-
-int idMD6LeafPlay::GetFrameTime(int gameTime) const {
-  return gameTime >= startTime
-             ? static_cast<int>(static_cast<float>(gameTime - startTime) *
-                                rateScale)
-             : 0;
-}
-
-void idMD6Branch::UpdateCurrentAlpha(int timeMSec, int lastTimeMSec,
-                                     int ticksPerSec) {
-  const int elapsed = timeMSec - lastTimeMSec;
-  if (elapsed <= 0)
-    return;
-  const float difference = targetAlpha - currentAlpha;
-  const float elapsedSeconds =
-      static_cast<float>(elapsed) / static_cast<float>(ticksPerSec);
-  if (difference > 0.0f) {
-    const float value = elapsedSeconds * alphaRate + currentAlpha;
-    currentAlpha = value <= targetAlpha - 0.000001f ? value : targetAlpha;
-  } else if (difference < 0.0f) {
-    const float value = currentAlpha - elapsedSeconds * alphaRate;
-    currentAlpha = targetAlpha + 0.000001f <= value ? value : targetAlpha;
-  }
-}
-
-void idMD6BlendBranch::Update(bool forceUpdate, bool isSorted) {
-  if (g_branchUpdate != nullptr)
-    g_branchUpdate(this, forceUpdate, isSorted ? 1 : 0, 0, nullptr);
-}
-
-void idMD6BlendAdditiveBranch::Update(bool forceUpdate) {
-  if (g_branchUpdate != nullptr)
-    g_branchUpdate(this, forceUpdate, 0, 0, nullptr);
-}
-
-void idMD6FusionBranch::Update(bool forceUpdate, int gameTime,
-                               int ticksPerSec,
-                               const idMD6Skel* skeleton) {
-  if (g_branchUpdate != nullptr)
-    g_branchUpdate(this, forceUpdate, gameTime, ticksPerSec, skeleton);
+  g_branchUpdate(branch, forceUpdate, timeMSec, ticksPerSec, skeleton);
+  return true;
 }
 
 void idBounds::AddBounds(const idBounds& bounds) {

@@ -25,14 +25,14 @@ public:
   virtual void ClearAngles() = 0;
   virtual void SaveGame(idFile*) = 0;
   virtual bool LoadGame(idFile*) = 0;
-  virtual cmdGenButton_t BindStringUsercmdAction(const char*) = 0;
-  virtual bool HasCompoundBinding(const char*) = 0;
+  virtual cmdGenButton_t BindStringUsercmdAction(const char*) const = 0;
+  virtual bool HasCompoundBinding(const char*) const = 0;
   virtual usercmd_t GetUsercmd(int,const inputSettings_t&,bool,int) = 0;
   virtual void GetRecordedUserCmd(int,usercmd_t&) = 0;
   virtual bool RecordPlay(int,bool,const char*) = 0;
-  virtual bool GetUseAimAssist() = 0;
-  virtual bool GetMouseDetected() = 0;
-  virtual bool GetJoystickDetected() = 0;
+  virtual bool GetUseAimAssist() const = 0;
+  virtual bool GetMouseDetected() const = 0;
+  virtual bool GetJoystickDetected() const = 0;
 };
 
 enum transferFunction_t : int {
@@ -68,21 +68,21 @@ public:
   void ClearAngles() override;
   void SaveGame(idFile*) override;
   bool LoadGame(idFile*) override;
-  cmdGenButton_t BindStringUsercmdAction(const char*) override;
-  bool HasCompoundBinding(const char*) override;
+  cmdGenButton_t BindStringUsercmdAction(const char*) const override;
+  bool HasCompoundBinding(const char*) const override;
   usercmd_t GetUsercmd(int,const inputSettings_t&,bool,int) override;
   void GetRecordedUserCmd(int,usercmd_t&) override;
   bool RecordPlay(int,bool,const char*) override;
-  bool GetUseAimAssist() override;
-  bool GetMouseDetected() override;
-  bool GetJoystickDetected() override;
+  bool GetUseAimAssist() const override;
+  bool GetMouseDetected() const override;
+  bool GetJoystickDetected() const override;
 
   void SetPlayParms(int,bool,int);
 
 private:
   void KeyMove();
   void MouseMove();
-  void CircleToSquare(float&,float&);
+  void CircleToSquare(float&,float&) const;
   void HandleJoystickAxis(int,keyNum_t,float,float,bool,const idDeclTable*);
   void JoystickMove2(int);
   void JoystickMove(int);

@@ -75,29 +75,29 @@ void idGameTimeManager::SetGameHz(const int hertz) {
   timeManager.SetGameHz(hertz);
 }
 
-int idGameTimeManager::GetGameMs(gameTimeType_t type) {
+int idGameTimeManager::GetGameMs(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? time[type] : time[0];
 }
 
-int idGameTimeManager::GetPreviousGameMs(gameTimeType_t type) {
+int idGameTimeManager::GetPreviousGameMs(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? previousTime[type]
                                                    : previousTime[0];
 }
 
-int idGameTimeManager::GetGameMsPerFrame(gameTimeType_t type) {
+int idGameTimeManager::GetGameMsPerFrame(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? ticks[type] : ticks[0];
 }
 
-float idGameTimeManager::GetRealMsPerFrame(gameTimeType_t type) {
+float idGameTimeManager::GetRealMsPerFrame(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? timeDelta[type]
                                                    : timeDelta[0];
 }
 
-int idGameTimeManager::GetGameHz(gameTimeType_t type) {
+int idGameTimeManager::GetGameHz(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? hz[type] : hz[0];
 }
 
-float idGameTimeManager::GetTimeScale(gameTimeType_t type) {
+float idGameTimeManager::GetTimeScale(gameTimeType_t type) const {
   return g_enableGameTimeScaling.valueInteger != 0 ? scale[type] : scale[0];
 }
 
@@ -110,14 +110,14 @@ void idGameTimeManager::SetGameMs(const int newTime) {
 
 const idTypesafeNumber<int, millisecondUnique_t>
 idGameTimeManager::ConvertTimeGameToReal(
-    idTypesafeNumber<int, gameTimeUnique_t> gameTicks) {
+    idTypesafeNumber<int, gameTimeUnique_t> gameTicks) const {
   return idTypesafeNumber<int, millisecondUnique_t>(
       1000 * gameTicks.value / timeManager.gameTimePerSecond.value);
 }
 
 const idTypesafeNumber<int, gameTimeUnique_t>
 idGameTimeManager::ConvertTimeRealToGame(
-    idTypesafeNumber<int, millisecondUnique_t> milliseconds) {
+    idTypesafeNumber<int, millisecondUnique_t> milliseconds) const {
   return idTypesafeNumber<int, gameTimeUnique_t>(
       timeManager.gameTimePerSecond.value * milliseconds.value / 1000);
 }

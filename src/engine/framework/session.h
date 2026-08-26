@@ -46,6 +46,10 @@ public:
     using Fn=void(*)(idLobbyBase*,idRenderModelGui*);
     reinterpret_cast<Fn>(vtable[49])(this,gui);
   }
+  bool EnsureAllPeersHaveBaseState() {
+    using Fn=bool(*)(idLobbyBase*);
+    return reinterpret_cast<Fn>(vtable[38])(this);
+  }
 };
 
 class idSession {
@@ -93,6 +97,10 @@ public:
     using Fn=void(*)(idSession*);
     reinterpret_cast<Fn>(vtable[23])(this);
   }
+  void QuitMatchToTitle() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[17])(this);
+  }
 
   bool IsLosingConnectionToHost() {
     using Fn=bool(*)(idSession*);
@@ -102,6 +110,10 @@ public:
   void SetUserSignedOutDuringLoading(bool signedOut) {
     using Fn=void(*)(idSession*,bool);
     reinterpret_cast<Fn>(vtable[57])(this,signedOut);
+  }
+  bool GetUserSignedOutDuringLoading() {
+    using Fn=bool(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[58])(this);
   }
 
   void Pump() {
@@ -142,15 +154,35 @@ public:
     using Fn=void(*)(idSession*);
     reinterpret_cast<Fn>(vtable[36])(this);
   }
+  int GetLoadingID() {
+    using Fn=int(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[55])(this);
+  }
+  void LoadingFinished() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[26])(this);
+  }
 
   void UpdateSignInManager() {
     using Fn=void(*)(idSession*);
     reinterpret_cast<Fn>(vtable[144])(this);
   }
+  void PumpSystemServiceStatus() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[173])(this);
+  }
 
   idLobbyBase& GetActingGameStateLobbyBase() {
     using Fn=idLobbyBase&(*)(idSession*);
     return reinterpret_cast<Fn>(vtable[45])(this);
+  }
+  idLobbyBase& GetGameLobbyBase() {
+    using Fn=idLobbyBase&(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[42])(this);
+  }
+  idLobbyBase& GetGameStateLobbyBase() {
+    using Fn=idLobbyBase&(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[43])(this);
   }
 
   idPlayerProfile* GetProfileFromInputDevice(int inputDevice) {
@@ -196,6 +228,11 @@ public:
   int GetNumContentPackages() {
     using Fn = int (*)(idSession*);
     return reinterpret_cast<Fn>(vtable[75])(this);
+  }
+
+  int GetContentPackageID(int index) {
+    using Fn = int (*)(idSession*, int);
+    return reinterpret_cast<Fn>(vtable[76])(this, index);
   }
 
   const char* GetContentPackagePath(int index) {
