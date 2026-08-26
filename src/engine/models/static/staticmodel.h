@@ -15,7 +15,8 @@ struct sourceSurface_t {
   int lastVertex{};
 };
 
-struct idStaticModelSurface : idRenderModelSurface {
+class idStaticModelSurface : public idRenderModelSurface {
+public:
   idList<skinRemap_t, 5> skinRemaps;
 };
 
@@ -25,6 +26,7 @@ public:
 
   idStaticModel();
   ~idStaticModel() override;
+  idResourceList* GetResourceList() const override;
   void PristineLoadResource();
   void MakeDefaultModel(float minimum, float maximum);
   void MakeSimpleCube(float minimum, float maximum);

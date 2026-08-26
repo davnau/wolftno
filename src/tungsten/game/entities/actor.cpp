@@ -28,6 +28,26 @@ std::unordered_map<const idActor*, actorPresentationSources_t>
 
 }  // namespace
 
+damageDirection_t idActor::GetDamageDirection(
+    const idMat3& axis, const idVec3& direction,
+    int numberOfDirections) {
+  const float forward = axis[0] * direction;
+  const float side = axis[1] * direction;
+  if (numberOfDirections <= 4) {
+    if (forward >= 0.70710677F) return DAMAGEDIR_BACK;
+    if (forward <= -0.70710677F) return DAMAGEDIR_FRONT;
+    if (side <= -0.70710677F) return DAMAGEDIR_LEFT;
+    return DAMAGEDIR_RIGHT;
+  }
+  if (forward >= 0.92387950F) return DAMAGEDIR_BACK;
+  if (forward <= -0.92387950F) return DAMAGEDIR_FRONT;
+  if (side <= -0.92387950F) return DAMAGEDIR_LEFT;
+  if (side >= 0.92387950F) return DAMAGEDIR_RIGHT;
+  if (forward >= 0.0F)
+    return side < 0.0F ? DAMAGEDIR_BACKLEFT : DAMAGEDIR_BACKRIGHT;
+  return side < 0.0F ? DAMAGEDIR_FRONTLEFT : DAMAGEDIR_FRONTRIGHT;
+}
+
 // Header-emitted actor support used by the recovered AI translation units.
 walkState_t idActor::GetWalkState() const { return walkState; }
 
@@ -101,6 +121,14 @@ void idActor::SetLastDamageInfo(
 
 const idAnimator_AF* idActor::GetAF() const {
   return &articulatedFigureProperties;
+}
+
+bool idActor::ExpandBoundsByJoints(idBounds& bounds,
+                                   const int jointGroup) const {
+  lastJointBoundsGroup = jointGroup;
+  if (!jointBoundsAvailable) return false;
+  bounds = jointBounds;
+  return true;
 }
 
 // DIA: idActor::GetEyePos

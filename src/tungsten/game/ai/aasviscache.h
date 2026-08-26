@@ -6,7 +6,7 @@
 #include <vector>
 
 class idAAS2;
-struct idCmdArgs;
+class idCmdArgs;
 
 struct idAASVisBitSet {
   explicit idAASVisBitSet(std::size_t bitCount = 0);

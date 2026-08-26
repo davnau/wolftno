@@ -1,6 +1,9 @@
 #pragma once
 
+#include "engine/renderer/jobs/transcode/transcode.h"
+#include "shared/idlib/containers/hashindex.h"
 #include "shared/idlib/containers/heaparray.h"
+#include "shared/idlib/containers/list.h"
 
 // PDB-derived renderer boundary used by declmaterial.cpp.  Method bodies and
 // the remaining virtual-texture internals belong to the corresponding
@@ -19,6 +22,10 @@ class idImage;
 class idMaterial;
 class idVmtrCPU;
 class idVMTRData;
+class idBitBlockAllocator;
+class idBackgroundVmtrUpdater;
+struct idVmtrGenAccelerator;
+class idCmdArgs;
 
 enum physicalPagesPool_t : int {
   PHYSICAL_PAGES_POOL_VMTR = 0,
@@ -56,6 +63,34 @@ enum virtualTextureFlavor_t : int {
   ID_VTF_VMTR = 2,
 };
 
+struct pageHeader_t {
+  int magic{};
+  pageCompression_t pageCompression{COMP_INVALID};
+  unsigned int finerDiskOffset[4]{};
+  unsigned short finerDiskLength[4]{};
+  unsigned short x{};
+  unsigned short y{};
+  unsigned short level{};
+  unsigned short reserved{};
+
+  void Swap();
+  void CopySwap(pageHeader_t* destination) const;
+};
+
+struct pageFileHeader_t {
+  int magic{};
+  int pagesWide{};
+  int installedMipAndOffset{};
+  short numLevels{};
+  short layoutVersion{};
+  int totalPages{};
+  int diskOffsetScale{};
+  std::int64_t totalFileSize{};
+  pageHeader_t subRoot{};
+
+  void Swap();
+};
+
 class idPhysicalPages {
 public:
   const idDeclRenderParm* GetFilterParms() const;
@@ -77,7 +112,9 @@ public:
   virtualTextureFlavor_t flavor{ID_VTF_UNKNOWN};
   std::uint8_t alignmentAfterFlavor[4]{};
   idVMTRData* vmtrData{};
-  std::uint8_t recoveredToPageSource[0x298]{};
+  pageFileHeader_t header{};
+  idStrStatic<256> pageFilePath;
+  idStrStatic<256> baseName;
   pageSource_t pageSource{PAGESOURCE_INVALID};
   int layoutVersion{};
   int storedNumLevels{};
@@ -114,6 +151,30 @@ public:
   idVMTRData* vmtrData{};
 };
 
+class idVMTRData {
+public:
+  static constexpr int VMTR_FILE_VERSION = 25;
+
+  explicit idVMTRData(idVirtualTexture* virtualTexture);
+  ~idVMTRData();
+
+  void ReadVmtrFile();
+  void WriteVmtrFile();
+  void SetupVirtualMaterial(idVirtualMaterial* vmtr);
+  idVirtualMaterial* VirtualMaterialForMaterial(const idMaterial* material);
+  void UpdateVirtualMaterialImages(idVirtualMaterial* vmtr);
+  int GeneratePageOrder(idList<int, 5>& pageOrder) const;
+  void SetupBitblock(const pageFileHeader_t& fileHeader);
+
+  idStrStatic<256> vmtrHeaderPath;
+  idVirtualTexture* vt{};
+  idList<idVirtualMaterial*, 5> vmtrs;
+  idHashIndex vmtrHash;
+  idBitBlockAllocator* bitBlock{};
+  idBackgroundVmtrUpdater* backgroundUpdater{};
+  idVmtrGenAccelerator* vmtrGenAccelerator{};
+};
+
 class idPixelPackBuffer;
 class idRenderDestination;
 
@@ -132,6 +193,7 @@ public:
   void FinishFeedback(bool force, int maxTimeMilliseconds);
   void ClearFeedback();
   void LogMetrics();
+  static void PrintVirtualMaterial_f(const idCmdArgs& args);
 
   idVirtualTexture vts[PAGESOURCE_TOTAL];
   idVirtualTexture* vtPtrs[PAGESOURCE_TOTAL]{};
@@ -147,7 +209,13 @@ public:
   std::uint8_t recoveredTail[1168]{};
 };
 
-#if defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+#if defined(WOLF_RENDERER_VIRTUALMATERIALATLAS_TEST_ACCESS)
+alignas(idVirtualTextureSystem) extern unsigned char
+    virtualMaterialAtlasTestVirtualTextureSystemStorage[
+        sizeof(idVirtualTextureSystem)];
+#define virtualTextureSystem (*reinterpret_cast<idVirtualTextureSystem*>(    \
+    virtualMaterialAtlasTestVirtualTextureSystemStorage))
+#elif defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
 alignas(idVirtualTextureSystem) extern unsigned char
     renderThreadTestVirtualTextureSystemStorage[sizeof(idVirtualTextureSystem)];
 #define virtualTextureSystem (*reinterpret_cast<idVirtualTextureSystem*>(    \
@@ -184,8 +252,30 @@ static_assert(offsetof(idVirtualTexture, pageTableImage) == 0x3B0,
               "idVirtualTexture page-table offset drift");
 static_assert(sizeof(idVirtualTexture) == 0x458,
               "idVirtualTexture ABI drift");
+static_assert(sizeof(pageHeader_t) == 40, "page header ABI drift");
+static_assert(offsetof(pageHeader_t, finerDiskOffset) == 8,
+              "page header disk-offset drift");
+static_assert(offsetof(pageHeader_t, x) == 32,
+              "page header coordinate drift");
+static_assert(sizeof(pageFileHeader_t) == 72,
+              "page-file header ABI drift");
+static_assert(offsetof(pageFileHeader_t, pagesWide) == 4,
+              "page-file width offset drift");
+static_assert(offsetof(pageFileHeader_t, subRoot) == 32,
+              "page-file sub-root offset drift");
 static_assert(offsetof(idVirtualMaterial, scaleAndBias) == 0x38,
               "idVirtualMaterial mapping offset drift");
+static_assert(sizeof(idVirtualMaterial) == 80,
+              "idVirtualMaterial ABI drift");
+static_assert(offsetof(idVMTRData, vt) == 296,
+              "VMTR virtual-texture offset drift");
+static_assert(offsetof(idVMTRData, vmtrs) == 304,
+              "VMTR list offset drift");
+static_assert(offsetof(idVMTRData, vmtrHash) == 328,
+              "VMTR hash offset drift");
+static_assert(offsetof(idVMTRData, bitBlock) == 368,
+              "VMTR bit-block offset drift");
+static_assert(sizeof(idVMTRData) == 392, "idVMTRData ABI drift");
 static_assert(offsetof(idVirtualTextureSystem, feedbackBuffer) == 48040,
               "virtual-texture feedback buffer offset drift");
 static_assert(offsetof(idVirtualTextureSystem, feedbackBufferObject) == 48064,

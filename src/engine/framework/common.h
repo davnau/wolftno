@@ -4,6 +4,7 @@
 // the retail vtable slots required by recovered clients; the owning framework
 // compiland must provide the full interface and implementations.
 class idRenderVideoOverlay;
+class idPlayerProfile;
 
 struct idCommon {
   const void* const* vtable;
@@ -28,9 +29,21 @@ struct idCommon {
     using Fn = void (*)(idCommon*, bool);
     reinterpret_cast<Fn>(vtable[20])(this, force);
   }
+  idPlayerProfile* GetProfileFromMasterLocalUser() {
+    using Fn = idPlayerProfile* (*)(idCommon*);
+    return reinterpret_cast<Fn>(vtable[25])(this);
+  }
   bool IsClient() const {
     using Fn = bool (*)(const idCommon*);
     return reinterpret_cast<Fn>(vtable[42])(this);
+  }
+  bool IsInGame() const {
+    using Fn = bool (*)(const idCommon*);
+    return reinterpret_cast<Fn>(vtable[35])(this);
+  }
+  bool IsToolActive() const {
+    using Fn = bool (*)(const idCommon*);
+    return reinterpret_cast<Fn>(vtable[45])(this);
   }
   bool IsDialogActive() const {
     using Fn = bool (*)(const idCommon*);

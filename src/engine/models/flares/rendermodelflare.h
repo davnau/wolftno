@@ -9,7 +9,7 @@ class idCVar;
 class idDeclFlare;
 class idRenderView;
 class idRenderModelUpdateTools;
-struct idSerializer;
+class idSerializer;
 
 class idRenderModelFlareOcclusionQuad;
 

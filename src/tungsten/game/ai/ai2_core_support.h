@@ -8,6 +8,8 @@
 #include "tungsten/game/ai/rotationtracker.h"
 #include "tungsten/game/ai/fsm/fsmlog.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
+#include "tungsten/game/entities/entityspriteanimator.h"
+#include "tungsten/game/decls/decltwitchpain.h"
 #include "engine/decls/animwebs/blendparms.h"
 #include "shared/idlib/lib.h"
 #include "shared/idlib/filesystem/file.h"
@@ -18,11 +20,38 @@
 
 enum invalidAliasHandle_t : int { INVALID_ALIAS_HANDLE = -1 };
 
-template <typename T, typename InvalidEnum, T InvalidValue>
-struct idHandle {
-  T value{InvalidValue};
-  bool operator==(const idHandle& other) const { return value == other.value; }
+class idSuperScriptSystem {
+public:
+  bool IsThreadHandleValid(idFiberHandle handle) const {
+    ++validityQueryCount;
+    lastValidityQuery = handle;
+    return std::find(validFiberHandles.begin(), validFiberHandles.end(),
+                     handle.value) != validFiberHandles.end();
+  }
+  void SetFiberHandleValidForTest(idFiberHandle handle, bool valid) {
+    const auto found = std::find(validFiberHandles.begin(),
+                                 validFiberHandles.end(), handle.value);
+    if (valid && found == validFiberHandles.end()) {
+      validFiberHandles.push_back(handle.value);
+    } else if (!valid && found != validFiberHandles.end()) {
+      validFiberHandles.erase(found);
+    }
+  }
+  void WaitForFSM() { ++waitForFSMCount; }
+  int GetWaitForFSMCountForTest() const { return waitForFSMCount; }
+  int GetValidityQueryCountForTest() const { return validityQueryCount; }
+  idFiberHandle GetLastValidityQueryForTest() const {
+    return lastValidityQuery;
+  }
+
+private:
+  std::vector<int> validFiberHandles;
+  mutable int validityQueryCount{0};
+  mutable idFiberHandle lastValidityQuery{};
+  int waitForFSMCount{0};
 };
+
+extern idSuperScriptSystem* superScriptSystem;
 
 class idAnimator_Channel {
 public:
@@ -118,6 +147,13 @@ private:
   std::unique_ptr<idAIActionFSM> actionFSM;
 };
 
+enum deathTraceAction_t : int {
+  DEATH_RAGDOLL_ON_NO_HIT = 0,
+  DEATH_RAGDOLL_ON_HIT = 1,
+  DEATH_TRACE_NO_ACTION = 2,
+  DEATH_FALL_GROUND_TRACE = 3,
+};
+
 class idAIDeathInfo {
 public:
   idAIDeathInfo();
@@ -148,6 +184,51 @@ public:
   }
   unsigned int GetAnimationFlags() const { return animationFlags; }
   void AddAnimationFlags(unsigned int value) { animationFlags |= value; }
+  idClipQuery& GetDeathSlideFromCollisionQuery() {
+    return deathSlideFromCollisionQuery;
+  }
+  idClipQuery& GetDeathGeometryCollisionQuery() {
+    return deathGeometryCollisionQuery;
+  }
+  idClipQuery& GetDeathGroundCollisionQuery() {
+    return deathGroundCollisionQuery;
+  }
+  idClipQuery& GetAnimationEventDeathTraceQuery() {
+    return animationEventDeathTraceQuery;
+  }
+  deathTraceAction_t GetAnimationEventDeathTraceAction() const {
+    return animationEventDeathTraceAction;
+  }
+  void SetAnimationEventDeathTraceAction(deathTraceAction_t value) {
+    animationEventDeathTraceAction = value;
+  }
+  bool HasFallTracePosition() const { return fallTracePositionValid; }
+  const idVec3& GetFallTracePosition() const { return fallTracePosition; }
+  void SetFallTracePosition(const idVec3& value) {
+    fallTracePosition = value;
+    fallTracePositionValid = true;
+  }
+  void ClearFallTracePosition() { fallTracePositionValid = false; }
+  bool HasDeathGroundClipModel() const { return deathGroundClipModelValid; }
+  const idBounds& GetDeathGroundClipModelBounds() const {
+    return deathGroundClipModelBounds;
+  }
+  void SetDeathGroundClipModelBounds(const idBounds& value) {
+    deathGroundClipModelBounds = value;
+    deathGroundClipModelValid = true;
+  }
+  void ClearDeathGroundClipModel() { deathGroundClipModelValid = false; }
+  void ResetCollisionStateForTest() {
+    deathSlideFromCollisionQuery.index = 0;
+    deathGeometryCollisionQuery.index = 0;
+    deathGroundCollisionQuery.index = 0;
+    animationEventDeathTraceQuery.index = 0;
+    animationEventDeathTraceAction = DEATH_RAGDOLL_ON_HIT;
+    fallTracePosition = {};
+    fallTracePositionValid = false;
+    deathGroundClipModelBounds = {};
+    deathGroundClipModelValid = false;
+  }
   void ConfigureForTest(const idEntity* attackerValue,
                         const idEntity* inflictorValue,
                         const idDamageImpulse& impulseValue,
@@ -170,6 +251,16 @@ private:
   idStr debugDeathAnimState;
   const idDeclAnimWebNode* deathAnimationNode{nullptr};
   unsigned int animationFlags{0};
+  idClipQuery deathSlideFromCollisionQuery{0};
+  idClipQuery deathGeometryCollisionQuery{0};
+  idClipQuery deathGroundCollisionQuery{0};
+  idClipQuery animationEventDeathTraceQuery{0};
+  deathTraceAction_t animationEventDeathTraceAction{
+      DEATH_RAGDOLL_ON_HIT};
+  idVec3 fallTracePosition{};
+  bool fallTracePositionValid{false};
+  idBounds deathGroundClipModelBounds{};
+  bool deathGroundClipModelValid{false};
 };
 
 class idGoreComponent {
@@ -1363,9 +1454,12 @@ public:
                : nullptr;
   }
   void ClearForTest() { excludedEntities.Clear(); }
+  void End() { ++endCount; }
+  int GetEndCountForTest() const { return endCount; }
 
 private:
   idList<idEntity*, 5> excludedEntities;
+  int endCount{0};
 };
 
 class idAnimStack;
@@ -2047,6 +2141,18 @@ public:
     return lastMeleeBlockedSource;
   }
   int GetMeleeBlockedEventCount() const { return meleeBlockedEventCount; }
+  idFiberHandle GetWaitFiberHandleForTest() const {
+    return waitFiberHandle;
+  }
+  idThreadHandle GetWaitThreadHandleForTest() const {
+    return waitThreadHandle;
+  }
+  void SetWaitFiberHandleForTest(idFiberHandle value) {
+    waitFiberHandle = value;
+  }
+  void SetWaitThreadHandleForTest(idThreadHandle value) {
+    waitThreadHandle = value;
+  }
 
 private:
   idFiniteStateMachine::fsmStatus_t status{
@@ -2058,6 +2164,8 @@ private:
   std::array<bool, 64> respondingEvents{};
   idAI2* lastMeleeBlockedSource{nullptr};
   int meleeBlockedEventCount{0};
+  idFiberHandle waitFiberHandle{};
+  idThreadHandle waitThreadHandle{};
 };
 
 class idAIActionFSM : public idLegsFSM {};
@@ -2104,7 +2212,6 @@ public:
 };
 class idAnimWebAI;
 class idAIAction {};
-class idEntitySpriteAnimator {};
 class idProxyMove : public idEntity {
 public:
   const idVec3& GetProxyPlayerOrigin() const { return proxyPlayerOrigin; }
@@ -2439,12 +2546,6 @@ private:
   float shieldRegenDelay{0.0F};
   float shieldRegenRate{0.0F};
   float shieldRegenInterval{0.0F};
-};
-
-template <typename T>
-class idInterpolate {
-public:
-  idRecoveredValue GetCurrentValue(...) { return {}; }
 };
 
 template <typename T>

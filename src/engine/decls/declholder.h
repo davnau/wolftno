@@ -15,12 +15,15 @@ class idDeclTable;
 class idMaterial;
 class idSoundShader;
 
+#ifndef SLOWMO_PARMS_T_DEFINED
+#define SLOWMO_PARMS_T_DEFINED
 struct slowmoParms_t {
   float easeInDuration{};
   float slowmoDuration{};
   float easeOutDuration{};
   float timeScale{};
 };
+#endif
 
 class idDeclGameTime final : public idDeclTypeInfo {
 public:

@@ -21,11 +21,9 @@ enum vertexMask_t : std::int32_t {
   VERTEX_MASK_INDEX_STRIP = 0x200,
 };
 
-std::uint32_t SwapVertexBuffer(char* buf, std::uint32_t numVerts,
-                               std::int16_t vertexMask);
-void PackToVertexFormat(const idDrawVert* dv, idVec3* packed, int numVerts,
-                        char vertexMask);
+int SwapVertexBuffer(void* buf, int numVerts, int vertexMask);
+void PackToVertexFormat(const idDrawVert* dv, void* packed, int numVerts,
+                        int vertexMask);
 void TransferVerts(int inputMask, int outputMask,
                    const idVertexScaleAndBias* vsb, int vertexCount,
-                   bool byteSwap, std::uint16_t* inputBuffer,
-                   float* outputBuffer);
+                   bool byteSwap, const void* inputBuffer, void* outputBuffer);

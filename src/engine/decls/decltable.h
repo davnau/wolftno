@@ -60,3 +60,12 @@ public:
   static idDeclInfoTemplate<idDeclTrailBeam> resourceList;
 };
 
+static_assert(sizeof(idTrailParm) == 0x10, "idTrailParm ABI drift");
+static_assert(sizeof(idDeclTrailBeam::trail_t) == 0x58,
+              "trail-beam trail properties ABI drift");
+static_assert(offsetof(idDeclTrailBeam, trailProperties) == 0x60,
+              "trail-beam trail properties offset drift");
+static_assert(offsetof(idDeclTrailBeam, quadProperties) == 0xB8,
+              "trail-beam quad properties offset drift");
+static_assert(sizeof(idDeclTrailBeam) == 0xC8,
+              "idDeclTrailBeam ABI drift");

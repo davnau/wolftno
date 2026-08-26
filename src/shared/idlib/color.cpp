@@ -13,6 +13,7 @@ const idColor idColor::colorCyan{0, 1, 1, 1};
 const idColor idColor::colorYellow{1, 1, 0, 1};
 const idColor idColor::colorWhite{1, 1, 1, 1};
 const idColor idColor::colorOrange{1, 0.5F, 0, 1};
+const idColor idColor::colorPurple{0.5F, 0, 0.5F, 1};
 const idColor idColor::colorMagenta{1, 0, 1, 1};
 const idColor idColor::colorXAxis = idColor::colorBlue;
 const idColor idColor::colorYAxis = idColor::colorRed;

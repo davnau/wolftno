@@ -7,16 +7,24 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifndef ID_GAME_TIME_UNIQUE_T_DEFINED
+#define ID_GAME_TIME_UNIQUE_T_DEFINED
 enum gameTimeUnique_t {};
+#endif
 
+#ifndef ID_TYPESAFE_NUMBER_DEFINED
+#define ID_TYPESAFE_NUMBER_DEFINED
 template <typename T, typename UniqueTag> class idTypesafeNumber {
 public:
   constexpr idTypesafeNumber() = default;
   constexpr idTypesafeNumber(T inputValue) : value(inputValue) {}
+  constexpr idTypesafeNumber(const idTypesafeNumber& other)
+      : value(other.value) {}
   constexpr T GetValue() const { return value; }
 
   T value{};
 };
+#endif
 
 using idAnimEventFindCallback = bool (*)(
     const idDeclMD6* decl, const idMD6Anim* anim, int lastFrame,

@@ -33,6 +33,8 @@ public:
   void WriteDeltaLongCounter(int oldValue, int newValue);
   int ReadDeltaShortCounter(int oldValue);
   int ReadDeltaLongCounter(int oldValue);
+  template <typename VectorType, int Maximum, int NumBits>
+  void WriteQuantizedVector(const VectorType& vector);
   void WriteByte(int value) { WriteBits(value, 8); }
   void WriteUShort(int value) { WriteBits(value, 16); }
   int ReadByte() { return ReadBits(8); }

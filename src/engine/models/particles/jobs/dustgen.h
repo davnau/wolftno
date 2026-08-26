@@ -4,6 +4,7 @@
 #include "engine/models/transparency/jobs/influencespherecull.h"
 #include "shared/idlib/bv/bounds.h"
 #include "shared/idlib/lookuptable.h"
+#include "shared/idlib/math/random.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -38,11 +39,6 @@ enum particleEditCalcType_t : std::int32_t {
   PARTICLE_EDIT_CALC_PARAMETRIC_INTEGRATE = 9,
   PARTICLE_EDIT_CALC_PARAMETRIC_INTEGRATE_MINMAX = 10,
   NUM_PARTICLE_EDIT_CALC_TYPES = 11,
-};
-
-class idRandom2 {
-public:
-  std::uint32_t seed;
 };
 
 class idParticleParm {

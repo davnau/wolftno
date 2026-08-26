@@ -25,7 +25,7 @@ class idDeclRenderParm;
 class idDeclSkins;
 class idRenderDebug;
 class idRenderWorldLocal;
-struct idSerializer;
+class idSerializer;
 struct idRenderModelCommitted;
 struct decalParams_t;
 struct sourceSurface_t;

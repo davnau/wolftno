@@ -3,7 +3,7 @@
 #include "shared/idlib/containers/array.h"
 #include "shared/idlib/text/str.h"
 
-struct idCmdArgs;
+class idCmdArgs;
 struct idCommandLink;
 
 class idConsoleHistory {

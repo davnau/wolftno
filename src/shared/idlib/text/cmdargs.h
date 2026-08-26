@@ -2,7 +2,8 @@
 
 #include "str.h"
 
-struct idCmdArgs {
+class idCmdArgs {
+public:
   int argc;
   char* argv[256];
   char tokenized[4096];

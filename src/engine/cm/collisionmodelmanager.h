@@ -10,6 +10,7 @@
 using cmHandle_t = int;
 
 class idCollisionQueryJobManager;
+class idCollisionQuery;
 class idRenderModelSurface;
 
 class idCollisionGridState {
@@ -128,6 +129,7 @@ public:
   clipResult_t GetClipResult(idCollisionQueryJobManager& jobs, std::size_t query) const;
   contactsResult_t GetStepMoveContactsResult(idCollisionQueryJobManager& jobs,
                                              std::size_t query) const;
+  bool GetStepMoveResult(trace_t* result, idCollisionQuery& query, bool peek);
 
   void StartQueryFrame();
   void EndQueryFrame();

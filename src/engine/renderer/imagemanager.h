@@ -5,7 +5,7 @@
 #include "engine/renderer/image.h"
 #include "shared/idlib/containers/BitArray.h"
 
-struct idCmdArgs;
+class idCmdArgs;
 class idCVar;
 
 class idImageManager {

@@ -31,6 +31,7 @@
 #include "engine/decls/animwebs/declanimweb.h"
 #include "engine/framework/keyinput.h"
 #include "engine/framework/coderesource.h"
+#include "engine/models/rendermodel.h"
 #include "engine/models/renderworld.h"
 #include "engine/sound/soundchannel.h"
 #include "shared/idlib/lib.h"
@@ -45,6 +46,16 @@
 #include <unordered_map>
 
 namespace {
+
+constexpr std::size_t kDeclEnvironmentParmBlockOffset = 0x50;
+
+const idParmBlock* GetEnvironmentParmBlock(const idDeclEnv* environment) {
+  return environment != nullptr
+             ? reinterpret_cast<const idParmBlock*>(
+                   reinterpret_cast<const std::byte*>(environment) +
+                   kDeclEnvironmentParmBlockOffset)
+             : nullptr;
+}
 
 struct overrideWebInfo_t {
   aiSubWeb_t subWeb;
@@ -345,6 +356,81 @@ idAI2* FindScriptProxyOwner(const idAIScriptProxy* proxy) {
   return nullptr;
 }
 
+class idAIPhysicsRuntime final : public idPhysics {
+public:
+  void Configure(int ownerEntityNumber, const idBounds& defaultBounds,
+                 const idBounds& playerBounds,
+                 const idVec3& gravityValue) {
+    entityNumber = ownerEntityNumber;
+    bounds[0] = defaultBounds;
+    bounds[1] = playerBounds;
+    gravityNormal = NormalizedOrZero(gravityValue);
+    if (gravityNormal.z == -1.0F || gravityNormal.LengthSqr() == 0.0F) {
+      gravityAxis = {};
+      gravityAxis[0] = {1.0F, 0.0F, 0.0F};
+      gravityAxis[1] = {0.0F, 1.0F, 0.0F};
+      gravityAxis[2] = {0.0F, 0.0F, 1.0F};
+    } else {
+      gravityAxis[2] = -gravityNormal;
+      gravityAxis[2].NormalVectors(gravityAxis[0], gravityAxis[1]);
+      gravityAxis[1] = -gravityAxis[1];
+    }
+    UpdateAbsoluteBounds();
+  }
+
+  const idBounds& GetAbsBounds() const override { return absoluteBounds[0]; }
+  const idBounds& GetBounds(int bodyId = -1) const override {
+    return bounds[bodyId == 1 ? 1 : 0];
+  }
+  const idVec3& GetOrigin() const override { return origin; }
+  const idMat3& GetAxis() const override { return gravityAxis; }
+  const idVec3& GetGravityNormal() const override { return gravityNormal; }
+  void SetOrigin(const idVec3& value, int bodyId = 0) override {
+    (void)bodyId;
+    origin = value;
+    UpdateAbsoluteBounds();
+  }
+  std::uint32_t GetContents() const override { return contents[0]; }
+  void SetContents(std::uint32_t value) override { contents[0] = value; }
+  void SetContents(std::uint32_t value, int bodyId) override {
+    if (bodyId >= 0 && bodyId < 2) contents[bodyId] = value;
+  }
+  void EnableClip() override { clipEnabled = true; }
+  void DisableClip() override { clipEnabled = false; }
+  void LinkClip() override { linked = true; }
+  void UnlinkClip() override { linked = false; }
+  int GetNumClipModels() const override { return 2; }
+  int GetClipMask(int bodyId = -1) const override {
+    return clipMasks[bodyId == 1 ? 1 : 0];
+  }
+  void SetClipMask(int mask, int bodyId = 0) override {
+    if (bodyId >= 0 && bodyId < 2) clipMasks[bodyId] = mask;
+  }
+  int GetEntityNumber() const override { return entityNumber; }
+  int GetPhysicsType() const override { return 2; }
+  const idMat3& GetGravityAxis() const { return gravityAxis; }
+
+private:
+  void UpdateAbsoluteBounds() {
+    for (int index = 0; index < 2; ++index) {
+      absoluteBounds[index] = bounds[index];
+      absoluteBounds[index].b[0] += origin;
+      absoluteBounds[index].b[1] += origin;
+    }
+  }
+
+  int entityNumber{-1};
+  idBounds bounds[2]{};
+  idBounds absoluteBounds[2]{};
+  idVec3 origin{};
+  idVec3 gravityNormal{0.0F, 0.0F, -1.0F};
+  idMat3 gravityAxis{};
+  std::uint32_t contents[2]{0, 0};
+  int clipMasks[2]{0, 0};
+  bool clipEnabled{false};
+  bool linked{false};
+};
+
 int executeDoomScriptStateToken;
 
 std::unordered_map<const idAttachmentCollection*,
@@ -458,6 +544,10 @@ int idTreeAnimator::GetGoreJointChildQueryCountForTest() const {
 idCodeResource<idDeclRenderParm> rp_aiRobotGlow("aiRobotGlow");
 idCodeResource<idDeclRenderParm> rp_aiSelfDestructGlow(
     "aiSelfDestructGlow");
+idCodeResource<idDeclRenderParm> rpWetParameters("wetParameters");
+idCodeResource<idDeclRenderParm> rpLandWetRippleIntensity(
+    "landWetRippleIntensity");
+idSuperScriptSystem* superScriptSystem = nullptr;
 idCVar g_showTrajectories("g_showTrajectories", "0", 0,
                           "show deferred AI trajectory queries");
 idCVar m_sensitivity("m_sensitivity", "1", 0, "mouse sensitivity");
@@ -543,7 +633,7 @@ idAI2::idAI2()
       animationControllerDroneAnimator(
           std::make_unique<idAnimator_Drone>()),
       meleeTrace(std::make_unique<idMeleeTrace>()),
-      moveState(std::make_unique<idAIMoveInterface>()),
+      moveState(std::make_unique<idAIMoveState>()),
       fsmManager(std::make_unique<idFSMManager>()),
       actionManager(std::make_unique<idAIActionManager>()),
       fsmCallback(std::make_unique<idAIFSMCallback>()),
@@ -3208,7 +3298,12 @@ bool idAI2::IsMoveDone(bool checkAlignment) {
   return moveState->GetMoveStatus(checkAlignment) == MOVE_STATUS_DONE;
 }
 // DIA: idAI2::GetMoveInterface
-idAIMoveInterface& idAI2::GetMoveInterface() { return *moveState; }
+idAIMoveInterface& idAI2::GetMoveInterface() {
+  static std::unordered_map<const idAI2*, idAIMoveInterface> interfaces;
+  idAIMoveInterface& moveInterface = interfaces[this];
+  moveInterface.Bind(moveState.get());
+  return moveInterface;
+}
 // DIA: idAI2::PlayDeathSound
 void idAI2::PlayDeathSound() {
   if (!deathSoundPlayed && deathSound != nullptr) {
@@ -3222,16 +3317,115 @@ void idAI2::PlayDeathSound() {
   }
 }
 // DIA: idAI2::UpdateWetness
-idRecoveredValue idAI2::UpdateWetness(...) { return RecordCoreCall("UpdateWetness"); }
+void idAI2::UpdateWetness() {
+  if (gameLocal == nullptr || GetPhysics() == nullptr) return;
+
+  const float currentTime =
+      static_cast<float>(gameLocal->GetGameTimeMs()) * 0.001F;
+  const idRenderWorld* renderWorld = gameLocal->GetRenderWorld();
+  const idDeclEnv* environment =
+      renderWorld != nullptr
+          ? renderWorld->FindEnvironmentDecl(GetPhysics()->GetOrigin())
+          : nullptr;
+  const idParmBlock* environmentParms =
+      GetEnvironmentParmBlock(environment);
+  const float wetIntensity =
+      environmentParms != nullptr
+          ? environmentParms->GetFloat(rpLandWetRippleIntensity.Get(),
+                                       nullptr)
+          : 0.0F;
+
+  if (wetIntensity > wetInterpolator.GetCurrentValue(currentTime)) {
+    wetInterpolator.startTime = currentTime;
+    wetInterpolator.startValue = wetIntensity;
+  }
+
+  const idVec4 wetParameters{
+      wetInterpolator.GetCurrentValue(currentTime), 0.0F, 0.0F, 0.0F};
+  idRenderModel* renderModel =
+      presentable != nullptr ? presentable->GetSourceRenderModelForAI()
+                             : GetActorModelForTest();
+  if (renderModel == nullptr) return;
+
+  renderModel->SetParm(rpWetParameters.Get(), wetParameters);
+  if (presentable == nullptr) {
+    presentable = ownedEffectsPresentable.get();
+    presentable->SetSourceRenderModelForAI(renderModel);
+  }
+  presentable->Present();
+}
 // DIA: idAI2::UpdateRenderParamBlends
-idRecoveredValue idAI2::UpdateRenderParamBlends(...) { return RecordCoreCall("UpdateRenderParamBlends"); }
+void idAI2::UpdateRenderParamBlends() {
+  if (gameLocal == nullptr) return;
+
+  const float currentTime =
+      static_cast<float>(gameLocal->GetGameTimeMs()) * 0.001F;
+  for (int index = 0; index < renderParameterBlends.Num(); ++index) {
+    idAIVolatile::idAIRenderParamBlend& blend =
+        renderParameterBlends[index];
+    idCodeResource<idDeclRenderParm>* renderParm =
+        GetRenderParam(blend.renderParam);
+    if (renderParm == nullptr) continue;
+
+    if (presentable == nullptr) presentable = ownedEffectsPresentable.get();
+    presentable->SetParm(renderParm->Get(),
+                         blend.interpolation.GetCurrentValue(currentTime));
+  }
+}
 // DIA: idAIScriptProxy::PauseFiberTillActionCompletes
-idRecoveredValue idAIScriptProxy::PauseFiberTillActionCompletes(...) {
-  return {};
+void idAIScriptProxy::PauseFiberTillActionCompletes(
+    idFiberHandle fiberHandle) {
+  if (superScriptSystem == nullptr ||
+      !superScriptSystem->IsThreadHandleValid(fiberHandle)) {
+    return;
+  }
+
+  idAI2* owner = FindScriptProxyOwner(this);
+  if (owner != nullptr) {
+    idAIActionFSM* actionFSM = owner->actionManager->GetActionFSM();
+    const idFiberHandle waitingFiber =
+        actionFSM->GetWaitFiberHandleForTest();
+    if (waitingFiber.value != 0) {
+      if (superScriptSystem->IsThreadHandleValid(waitingFiber)) {
+        idLib::Error(
+            "Fiber tried to wait on action FSM, but the actionFSM is already "
+            "waiting on another fiber");
+      }
+      idLib::Error(
+          "Fiber tried to wait on action FSM, but the actionFSM is already "
+          "waiting on a dead fiber");
+    }
+    actionFSM->SetWaitFiberHandleForTest(fiberHandle);
+  }
+  superScriptSystem->WaitForFSM();
 }
 // DIA: idAIScriptProxy::PauseThreadTillActionCompletes
-idRecoveredValue idAIScriptProxy::PauseThreadTillActionCompletes(...) {
-  return {};
+void idAIScriptProxy::PauseThreadTillActionCompletes(idThread* thread) {
+  if (thread == nullptr) return;
+
+  idAI2* owner = FindScriptProxyOwner(this);
+  if (owner != nullptr) {
+    idAIActionFSM* actionFSM = owner->actionManager->GetActionFSM();
+    const idThreadHandle waitingThread =
+        actionFSM->GetWaitThreadHandleForTest();
+    if (waitingThread.value != 0) {
+      idThread* existingThread = idThread::Find(waitingThread.value);
+      if (existingThread != nullptr) {
+        idLib::Error(
+            "Thread '%s' tried to wait on action FSM, but the action FSM is "
+            "already waiting on thread '%s'",
+            thread->GetThreadNameForTest().data,
+            existingThread->GetThreadNameForTest().data);
+      }
+      idLib::Error(
+          "Thread '%s' tried to wait on action FSM, but the actionFSM is "
+          "already waiting on a dead thread",
+          thread->GetThreadNameForTest().data);
+    }
+    actionFSM->SetWaitThreadHandleForTest(
+        thread->GetThreadHandleForTest());
+  }
+  thread->WaitForFSM(true);
 }
 // DIA: idAnimator_TurretNxN<3>::`scalar deleting destructor'
 // DIA: idAnimator_TurretNxN<3>::SetParameters
@@ -3308,7 +3502,80 @@ void idAI2::SetRobotChargingDone() {
   }
 }
 // DIA: idAI2::SetEMPStunned
-idRecoveredValue idAI2::SetEMPStunned(...) { return RecordCoreCall("SetEMPStunned"); }
+void idAI2::SetEMPStunned(bool stun, bool forceForever) {
+  if (!usesEMPStun || IsDying() || IsDead()) return;
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  if (stun) {
+    if (endStunnedTime != 0) return;
+
+    if (!usesDrone) {
+      memory->SetCurScenePoint(this, currentTime, nullptr);
+    }
+
+    if (forceForever || aiEventState.empStunDuration < 0.0F) {
+      aiEventState.empStunDuration = -1.0F;
+    } else {
+      endStunnedTime =
+          currentTime +
+          static_cast<int>(aiEventState.empStunDuration * 1000.0F);
+    }
+
+    if (idFiniteStateMachine* const alertFSM =
+            fsmManager->FindAlertCycleFSM()) {
+      alertFSM->Restart(gameLocal->GetGameTimeMs());
+    }
+
+    if (robotState.usesRobot) {
+      const blendParms_t blendParameters(200);
+      ForceAndChangeAnimWebState("stun", "stun_enter", "stun", "stun_mh",
+                                &blendParameters);
+      SetAIClip();
+    }
+
+    if (fireControl != nullptr) {
+      fireControl->SetFireMode(this, FIREMODE_HOLDFIRE);
+    }
+    coreState.coverAction = COVERACTION_NONE;
+    coreState.coverActionTimestamp = gameLocal->GetGameTimeMs();
+    meleeTrace->End();
+    animEventState.meleeTraceActive = false;
+    SetLockHeadTracking(true);
+    bodyRotationEnabled = false;
+    return;
+  }
+
+  if (endStunnedTime == 0) return;
+  endStunnedTime = 0;
+  if (robotState.usesRobot) {
+    idAnimator_AnimWeb* const bodyAnimator =
+        animWebAnimators[AIANIMWEB_BODY].get();
+    const idDeclAnimWeb* const declaration = bodyAnimator->GetDeclaration();
+    if (!IsDying() && !IsDead() && declaration != nullptr) {
+      const animWebSubWebIndex_t stunWeb =
+          declaration->GetSubWebIndexForName("stun");
+      if (stunWeb.value >= 0 &&
+          bodyAnimator->GetCurrentSubWebIndex().value == stunWeb.value) {
+        idStr exitState;
+        idStr exitSubWeb;
+        GetIdleStateName(&exitState);
+        GetSubWebPrefix(aiSubWeb_t::combat, &exitSubWeb);
+        const animWebSubWebIndex_t idleWeb =
+            declaration->GetSubWebIndexForName(exitSubWeb.data);
+        const animWebStateIndex_t idleState =
+            declaration->GetStateIndexForName(exitState.data);
+        if (idleWeb.value >= 0 && idleState.value >= 0) {
+          bodyAnimator->ChangeState(
+              idAnimWebIndex{idleWeb.value}, idAnimWebIndex{idleState.value},
+              1, 0, 0);
+        }
+      }
+    }
+    ClearAIClip();
+  }
+  SetLockHeadTracking(false);
+  bodyRotationEnabled = true;
+}
 // DIA: idAI2::InhibitRunning
 void idAI2::InhibitRunning(bool inhibit) {
   if (stationaryMode ||
@@ -3387,7 +3654,66 @@ void idAI2::SetAccuracy(aiAccuracy_t accuracy) {
   focusInfos[0]->SetTrackingParmsIndex(static_cast<int>(accuracy));
 }
 // DIA: idAI2::InitPhysics
-idRecoveredValue idAI2::InitPhysics(...) { return RecordCoreCall("InitPhysics"); }
+void idAI2::InitPhysics() {
+  if (defaultPhysicsObjectForInit == nullptr) {
+    defaultPhysicsObjectForInit = GetPhysics();
+  }
+
+  const idBounds defaultBounds =
+      defaultPhysicsObjectForInit != nullptr
+          ? defaultPhysicsObjectForInit->GetBounds(0)
+          : idBounds{};
+  const idVec3 collisionSize = aiConstants->physics.playerCollisionSize;
+  const idBounds playerBounds{{{-collisionSize.x, -collisionSize.y, 0.0F},
+                               {collisionSize.x, collisionSize.y,
+                                collisionSize.z}}};
+  const idVec3 gravity = gameLocal->GetGravity();
+
+  auto physicsObject = std::make_unique<idAIPhysicsRuntime>();
+  physicsObject->Configure(GetEntityNumber(), defaultBounds, playerBounds,
+                           gravity);
+  const idMat3 gravityAxis = physicsObject->GetGravityAxis();
+
+  const idVec3 modelForward = (*GetPresentableAxis())[0];
+  const idVec3 idealDirection{modelForward * gravityAxis[0],
+                              modelForward * gravityAxis[1],
+                              modelForward * gravityAxis[2]};
+  moveState->GetMoveOrientation()->SetIdealDir(this, idealDirection);
+
+  physicsObject->SetOrigin(spawnPosition, -1);
+  ownedAIPhysicsObject = std::move(physicsObject);
+  SetPhysics(ownedAIPhysicsObject.get());
+  SetSolid(true);
+
+  const int numberOfClipModels = GetPhysics()->GetNumClipModels();
+  if (numberOfClipModels == 1) {
+    GetPhysics()->SetClipMask(defaultPhysicsClipMask, 0);
+  } else if (numberOfClipModels == 2) {
+    GetPhysics()->SetClipMask(defaultPhysicsClipMask, 0);
+    GetPhysics()->SetClipMask(0, 1);
+  }
+
+  initPhysicsObservation.initialized = true;
+  initPhysicsObservation.clonedDefaultClipModel =
+      defaultPhysicsObjectForInit != nullptr;
+  initPhysicsObservation.canSetCrouchedPhysics = canSetCrouchedPhysics;
+  initPhysicsObservation.entityNumber = GetEntityNumber();
+  initPhysicsObservation.numberOfClipModels = numberOfClipModels;
+  initPhysicsObservation.cylinderSides = 8;
+  initPhysicsObservation.clipMasks[0] = GetPhysics()->GetClipMask(0);
+  initPhysicsObservation.clipMasks[1] = GetPhysics()->GetClipMask(1);
+  initPhysicsObservation.contents[0] = defaultPhysicsContents;
+  initPhysicsObservation.contents[1] = 8U;
+  initPhysicsObservation.mass = -1.0F;
+  initPhysicsObservation.crouchedHeight =
+      aiConstants->physics.heightCrouched;
+  initPhysicsObservation.gravity = gravity;
+  initPhysicsObservation.origin = spawnPosition;
+  initPhysicsObservation.idealMoveDirection = idealDirection;
+  initPhysicsObservation.gravityAxis = gravityAxis;
+  initPhysicsObservation.defaultClipBounds = defaultBounds;
+  initPhysicsObservation.playerClipBounds = playerBounds;
+}
 // DIA: `idAI2::InitPhysics'::`1'::dtor$0
 // DIA: `idAI2::InitPhysics'::`1'::dtor$1
 // DIA: idAI2::InitPerception
@@ -3404,19 +3730,506 @@ void idAI2::InitPerception(alertCycle_t cycle) {
   maxFireRange = (std::max)(actorPerceptionRadius, maxFireRange);
 }
 // DIA: idAI2::OnHide
-idRecoveredValue idAI2::OnHide(...) { return RecordCoreCall("OnHide"); }
+void idAI2::OnHide(bool stopFx) {
+  const bool wasHidden = IsHidden();
+  idActor::OnHide(stopFx);
+  BecomeInactive(7);
+  if (wasHidden) return;
+
+  gameLocal->RemoveActiveAI(this);
+  gameLocal->RemoveAIWorldStateUser(this);
+  SetSolid(false);
+  if (flareHandle != -1) {
+    gameLocal->StopGlobalLensFlare(flareHandle);
+  }
+}
 // DIA: idAI2::UpdateSpriteAnimator
-idRecoveredValue idAI2::UpdateSpriteAnimator(...) { return RecordCoreCall("UpdateSpriteAnimator"); }
+void idAI2::UpdateSpriteAnimator() {
+  if (spriteAnimatorDeclaration == nullptr ||
+      spriteAnimatorEntity == nullptr ||
+      spriteAnimatorEntity->GetEntityNumber() < 0 ||
+      gameLocal->GetEntityByNumber(spriteAnimatorEntity->GetEntityNumber()) !=
+          spriteAnimatorEntity) {
+    return;
+  }
+
+  idEntitySpriteAnimator* const spriteAnimator =
+      idEntitySpriteAnimator::CastTo(spriteAnimatorEntity);
+  if (spriteAnimator == nullptr) return;
+
+  const bool aiIsDead = IsDead() || IsDying() || DeathPending();
+  if (aiIsDead) {
+    if (!spriteAnimator->IsDead()) {
+      idLib::Printf("AI '%s' is dead, but sprite animator hasn't died!?",
+                    GetName());
+      if (presentable == nullptr) {
+        presentable = ownedEffectsPresentable.get();
+      }
+      presentable->SetAISphereModelContents(0);
+      spriteAnimator->PlaySpriteAnim(SPRITEANIM_DIE);
+    }
+    return;
+  }
+
+  if (spriteAnimator->GetCurrentStateForTest() <= SPRITEANIM_WALK) {
+    const idVec3 velocity = GetPhysics()->GetLinearVelocity(0);
+    spriteAnimator->PostSpriteAnim(velocity.LengthSqr() > 0.0625F);
+  }
+}
 // DIA: idAI2::OnIgnoreDamage
-idRecoveredValue idAI2::OnIgnoreDamage(...) { return RecordCoreCall("OnIgnoreDamage"); }
+void idAI2::OnIgnoreDamage(idEntity* attacker, float damage) {
+  idEntity* trigger = ignoredDamageTrigger;
+  if (trigger != nullptr && trigger->GetEntityNumber() >= 0 &&
+      gameLocal->GetEntityByNumber(trigger->GetEntityNumber()) != trigger) {
+    trigger = nullptr;
+  }
+
+  bool activateTrigger = trigger != nullptr;
+  if (activateTrigger && skipDamageTriggerOnFriendlyFire &&
+      attacker != nullptr) {
+    const idFaction* const faction = GetFaction();
+    if (faction != nullptr &&
+        faction->GetAttitudeTowards(attacker) >=
+            idRelationship::ATTITUDE_LIKE) {
+      activateTrigger = false;
+    }
+  }
+  if (activateTrigger) {
+    trigger->PostEventMS(&EV_Activate, 0,
+                         attacker != nullptr ? attacker : this);
+  }
+
+  if (ai_debugHealth.GetInteger() >= 1) {
+    const idVec3& impactPoint = GetPhysics()->GetOrigin();
+    ShowDebugDamageText(
+        damage, gameLocal->GetAIIncomingDamageScale(), 0.0F, 0.0F, 0.0F,
+        0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 0.0F, nullptr, &impactPoint);
+  }
+}
 // DIA: idAI2::UpdateDrop
-idRecoveredValue idAI2::UpdateDrop(...) { return RecordCoreCall("UpdateDrop"); }
+void idAI2::UpdateDrop() {
+  if (dropState != 1) return;
+
+  trace_t result{};
+  if (gameLocal->GetStepMoveQueryResult(dropToGroundQueryIndex, result,
+                                        false)) {
+    dropToGroundQueryIndex = 0;
+    if (result.fraction < 1.0F) dropState = 2;
+  }
+  if (dropState == 2) return;
+
+  idVec3 end = GetPhysics()->GetOrigin();
+  end.z -= 290.0F;
+  idMat3 identity;
+  identity[0] = {1.0F, 0.0F, 0.0F};
+  identity[1] = {0.0F, 1.0F, 0.0F};
+  identity[2] = {0.0F, 0.0F, 1.0F};
+  dropToGroundQueryIndex = gameLocal->SubmitTranslationQuery(
+      GetPhysics()->GetOrigin(), end, 0, identity, 106513,
+      GetEntityNumber(), false,
+      "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(6549) : "
+      "DroppingGuy");
+}
 // DIA: idAI2::PlayAdditivePain
-idRecoveredValue idAI2::PlayAdditivePain(...) { return RecordCoreCall("PlayAdditivePain"); }
+bool idAI2::PlayAdditivePain(
+    idEntity* inflictor, idEntity* attacker,
+    const idDeclDamage* damageDeclaration, float damage,
+    const idVec3& impactPoint, const idVec3& impactDirection,
+    idIndex<short, invalidJointIndex_t> joint, bool blind) {
+  (void)inflictor;
+  (void)attacker;
+  (void)damageDeclaration;
+  (void)impactPoint;
+  ++additivePainObservation.callCount;
+
+  if ((componentTimeLine->RunningActionScript(this) &&
+       (actionScriptFlags & 0x80) != 0) ||
+      !additivePainEnabled || additivePainSuppressed) {
+    return false;
+  }
+
+  idTreeAnimator* const treeAnimator = effectsTreeAnimator;
+  if (presentable == nullptr) presentable = ownedEffectsPresentable.get();
+  presentable->UpdateModelTransform();
+  ++additivePainObservation.presentableUpdateCount;
+
+  const damageDirection_t damageDirection =
+      blind ? DAMAGEDIR_BLINDED
+            : idActor::GetDamageDirection(additivePainModelAxis,
+                                          impactDirection, 4);
+  additivePainObservation.direction = damageDirection;
+  localVoiceController->PlayVoice(this, AIVOICE_COMBAT_HURT);
+  ++additivePainObservation.voiceCount;
+
+  if (twitchPainDeclaration == nullptr) return false;
+  const unsigned short painAlias =
+      twitchPainDeclaration->GetTwitchPainAliasHandle(
+          treeAnimator, static_cast<int>(damageDirection), joint.value);
+  additivePainObservation.aliasHandle = painAlias;
+  if (painAlias != 0xFFFFU) {
+    const float targetAlpha = RandomFloat(0.0F, 0.75F) + 0.25F;
+    painAnimator->PlayAnim(painAlias, gameLocal->GetGameTimeMs(), 1.0F,
+                           5, 5, targetAlpha);
+  }
+
+  if (ai_debugPain.GetInteger() != 0 &&
+      ai_debugLevel.GetInteger() != 0) {
+    const float maximumHealth =
+        healthComponent->GetMaximumBaseHealthForTest();
+    const float damagePercent = damage / maximumHealth * 100.0F;
+    const char* const groupName =
+        twitchPainDeclaration->GetTwitchGroupName(joint.value);
+    const char* const aliasName =
+        treeAnimator != nullptr
+            ? treeAnimator->FindAliasNameForAI(painAlias)
+            : nullptr;
+    const char* const jointName =
+        treeAnimator != nullptr
+            ? treeAnimator->GetJointNameForAI(joint.value)
+            : "";
+    ++additivePainObservation.debugCount;
+    additivePainObservation.debugJointName = jointName;
+    additivePainObservation.debugGroupName =
+        groupName != nullptr ? groupName : "";
+    additivePainObservation.debugAliasName =
+        aliasName != nullptr ? aliasName : "<INVALID ALIAS>";
+    additivePainObservation.debugDamage = damage;
+    additivePainObservation.debugDamagePercent = damagePercent;
+    idLib::Printf(
+        "^2Twitch: joint: '%s', joint group: '%s', alias: '%s' damage: "
+        "%.0f (%.0f%%)\n",
+        jointName, groupName != nullptr ? groupName : "",
+        aliasName != nullptr ? aliasName : "<INVALID ALIAS>", damage,
+        damagePercent);
+  }
+  return true;
+}
 // DIA: idAI2::PushFromCollision
-idRecoveredValue idAI2::PushFromCollision(...) { return RecordCoreCall("PushFromCollision"); }
+void idAI2::PushFromCollision(const idBounds& bounds,
+                              idClipQuery& clipQuery) {
+  std::vector<idVec3> contactPoints;
+  if (clipQuery.index != 0 &&
+      gameLocal->GetClipQueryResult(clipQuery.index, contactPoints, false)) {
+    clipQuery.index = 0;
+    if (!contactPoints.empty()) {
+      idVec3 averageDirection{};
+      for (const idVec3& contactPoint : contactPoints) {
+        const idVec3 difference =
+            GetPhysics()->GetOrigin() - contactPoint;
+        const float lengthSquared = difference.LengthSqr();
+        const float inverseLength =
+            1.0F / std::sqrt((std::max)(lengthSquared, 1.17549435e-38F));
+        averageDirection.x += difference.x * inverseLength;
+        averageDirection.y += difference.y * inverseLength;
+      }
+      averageDirection *=
+          1.0F / static_cast<float>(contactPoints.size());
+      averageDirection.z = 0.0F;
+      if (averageDirection.x != 0.0F || averageDirection.y != 0.0F ||
+          averageDirection.z != 0.0F) {
+        const idVec3 pushVelocity = averageDirection * 100.0F;
+        moveState->StartPush(pushVelocity, 200);
+        if (ai_debugPushFromCollision.GetInteger() != 0) {
+          idRenderDebug* const renderDebug =
+              gameLocal->GetRenderWorld()->GetRenderDebug();
+          for (const idVec3& contactPoint : contactPoints) {
+            renderDebug->DebugPoint(idColor::colorPurple, contactPoint, 1000,
+                                    false);
+          }
+          const idVec3 arrowEnd =
+              GetPhysics()->GetOrigin() + pushVelocity;
+          renderDebug->DebugArrow3(
+              idColor::colorPurple, GetPhysics()->GetOrigin(), arrowEnd,
+              10.0F, 1000, false);
+        }
+      }
+    }
+  }
+
+  const bool traceModelAvailable = gameLocal->AcquireRecycledTraceModel();
+  idMat3 inverseAxis = GetPhysics()->GetAxis();
+  inverseAxis.InverseSelf();
+  idBounds localBounds;
+  localBounds.FromTransformedBounds(bounds, -GetPhysics()->GetOrigin(),
+                                    inverseAxis);
+  clipQuery.index = gameLocal->SubmitClipQuery(
+      localBounds, GetPhysics()->GetOrigin(), GetPhysics()->GetAxis(), 17,
+      0x2000,
+      "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(7772) : "
+      "PushAwayFromCollisionCheck");
+  gameLocal->RecycleTraceModel(traceModelAvailable, true);
+
+  if (ai_debugPushFromCollision.GetInteger() != 0) {
+    idBounds worldBounds;
+    worldBounds.FromTransformedBounds(localBounds,
+                                      GetPhysics()->GetOrigin(),
+                                      GetPhysics()->GetAxis());
+    gameLocal->GetRenderWorld()->GetRenderDebug()->DebugBounds(
+        traceModelAvailable ? idColor::colorCyan : idColor::colorRed,
+        worldBounds, idVec3{}, 10, false);
+  }
+}
 // DIA: idAI2::CheckDeathCollision
-idRecoveredValue idAI2::CheckDeathCollision(...) { return RecordCoreCall("CheckDeathCollision"); }
+void idAI2::CheckDeathCollision() {
+  if (deathInfo->GetStartDeathTime() < 0) return;
+
+  const idAnimator_AF* const articulatedFigure = GetAF();
+  if (articulatedFigure != nullptr &&
+      (articulatedFigure->IsActive() ||
+       articulatedFigure->IsClientAuthoritativeActive())) {
+    return;
+  }
+
+  auto expandBounds = [](idBounds& value, const idVec3& amount) {
+    value[0] -= amount;
+    value[1] += amount;
+  };
+  auto translateBounds = [](idBounds& value, const idVec3& amount) {
+    value[0] += amount;
+    value[1] += amount;
+  };
+  auto boundsCompare = [](const idBounds& left, const idBounds& right,
+                          const float epsilon) {
+    for (int bound = 0; bound < 2; ++bound) {
+      for (int component = 0; component < 3; ++component) {
+        if (std::fabs(left[bound][component] - right[bound][component]) >
+            epsilon) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  auto disableRagdollAfterPenetration = [this]() {
+    StopRagdoll();
+    reasonForRagdoll = "disabled due to penetration";
+    ragdollEnabled = false;
+  };
+
+  idBounds deathBounds;
+  deathBounds.Clear();
+  if (deathSlideFromCollisionEnabled) {
+    if (ExpandBoundsByJoints(deathBounds, 4)) {
+      idBounds slideBounds = deathBounds;
+      expandBounds(slideBounds, {16.0F, 16.0F, -4.0F});
+      translateBounds(slideBounds, {0.0F, 0.0F, 4.0F});
+      PushFromCollision(
+          slideBounds, deathInfo->GetDeathSlideFromCollisionQuery());
+    } else {
+      deathSlideFromCollisionEnabled = false;
+    }
+  }
+
+  if (!ragdollEnabled) return;
+
+  const unsigned int deathFlags = deathInfo->GetDeathFlags();
+  if (!IsDying() && (deathFlags & 0x100U) == 0U) return;
+
+  idClipQuery& animationEventTraceQuery =
+      deathInfo->GetAnimationEventDeathTraceQuery();
+  trace_t animationEventTrace;
+  if (animationEventTraceQuery.index != 0 &&
+      gameLocal->GetStepMoveQueryResult(animationEventTraceQuery.index,
+                                        animationEventTrace, false)) {
+    animationEventTraceQuery.index = 0;
+    const deathTraceAction_t action =
+        deathInfo->GetAnimationEventDeathTraceAction();
+    const bool noHit = animationEventTrace.fraction == 1.0F;
+    if ((noHit && action == DEATH_RAGDOLL_ON_NO_HIT) ||
+        (!noHit && action == DEATH_RAGDOLL_ON_HIT)) {
+      StartRagdoll(ragdollInfo, "death trace (anim event)");
+      return;
+    }
+    if (!noHit && action == DEATH_FALL_GROUND_TRACE) {
+      deathInfo->SetFallTracePosition(animationEventTrace.endpos);
+    }
+  }
+
+  if ((deathFlags & 2U) != 0U && (deathFlags & 0x80U) != 0U) {
+    if (deathInfo->HasFallTracePosition()) {
+      if (ai_debugDeath.GetInteger() != 0) {
+        gameLocal->GetRenderWorld()->GetRenderDebug()->DebugLine(
+            idColor::colorYellow, deathInfo->GetFallTracePosition(),
+            GetPhysics()->GetOrigin(), 10, false);
+      }
+      if (deathInfo->GetFallTracePosition().z + 20.0F >=
+          GetPhysics()->GetOrigin().z) {
+        deathInfo->SetDeathFlags(
+            (deathInfo->GetDeathFlags() | 8U) & ~0x80U);
+        return;
+      }
+    }
+    if (GetPhysics()->GetPhysicsType() == 3) {
+      const float verticalMovement = std::fabs(
+          GetPhysics()->GetOrigin().z -
+          GetPhysics()->GetOriginHistory(100).z);
+      if (verticalMovement <= 0.0F) {
+        StartRagdoll(ragdollInfo, "stopped falling");
+        return;
+      }
+    }
+  }
+
+  if (((deathFlags & 0x40U) == 0U &&
+       (deathFlags & 0x100U) == 0U) ||
+      usesDrone) {
+    return;
+  }
+
+  if (deathBounds[0].x > deathBounds[1].x &&
+      !ExpandBoundsByJoints(deathBounds, 4)) {
+    deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() & ~0x140U);
+    return;
+  }
+
+  const idColor* groundDebugColor = &idColor::colorRed;
+  if ((deathFlags & 0x40U) != 0U) {
+    idClipQuery& geometryQuery =
+        deathInfo->GetDeathGeometryCollisionQuery();
+    std::vector<idVec3> geometryContacts;
+    if (geometryQuery.index != 0 &&
+        gameLocal->GetClipQueryResult(geometryQuery.index,
+                                      geometryContacts, false)) {
+      geometryQuery.index = 0;
+      if (!geometryContacts.empty()) {
+        deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() & ~0x40U);
+        const idAnimator_AF::testSolidResult_t result =
+            StartRagdoll(ragdollInfo, "collided with geometry");
+        if (result == idAnimator_AF::TESTSOLID_IN_SOLID) {
+          disableRagdollAfterPenetration();
+        }
+        return;
+      }
+      deathInfo->SetDeathImmediateRagdoll(false);
+    }
+
+    idMat3 inverseAxis = GetPhysics()->GetAxis();
+    inverseAxis.InverseSelf();
+    idBounds localGeometryBounds;
+    localGeometryBounds.FromTransformedBounds(
+        deathBounds, -GetPhysics()->GetOrigin(), inverseAxis);
+    if ((deathFlags & 0x80U) == 0U) {
+      expandBounds(localGeometryBounds, {10.0F, 10.0F, 10.0F});
+      translateBounds(localGeometryBounds, {0.0F, 0.0F, 12.0F});
+    } else if (deathInfo->HasFallTracePosition() &&
+               std::fabs(deathInfo->GetFallTracePosition().z -
+                         GetPhysics()->GetOrigin().z) <= 50.0F) {
+      translateBounds(localGeometryBounds, {0.0F, 0.0F, 2.0F});
+    } else {
+      translateBounds(localGeometryBounds, {0.0F, 0.0F, -40.0F});
+    }
+
+    const bool traceModelAvailable =
+        gameLocal->AcquireRecycledTraceModel();
+    const idMat3& queryAxis = GetPhysics()->GetAxis();
+    const idVec3& queryOrigin = GetPhysics()->GetOrigin();
+    geometryQuery.index = gameLocal->SubmitClipQuery(
+        localGeometryBounds, queryOrigin, queryAxis, 17, 0x2000,
+        "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(7937) : "
+        "DeathGeometryCheck");
+    gameLocal->RecycleTraceModel(traceModelAvailable, true);
+
+    if (ai_debugDeath.GetInteger() != 0) {
+      idBounds worldGeometryBounds;
+      worldGeometryBounds.FromTransformedBounds(
+          localGeometryBounds, GetPhysics()->GetOrigin(),
+          GetPhysics()->GetAxis());
+      groundDebugColor = traceModelAvailable ? &idColor::colorPurple
+                                             : &idColor::colorRed;
+      gameLocal->GetRenderWorld()->GetRenderDebug()->DebugBounds(
+          *groundDebugColor, worldGeometryBounds, idVec3{}, 10, false);
+    }
+  }
+
+  if ((deathFlags & 0x100U) == 0U) return;
+
+  idClipQuery& groundQuery = deathInfo->GetDeathGroundCollisionQuery();
+  std::vector<idVec3> groundContacts;
+  if (groundQuery.index != 0 &&
+      gameLocal->GetContactsQueryResult(groundQuery.index,
+                                        groundContacts, false)) {
+    groundQuery.index = 0;
+    if (groundContacts.size() >= 4) {
+      if (!IsDying()) {
+        deathInfo->SetDeathFlags(deathInfo->GetDeathFlags() & ~0x100U);
+        return;
+      }
+
+      idBounds contactBounds;
+      contactBounds.Clear();
+      for (const idVec3& contact : groundContacts) {
+        contactBounds.AddPoint(contact);
+        if (ai_debugDeath.GetInteger() != 0) {
+          gameLocal->ShowCollisionPoint(contact);
+        }
+      }
+
+      idMat3 inverseAxis = GetPhysics()->GetAxis();
+      inverseAxis.InverseSelf();
+      idBounds localContactBounds;
+      localContactBounds.FromTransformedBounds(
+          contactBounds, -GetPhysics()->GetOrigin(), inverseAxis);
+
+      idBounds expectedContactBounds =
+          deathInfo->GetDeathGroundClipModelBounds();
+      expectedContactBounds[0].z = 0.0F;
+      expectedContactBounds[1].z = 0.0F;
+      if (!deathInfo->HasDeathGroundClipModel() ||
+          !boundsCompare(expectedContactBounds, localContactBounds, 5.0F)) {
+        const idAnimator_AF::testSolidResult_t result =
+            StartRagdoll(ragdollInfo, "only partial ground contact");
+        if (result == idAnimator_AF::TESTSOLID_IN_SOLID) {
+          disableRagdollAfterPenetration();
+          return;
+        }
+      }
+    } else {
+      idRagdollInfo noGroundContactInfo = ragdollInfo;
+      noGroundContactInfo.velocityTime = 16;
+      const idAnimator_AF::testSolidResult_t result = StartRagdoll(
+          noGroundContactInfo, "no ground contact");
+      if (result == idAnimator_AF::TESTSOLID_IN_SOLID) {
+        disableRagdollAfterPenetration();
+        return;
+      }
+    }
+  }
+
+  idMat3 inverseAxis = GetPhysics()->GetAxis();
+  inverseAxis.InverseSelf();
+  idBounds localGroundBounds;
+  localGroundBounds.FromTransformedBounds(
+      deathBounds, -GetPhysics()->GetOrigin(), inverseAxis);
+  expandBounds(localGroundBounds, {10.0F, 10.0F, 10.0F});
+  translateBounds(localGroundBounds, {0.0F, 0.0F, 12.0F});
+  localGroundBounds[1].z = localGroundBounds[0].z + 5.0F;
+
+  const bool groundTraceModelAvailable =
+      gameLocal->AcquireRecycledTraceModel();
+  deathInfo->SetDeathGroundClipModelBounds(localGroundBounds);
+  const idVec3 groundDirection = -*GetPresentableUpDir();
+  const idMat3& groundAxis = GetPhysics()->GetAxis();
+  const idVec3& groundOrigin = GetPhysics()->GetOrigin();
+  groundQuery.index = gameLocal->SubmitContactsQuery(
+      localGroundBounds, groundOrigin, groundDirection, 48.0F, groundAxis,
+      257, 0x2000,
+      "w:\\build\\tech5\\tungsten\\game\\ai\\AI2.cpp(8031) : "
+      "DeathGroundCheck");
+  gameLocal->RecycleTraceModel(groundTraceModelAvailable, true);
+
+  if (ai_debugDeath.GetInteger() != 0) {
+    idBounds sweptGroundBounds;
+    sweptGroundBounds.FromTransformedBounds(
+        localGroundBounds, GetPhysics()->GetOrigin(),
+        GetPhysics()->GetAxis());
+    sweptGroundBounds[0].z -= 48.0F;
+    if (groundTraceModelAvailable) {
+      groundDebugColor = &idColor::colorGreen;
+    }
+    gameLocal->GetRenderWorld()->GetRenderDebug()->DebugBounds(
+        *groundDebugColor, sweptGroundBounds, idVec3{}, 10, true);
+  }
+}
 // DIA: idAI2::DoMeleeDamage
 bool idAI2::DoMeleeDamage(idIndex<short, invalidJointIndex_t> jointIndex,
                           const idBounds& bounds,
@@ -4136,7 +4949,13 @@ bool idAI2::LKWBlind() {
   endBlindedTime = blindedDuration == -1.0F ? -1 : currentTime + 1000;
   endReblindCooldown = -1;
   ++lkwBlindEffectCount;
-  PlayAdditivePain();
+  idMat3 eyeAxis;
+  GetEyeAxis(&eyeAxis);
+  const short headJoint = effectsTreeAnimator != nullptr
+                              ? effectsTreeAnimator->FindJointIndexForAI("head")
+                              : static_cast<short>(-1);
+  PlayAdditivePain(nullptr, nullptr, nullptr, 0.0F, idVec3{}, eyeAxis[0],
+                   idIndex<short, invalidJointIndex_t>(headJoint), true);
   return true;
 }
 // DIA: idAI2::UpdateGrappleActivation
@@ -9881,7 +10700,9 @@ void idAI2::UpdateDeaths() {
         ai->PlayAdditivePain(
             inflictor, attacker, largestImpulse->damageDecl, recentDamage,
             largestImpulse->impactPoint, largestImpulse->impactDir,
-            largestImpulse->jointIndex, false);
+            idIndex<short, invalidJointIndex_t>(
+                largestImpulse->jointIndex.value),
+            false);
         ++ai->updateDeathsPainObservation.callCount;
         ai->updateDeathsPainObservation.inflictor = inflictor;
         ai->updateDeathsPainObservation.attacker = attacker;
@@ -11350,9 +12171,7 @@ idCVar ai_controlHeartBeatIntervalsMax("ai_controlHeartBeatIntervalsMax", "0", 0
 // DIA: `dynamic initializer for 'ai_controlTakeDownDistance''
 idCVar ai_controlTakeDownDistance("ai_controlTakeDownDistance", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'rpWetParameters''
-idCVar rpWetParameters("rpWetParameters", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic initializer for 'rpLandWetRippleIntensity''
-idCVar rpLandWetRippleIntensity("rpLandWetRippleIntensity", "0", 0, "recovered AI tuning variable");
 // DIA: `dynamic atexit destructor for 'ai_limitFSMUpdates''
 // DIA: `dynamic atexit destructor for 'ai_debugLevel''
 // DIA: `dynamic atexit destructor for 'ai_debugTracking''

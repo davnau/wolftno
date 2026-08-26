@@ -44,6 +44,12 @@ public:
   void Show(); void ShutdownFXMgr(); void SetLocalClipModelContents(std::uint32_t value);
   void SetParm(const std::string& name,float value); void SetParm(const std::string& name,int value); void SetParm(const std::string& name,const idVec3& value);
   void SetParm(const idDeclRenderParm* parm, float value);
+  void SetSourceRenderModelForAI(idRenderModel* value) {
+    sourceRenderModel = value;
+  }
+  idRenderModel* GetSourceRenderModelForAI() const {
+    return sourceRenderModel;
+  }
   void Shutdown(); const std::string& GetRenderModel_TreeAnimator()const; const std::string& GetRenderModel_DiscreteAnimation()const; const std::string& GetRenderModel_Particle()const;
   void UpdateClientCollision(); void SetCustomMaterial(const std::string& material); void InheritPropertiesFromModel(const idPresentable& model); void UpdateModelTransform();
   void ClientOverrideClipContents(std::uint32_t value); int GetSoundEmitter(); void UpdateSound(); void UpdateSound(int time); bool IsPlayingSound(int channel)const;
@@ -73,14 +79,31 @@ public:
   float GetModelFadeForTest() const { return modelFade; }
   int GetModelFadeSetCountForTest() const { return modelFadeSetCount; }
   int GetUpdateFXCountForTest() const { return updateFXCount; }
+  int GetRenderParmSetCountForTest() const { return renderParmSetCount; }
+  const idDeclRenderParm* GetLastRenderParmForTest() const {
+    return lastRenderParm;
+  }
+  float GetLastRenderParmValueForTest() const {
+    return lastRenderParmValue;
+  }
+  void SetAISphereModelAvailableForTest(bool value) {
+    aiSphereModelAvailable = value;
+  }
+  bool HasAISphereModelForTest() const { return aiSphereModelAvailable; }
+  void SetAISphereModelContents(std::uint32_t value) {
+    if (aiSphereModelAvailable) aiSphereModelContents = value;
+  }
+  std::uint32_t GetAISphereModelContentsForTest() const {
+    return aiSphereModelContents;
+  }
   void SetOrigin(const idVec3& value){origin=value;} void SetAxis(const idMat3& value){axis=value;} void SetPlayerEntity(idEntity* value){playerEntity=value;} void SetTargetLockable(bool value){targetLockable=value;}
 
 private:
   friend class idAI2;
   struct Sound { std::string shader; float volume{1}; float pitch{1}; bool playing{true}; };
   std::unordered_map<int,Sound> sounds; std::vector<std::string> effects; std::unordered_map<std::string,float> floatParms; std::unordered_map<std::string,idVec3> vectorParms;
-  idClipModelInfo clipInfo; idPresentable* parent{nullptr}; idPresentable* groupMaster{nullptr}; idEntity* playerEntity{nullptr}; std::string renderModel; std::string customMaterial;
-  idVec3 origin{}; idMat3 axis{}; int entityNumber{-1}; int team{0}; int ownerPlayerIndex{-1}; int presentCount{0}; float volumeAdjustment{1}; float aiRobotGlow{0.0F}; float modelFade{1.0F}; int modelFadeSetCount{0}; int updateFXCount{0}; bool clearVolumeAdjustment{false}; bool hidden{false}; bool deleted{false}; bool replicated{false}; bool inEntityLUT{false}; bool fxInitialized{false}; bool targetLockable{false}; bool aiLootable{false}; bool aiDeathInitialized{false};
+  idClipModelInfo clipInfo; idPresentable* parent{nullptr}; idPresentable* groupMaster{nullptr}; idEntity* playerEntity{nullptr}; idRenderModel* sourceRenderModel{nullptr}; std::string renderModel; std::string customMaterial;
+  idVec3 origin{}; idMat3 axis{}; int entityNumber{-1}; int team{0}; int ownerPlayerIndex{-1}; int presentCount{0}; float volumeAdjustment{1}; float aiRobotGlow{0.0F}; float modelFade{1.0F}; int modelFadeSetCount{0}; int updateFXCount{0}; int renderParmSetCount{0}; const idDeclRenderParm* lastRenderParm{nullptr}; float lastRenderParmValue{0.0F}; std::uint32_t aiSphereModelContents{0}; bool aiSphereModelAvailable{true}; bool clearVolumeAdjustment{false}; bool hidden{false}; bool deleted{false}; bool replicated{false}; bool inEntityLUT{false}; bool fxInitialized{false}; bool targetLockable{false}; bool aiLootable{false}; bool aiDeathInitialized{false};
 };
 
 class idPresentableVehicle;

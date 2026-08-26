@@ -4,13 +4,10 @@
 // by GUI recovery. Renderer owns the complete image layout and implementation.
 
 #include "engine/decls/decl.h"
+#include "engine/renderer/sampleroptions.h"
 
 #include <cstdint>
 
-enum textureFilter_t : int { TF_LINEAR, TF_NEAREST, TF_NEAREST_MIPMAP_NEAREST,
-  TF_LINEAR_MIPMAP_NEAREST, TF_TRILINEAR, TF_DEFAULT };
-enum textureRepeat_t : int { TR_REPEAT, TR_CLAMP, TR_CLAMP_S, TR_CLAMP_T,
-  TR_CLAMP_TO_BORDER, TR_MIRROR };
 enum textureType_t : int { TT_2D, TT_3D, TT_CUBIC };
 enum textureFormat_t : int { FMT_NONE, FMT_RGBA32F, FMT_RGBA16F, FMT_RGBA8,
   FMT_ARGB8, FMT_ALPHA, FMT_L8A8, FMT_RG8, FMT_LUM8, FMT_INT8, FMT_DXT1,
@@ -21,19 +18,6 @@ enum textureColor_t : int { CFM_DEFAULT, CFM_RGBA_HQ_DXT5, CFM_NORMAL_HQ_DXT5,
 enum textureBindType_t : int { TB_SHADER, TB_RENDER_TARGET, TB_DEPTH_STENCIL_TARGET };
 enum textureUsage_t : int { TU_DEFAULT, TU_STATIC, TU_DYNAMIC, TU_STAGING };
 enum textureOptions_t : int { TO_NONE, TO_GENERATE_MIPS };
-
-struct samplerOptions_t {
-  textureFilter_t filter{};
-  textureRepeat_t repeat{};
-  idVec4 border{};
-  float lodBias{};
-  float lodMinClamp{};
-  float lodMaxClamp{};
-  float aniso{};
-  bool forceBias{};
-  bool depthCompareMode{};
-  std::uint16_t structPad{};
-};
 
 class idImageOpts {
 public:

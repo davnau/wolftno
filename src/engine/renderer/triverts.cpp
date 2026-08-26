@@ -88,16 +88,15 @@ void SwapNumericFields(TransferVertex& vertex) {
 
 }  // namespace
 
-std::uint32_t SwapVertexBuffer(char* buf, std::uint32_t numVerts,
-                               std::int16_t vertexMask) {
+int SwapVertexBuffer(void* buf, int numVerts, int vertexMask) {
   auto* const start = reinterpret_cast<std::uint8_t*>(buf);
   auto* cursor = start;
-  if (numVerts == 0 || numVerts > 0x7FFFFFFFu) {
+  if (numVerts <= 0) {
     return 0;
   }
 
-  const std::uint32_t mask = static_cast<std::uint16_t>(vertexMask);
-  for (std::uint32_t vertex = 0; vertex < numVerts; ++vertex) {
+  const std::uint32_t mask = static_cast<std::uint32_t>(vertexMask);
+  for (int vertex = 0; vertex < numVerts; ++vertex) {
     if ((mask & VERTEX_MASK_XYZ_SHORT) != 0) {
       Swap16(cursor);
       Swap16(cursor + 2);
@@ -148,16 +147,16 @@ std::uint32_t SwapVertexBuffer(char* buf, std::uint32_t numVerts,
     }
   }
 
-  return static_cast<std::uint32_t>(cursor - start);
+  return static_cast<int>(cursor - start);
 }
 
-void PackToVertexFormat(const idDrawVert* dv, idVec3* packed, int numVerts,
-                        char vertexMask) {
+void PackToVertexFormat(const idDrawVert* dv, void* packed, int numVerts,
+                        int vertexMask) {
   if (numVerts <= 0) {
     return;
   }
 
-  const std::uint32_t mask = static_cast<std::uint8_t>(vertexMask);
+  const std::uint32_t mask = static_cast<std::uint32_t>(vertexMask);
   auto* output = reinterpret_cast<std::uint8_t*>(packed);
   for (int vertex = 0; vertex < numVerts; ++vertex, ++dv) {
     if ((mask & VERTEX_MASK_XYZ) != 0) {
@@ -200,15 +199,15 @@ void PackToVertexFormat(const idDrawVert* dv, idVec3* packed, int numVerts,
 
 void TransferVerts(int inputMask, int outputMask,
                    const idVertexScaleAndBias* vsb, int vertexCount,
-                   bool byteSwap, std::uint16_t* inputBuffer,
-                   float* outputBuffer) {
+                   bool byteSwap, const void* inputBuffer,
+                   void* outputBuffer) {
   TransferVertex vertex;
   if (vertexCount <= 0) {
     return;
   }
 
-  const auto* input = reinterpret_cast<const std::uint8_t*>(inputBuffer);
-  auto* output = reinterpret_cast<std::uint8_t*>(outputBuffer);
+  const auto* input = static_cast<const std::uint8_t*>(inputBuffer);
+  auto* output = static_cast<std::uint8_t*>(outputBuffer);
   for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
     if ((inputMask & VERTEX_MASK_XYZ_SHORT) != 0) {
       std::memcpy(vertex.xyzShort, input, sizeof(vertex.xyzShort));

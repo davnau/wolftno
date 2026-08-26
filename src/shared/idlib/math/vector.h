@@ -223,6 +223,7 @@ struct idRotation {
   idVec3 operator*(const idVec3& point) const;
 };
 
+extern const idVec2 vec2_origin;
 extern const idVec3 vec3_origin;
 extern const idVec3 vec3_infinity;
 extern const idVec6 vec6_infinity;

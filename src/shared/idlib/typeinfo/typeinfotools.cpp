@@ -33,6 +33,23 @@ const idEnumValueInfo* idTypeInfoTools::FindEnumValueInfo(const idEnumInfo& e, i
       return &v;
   return nullptr;
 }
+const idEnumValueInfo* idTypeInfoTools::FindEnumValueInfo(
+    const idEnumInfo& e, const char* name, bool allowScopedName) const {
+  if (name == nullptr)
+    return nullptr;
+  const char* valueName = name;
+  if (allowScopedName) {
+    const char* scope = std::strrchr(name, ':');
+    if (scope != nullptr)
+      valueName = scope + 1;
+  }
+  for (const auto& value : e.values) {
+    if (idStr::Icmp(value.name.data, name) == 0 ||
+        (allowScopedName && idStr::Icmp(value.name.data, valueName) == 0))
+      return &value;
+  }
+  return nullptr;
+}
 const char* idTypeInfoTools::FindEnumValueName(const idEnumInfo& e, int value) const {
   const auto* v = FindEnumValueInfo(e, value);
   return v ? v->name.data : "";

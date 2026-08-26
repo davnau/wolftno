@@ -12,11 +12,12 @@ std::unordered_set<std::string> dynamicStrings;
 } // namespace
 
 idAtomicStringManager atomicStringManager;
+const char* const idAtomicString::nullAtomicString = "";
 idAtomicString atsTestStatic("aStaticAtomicString");
 
 const char* idAtomicStringManager::MakeAtomic(const char* text) {
   if (!text || !*text)
-    return "";
+    return idAtomicString::nullAtomicString;
   std::lock_guard<std::mutex> lock(atomicMutex);
   auto [it, inserted] = dynamicStrings.emplace(text);
   return it->c_str();

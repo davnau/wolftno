@@ -3,7 +3,8 @@
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/text/cmdargs.h"
 
-struct idAutoComplete {
+class idAutoComplete {
+public:
   int matchLength;
   int currentIndex;
   idCmdArgs args;

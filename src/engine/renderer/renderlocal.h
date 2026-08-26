@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 
-struct idAutoComplete;
+class idAutoComplete;
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idDeclTable;

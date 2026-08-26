@@ -12,14 +12,24 @@ class idGameTimeManager;
 class idSerializer;
 class idTreeAnimator;
 
+#ifndef ID_GAME_TIME_UNIQUE_T_DEFINED
+#define ID_GAME_TIME_UNIQUE_T_DEFINED
 enum gameTimeUnique_t : int;
+#endif
 enum serializeType_t { SERIALIZE_TYPE_NONE = 0 };
 
-template <typename T, typename UniqueTag>
-class idTypesafeNumber {
+#ifndef ID_TYPESAFE_NUMBER_DEFINED
+#define ID_TYPESAFE_NUMBER_DEFINED
+template <typename T, typename UniqueTag> class idTypesafeNumber {
 public:
+  constexpr idTypesafeNumber() : value{} {}
+  constexpr idTypesafeNumber(T input) : value(input) {}
+  constexpr idTypesafeNumber(const idTypesafeNumber& other)
+      : value(other.value) {}
+  constexpr operator T() const { return value; }
   T value;
 };
+#endif
 
 class idAnimator_Base {
 public:
@@ -78,4 +88,3 @@ static_assert(sizeof(idTypesafeNumber<int, gameTimeUnique_t>) == 0x04,
               "idTypesafeNumber ABI drift");
 static_assert(sizeof(idAnimator_Base) == 0x50,
               "idAnimator_Base ABI drift");
-

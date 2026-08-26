@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-struct idAutoComplete;
+class idAutoComplete;
 class idCVar;
 
 struct vidMode_t {

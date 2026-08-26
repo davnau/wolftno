@@ -1,5 +1,9 @@
 #pragma once
 
+#include "engine/renderer/sampleroptions.h"
+#include "shared/idlib/containers/list.h"
+#include "shared/idlib/text/str.h"
+
 #include <cstddef>
 
 class idTextureSampler {
@@ -17,7 +21,7 @@ struct idTextureSamplerManagerVTable {
   const char* (*GetSamplerName)(struct idTextureSamplerManager* manager,
                                const idTextureSampler* sampler);
   const idTextureSampler* (*CreateSampler)(
-      struct idTextureSamplerManager* manager, const void* options,
+      struct idTextureSamplerManager* manager, const samplerOptions_t* options,
       const char* name);
   void (*DeleteSampler)(struct idTextureSamplerManager* manager,
                         const idTextureSampler* sampler);
@@ -49,7 +53,7 @@ struct idTextureSamplerManager {
                ? vtable->GetSamplerName(this, sampler)
                : nullptr;
   }
-  const idTextureSampler* CreateSampler(const void* options,
+  const idTextureSampler* CreateSampler(const samplerOptions_t* options,
                                         const char* name) {
     return vtable != nullptr && vtable->CreateSampler != nullptr
                ? vtable->CreateSampler(this, options, name)
@@ -60,9 +64,58 @@ struct idTextureSamplerManager {
       vtable->DeleteSampler(this, sampler);
     }
   }
+
+  ~idTextureSamplerManager();
 };
 
 extern idTextureSamplerManager* textureSamplerManager;
+
+class idUniqueTextureSampler {
+public:
+  idUniqueTextureSampler()
+      : name(), numUsers(0), options{}, sampler(nullptr) {
+    options.filter = TF_DEFAULT;
+    options.lodMaxClamp = 13.0F;
+  }
+  idUniqueTextureSampler(const samplerOptions_t& options_, const char* name_);
+
+  idStr name;
+  int numUsers;
+  samplerOptions_t options;
+  idTextureSampler* sampler;
+};
+
+template <typename T>
+T* idListArrayNew(int num, unsigned int tag, bool zeroBuffer);
+template <typename T>
+T* idListArrayResize(T* oldPointer, int oldNum, int newNum,
+                     unsigned int tag, bool zeroBuffer);
+template <typename T>
+void idListArrayDelete(T* pointer, int num);
+
+extern const idTextureSamplerManagerVTable textureSamplerManagerLocalVTable;
+
+class idTextureSamplerManagerLocal {
+public:
+  idTextureSamplerManagerLocal()
+      : manager{&textureSamplerManagerLocalVTable}, uniqueTextureSamplers() {}
+  ~idTextureSamplerManagerLocal();
+
+  void Init();
+  void Shutdown();
+  const idTextureSampler* FindSamplerByName(const char* name, bool addUser);
+  const char* GetSamplerName(const idTextureSampler* sampler);
+  idTextureSampler* FindSamplerByOptions(const samplerOptions_t& options,
+                                         bool addUser);
+  const idTextureSampler* CreateSampler(const samplerOptions_t* options,
+                                        const char* name);
+  void DeleteSampler(const idTextureSampler* sampler);
+
+  idTextureSamplerManager manager;
+  idList<idUniqueTextureSampler, 5> uniqueTextureSamplers;
+};
+
+extern idTextureSamplerManagerLocal textureSamplerManagerLocal;
 
 static_assert(offsetof(idTextureSamplerManager, mipMapSamplers) == 0x18,
               "texture-sampler manager mip table offset drift");
@@ -70,3 +123,18 @@ static_assert(sizeof(idTextureSamplerManager) == 0x98,
               "texture-sampler manager ABI drift");
 static_assert(sizeof(idTextureSampler) == 4,
               "texture-sampler ABI drift");
+static_assert(sizeof(samplerOptions_t) == 44,
+              "sampler-options ABI drift");
+static_assert(offsetof(idUniqueTextureSampler, numUsers) == 40,
+              "unique sampler user-count offset drift");
+static_assert(offsetof(idUniqueTextureSampler, options) == 44,
+              "unique sampler options offset drift");
+static_assert(offsetof(idUniqueTextureSampler, sampler) == 88,
+              "unique sampler handle offset drift");
+static_assert(sizeof(idUniqueTextureSampler) == 96,
+              "unique sampler ABI drift");
+static_assert(offsetof(idTextureSamplerManagerLocal, uniqueTextureSamplers) ==
+                  0x98,
+              "local sampler list offset drift");
+static_assert(sizeof(idTextureSamplerManagerLocal) == 0xB0,
+              "local sampler manager ABI drift");

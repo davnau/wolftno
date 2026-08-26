@@ -10,6 +10,7 @@
 #include <cstdint>
 
 class idResourceList;
+template <typename T> class idTypedResourceList;
 
 class idAnimWebPath : public idStr {
 public:
@@ -139,7 +140,7 @@ enum md6WeightGroup_t {
 class idMD6Skel;
 class idMD6Model {
 public:
-  static idResourceList resourceList;
+  static idTypedResourceList<idMD6Model> resourceList;
   void* vtable = nullptr;
   idAtomicString name;
   std::uint8_t resourceBase[32]{};

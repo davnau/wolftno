@@ -212,6 +212,14 @@ public:
   using idStrStaticBase<Capacity, 0>::operator=;
 };
 
+// Retail uses this distinct name for dynamically-fallback-capable strings with
+// inline storage.  Its storage contract is identical to idStrStaticBase.
+template <int Capacity> class idStrDynStatic : public idStrStaticBase<Capacity, 0> {
+public:
+  using idStrStaticBase<Capacity, 0>::idStrStaticBase;
+  using idStrStaticBase<Capacity, 0>::operator=;
+};
+
 char* CopyString(const char* text, unsigned tag = 0);
 bool operator<(const idStr& left, const idStr& right);
 bool operator==(const idStr& left, const idStr& right);

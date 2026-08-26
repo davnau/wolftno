@@ -117,6 +117,7 @@ public:
   float ParseFloat(bool* errorFlag = nullptr);
   bool Parse1DMatrix(int count, float* matrix, bool expectCommas = false);
   bool Parse2DMatrix(int rows, int columns, float* matrix);
+  void SetFlags(int lexerFlags) { flags = lexerFlags; }
   unsigned GetFileTime() const { return fileTime; }
 
   static const punctuation_t defaultPunctuations[];

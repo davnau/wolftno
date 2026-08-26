@@ -25,11 +25,14 @@ enum memTag_t {
   TAG_MATH = 10,
   TAG_LEXER = 11,
   TAG_IMAGE = 34,
+  TAG_VIRTUALTEXTURE = 36,
   TAG_IDLIB = 44,
+  TAG_TRIANGLES = 45,
   TAG_FILE = 48,
   TAG_RENDERWORLD = 61,
   TAG_RENDERER = 62,
   TAG_HASHINDEX = 78,
+  TAG_RENDERMODEL = 85,
   TAG_DXBUFFER = 86,
   TAG_RESOURCE = 99,
   TAG_FILE_RESOURCE = 100,
@@ -57,6 +60,8 @@ struct alloc_t {
 
 class idMem {
 public:
+  idMem* operator->() { return this; }
+  const idMem* operator->() const { return this; }
   virtual ~idMem() = default;
   virtual void* AllocWithLocation(const char* location, std::size_t size, memTag_t tag, bool zero,
                                   align_t alignment, heapType_t heap) = 0;
@@ -78,7 +83,11 @@ public:
   virtual bool IsGlobalHeap() const = 0;
   bool IsMapHeap() const { return !IsGlobalHeap(); }
   virtual bool IsMapHeapCreated() const = 0;
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+  static idMem& Singleton();
+#else
   static class idMemLocal* Singleton();
+#endif
 };
 
 class idMemLocal : public idMem {

@@ -65,6 +65,7 @@ idPresentableAI::idPresentableAI(
       fxDeclaration(fxDeclarationValue),
       useSphereModel(useSphereModelValue) {
   SetDefaults();
+  SetSourceRenderModelForAI(renderModel);
   SetEntityNumber(entityNumber);
 }
 

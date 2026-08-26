@@ -17,8 +17,8 @@
 #include <mutex>
 #include <vector>
 
-struct idAutoComplete;
-struct idCmdArgs;
+class idAutoComplete;
+class idCmdArgs;
 class idDecl;
 class idFile;
 class idRenderWorld;

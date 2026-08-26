@@ -205,6 +205,14 @@ using glTexImage2DMultisampleProc_t = void (*)(
     unsigned int target, int samples, int internalFormat, int width,
     int height, unsigned char fixedSampleLocations);
 using glActiveTextureProc_t = void (*)(unsigned int texture);
+using glGenSamplersProc_t = void (*)(int count, unsigned int* samplers);
+using glSamplerParameteriProc_t = void (*)(unsigned int sampler,
+                                           unsigned int name, int value);
+using glSamplerParameterfProc_t = void (*)(unsigned int sampler,
+                                          unsigned int name, float value);
+using glSamplerParameterfvProc_t = void (*)(unsigned int sampler,
+                                           unsigned int name,
+                                           const float* value);
 using glGetStringiProc_t = const unsigned char* (*)(unsigned int name,
                                                     unsigned int index);
 using glDebugMessageCallbackProc_t = void (*)(
@@ -250,6 +258,10 @@ extern glClientWaitSyncProc_t _glewClientWaitSync;
 extern glGetInteger64vProc_t _glewGetInteger64v;
 extern glDepthBoundsProc_t _glewDepthBoundsEXT;
 extern glBindSamplerProc_t _glewBindSampler;
+extern glGenSamplersProc_t _glewGenSamplers;
+extern glSamplerParameteriProc_t _glewSamplerParameteri;
+extern glSamplerParameterfProc_t _glewSamplerParameterf;
+extern glSamplerParameterfvProc_t _glewSamplerParameterfv;
 extern glBindMultiTextureProc_t _glewBindMultiTextureEXT;
 extern glClampColorProc_t _glewClampColorARB;
 extern glSampleMaskProc_t _glewSampleMaski;

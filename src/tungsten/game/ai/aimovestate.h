@@ -73,8 +73,7 @@ public:
 
   const idVec3& GetFinalPoint() const;
   aiMoveStatus_t GetMoveStatus() const;
-  aiMoveStatus_t GetMoveStatus(bool checkAlignment) {
-    lastMoveStatusCheckAlignment = checkAlignment;
+  aiMoveStatus_t GetMoveStatus(bool /*checkAlignment*/) const {
     return moveStatus;
   }
   idRecoveredValue GetNextPoint(...);
@@ -178,6 +177,9 @@ public:
   int GetRemainingTransitionFrames() const {
     return remainingTransitionFrames;
   }
+  const idVec3& GetPushVelocityForTest() const { return pushVelocity; }
+  int GetPushEndTimeForTest() const { return pushEndTime; }
+  void SetLastUpdateTimeForTest(int value) { lastUpdateTime = value; }
   smoothAnimType_t GetCurrentSmoothAnimType() const {
     return currentSmoothAnimType;
   }
@@ -199,10 +201,6 @@ public:
   void ResetAlignToNextPointCallCountForTest() {
     alignToNextPointCallCount = 0;
   }
-  bool GetLastMoveStatusCheckAlignmentForTest() const {
-    return lastMoveStatusCheckAlignment;
-  }
-
 private:
   void AdvanceLinearMovement(int time, float speedScale);
 
@@ -242,7 +240,6 @@ private:
   bool alignToNextPointOverrideEnabled{false};
   bool alignToNextPointOverrideResult{false};
   int alignToNextPointCallCount{0};
-  bool lastMoveStatusCheckAlignment{false};
   idScenePoint* destinationTraversal{nullptr};
   idObstacleInfo obstacleInfo;
   idList<moveFailureInfo_t, 5> moveFailures;
@@ -250,13 +247,17 @@ private:
   idVec3 translationScale{1.0F, 1.0F, 1.0F};
 };
 
-class idAIMoveInterface : public idAIMoveState {
+class idAIMoveInterface {
 public:
-  idAIMoveInterface* operator->() { return this; }
-  const idAIMoveInterface* operator->() const { return this; }
-  operator idAIMoveState*() { return this; }
-  operator const idAIMoveState*() const { return this; }
-  bool operator!=(std::nullptr_t) const { return true; }
+  void Bind(idAIMoveState* value) { state = value; }
+  idAIMoveState* operator->() { return state; }
+  const idAIMoveState* operator->() const { return state; }
+  operator idAIMoveState*() { return state; }
+  operator const idAIMoveState*() const { return state; }
+  bool operator!=(std::nullptr_t) const { return state != nullptr; }
+
+private:
+  idAIMoveState* state{nullptr};
 };
 
 extern idCVar ai_debugMove;

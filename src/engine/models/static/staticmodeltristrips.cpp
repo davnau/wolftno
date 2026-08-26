@@ -23,31 +23,31 @@ struct ForsythResultOwner {
 
 void StripIndexesToTriangleIndexes(const std::uint16_t* stripIndexes,
                                    int numStripIndexes,
-                                   idList<std::uint16_t, 5>* triIndexes) {
-  triIndexes->ClearFree();
+                                   idList<std::uint16_t, 5>& triIndexes) {
+  triIndexes.ClearFree();
   int scan = 0;
   while (scan < numStripIndexes) {
     while (scan < numStripIndexes && stripIndexes[scan] == kStripRestart)
       ++scan;
     if (scan == numStripIndexes) break;
     const int stripStart = scan;
-    triIndexes->Append(stripIndexes[scan++]);
-    triIndexes->Append(stripIndexes[scan++]);
-    triIndexes->Append(stripIndexes[scan++]);
+    triIndexes.Append(stripIndexes[scan++]);
+    triIndexes.Append(stripIndexes[scan++]);
+    triIndexes.Append(stripIndexes[scan++]);
     std::uint16_t previousPrevious = stripIndexes[stripStart + 1];
     std::uint16_t previous = stripIndexes[stripStart + 2];
     int parity = 0;
     while (scan < numStripIndexes) {
-      if (IsDegenerateTail(*triIndexes)) triIndexes->num -= 3;
+      if (IsDegenerateTail(triIndexes)) triIndexes.num -= 3;
       const std::uint16_t current = stripIndexes[scan++];
       if (current == kStripRestart) break;
-      triIndexes->Append(current);
+      triIndexes.Append(current);
       if (parity != 0) {
-        triIndexes->Append(previousPrevious);
-        triIndexes->Append(previous);
+        triIndexes.Append(previousPrevious);
+        triIndexes.Append(previous);
       } else {
-        triIndexes->Append(previous);
-        triIndexes->Append(previousPrevious);
+        triIndexes.Append(previous);
+        triIndexes.Append(previousPrevious);
       }
       parity ^= 1;
       previousPrevious = previous;

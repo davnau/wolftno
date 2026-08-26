@@ -35,7 +35,7 @@ void idPlayerProfile::ClearAchievement(int id) {
                          (static_cast<unsigned>(id) & 63u));
 }
 
-bool idPlayerProfile::GetAchievement(int id) const {
+bool idPlayerProfile::GetAchievement(int id) {
   if (id >= 128)
     return false;
   if (id >= 64)
@@ -52,9 +52,9 @@ void idPlayerProfile::StatSetFloat(int stat, float value) {
   stats.list[stat].f = value;
 }
 
-int idPlayerProfile::StatGetInt(int stat) const { return stats.list[stat].i; }
+int idPlayerProfile::StatGetInt(int stat) { return stats.list[stat].i; }
 
-float idPlayerProfile::StatGetFloat(int stat) const { return stats.list[stat].f; }
+float idPlayerProfile::StatGetFloat(int stat) { return stats.list[stat].f; }
 
 void idPlayerProfile::SaveSettings(bool) {
   if (state != SAVING && requestedState == IDLE)

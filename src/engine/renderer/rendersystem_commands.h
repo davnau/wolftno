@@ -2,14 +2,14 @@
 
 #include "shared/idlib/filesystem/file.h"
 
-struct idCmdArgs;
+class idCmdArgs;
 class idDeclRenderParm;
 class idDeclRenderProg;
 class idDeclEnv;
 class idImage;
 class idRenderModel;
 class idRenderWorld;
-struct idAutoComplete;
+class idAutoComplete;
 template <typename T> class idCodeResource;
 
 enum screenshotFormat_t : int {

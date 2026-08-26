@@ -76,10 +76,23 @@ enum aiExtendedClipModelStatus_t : int {
   AIEXTENDEDCLIPMODELSTATUS_DEATHJOINTS = 2,
 };
 enum invalidAliasHandle_t : int;
+enum invalidFiberId_t : int { INVALID_FIBER_ID = 0 };
+enum invalidThreadHandle_t : int { INVALID_THREAD_HANDLE = 0 };
 template <typename T, typename InvalidEnum, T InvalidValue>
-struct idHandle;
+struct idHandle {
+  T value{InvalidValue};
+  bool operator==(const idHandle& other) const {
+    return value == other.value;
+  }
+  bool operator!=(const idHandle& other) const {
+    return value != other.value;
+  }
+};
 using aiAnimationHandle_t =
     idHandle<unsigned short, invalidAliasHandle_t, 65535>;
+using idFiberHandle = idHandle<int, invalidFiberId_t, 0>;
+using idThreadHandle = idHandle<int, invalidThreadHandle_t, 0>;
+class idThread;
 class idInteractionCamera;
 class idAIEntityState;
 class aiSenseState_t;
@@ -104,6 +117,7 @@ class idAnimator_AnimWeb;
 class idAnimator_Drone;
 class idFXManager;
 class idTreeAnimator;
+class idDeclTwitchPain;
 class idAnimator_Channel;
 class idMeleeTrace;
 class impact;
@@ -119,6 +133,8 @@ extern idCVar ai_debugLook;
 extern idCVar ai_debugMissTime;
 extern idCVar ai_debugLevel;
 extern idCVar ai_debugPain;
+extern idCVar ai_debugPushFromCollision;
+extern idCVar ai_debugDeath;
 extern idCVar ai_allowStaggerPain;
 extern idCVar ai_forceInjury;
 extern idCVar ai_searchToStimDist;
@@ -396,6 +412,52 @@ struct idRecoveredValue {
       return static_cast<T>(value);
     }
   }
+};
+
+template <typename T>
+class idInterpolate {
+public:
+  idInterpolate() = default;
+  idInterpolate(float startTimeValue, float durationValue,
+                const T& startValueValue, const T& endValueValue)
+      : startTime(startTimeValue),
+        duration(durationValue),
+        startValue(startValueValue),
+        endValue(endValueValue),
+        currentTime(startTimeValue),
+        currentValue(startValueValue) {}
+
+  T GetCurrentValue(float time) const {
+    if (time == currentTime) return currentValue;
+
+    currentTime = time;
+    const float elapsed = time - startTime;
+    if (duration < 0.0F) {
+      if (elapsed >= 0.0F) {
+        currentValue = startValue;
+      } else if (duration < elapsed) {
+        currentValue = startValue +
+                       (endValue - startValue) * (elapsed / duration);
+      } else {
+        currentValue = endValue;
+      }
+    } else if (elapsed <= 0.0F) {
+      currentValue = startValue;
+    } else if (elapsed < duration) {
+      currentValue = startValue +
+                     (endValue - startValue) * (elapsed / duration);
+    } else {
+      currentValue = endValue;
+    }
+    return currentValue;
+  }
+
+  float startTime{0.0F};
+  float duration{0.0F};
+  T startValue{};
+  T endValue{};
+  mutable float currentTime{0.0F};
+  mutable T currentValue{};
 };
 
 enum aiActionBool_t {
@@ -683,12 +745,18 @@ public:
   idRecoveredValue InternalCallEvent(...);
   idRecoveredValue PauseCurrentFiberTillActionCompletes(...);
   idRecoveredValue PauseCurrentThreadTillActionCompletes(...);
-  idRecoveredValue PauseFiberTillActionCompletes(...);
-  idRecoveredValue PauseThreadTillActionCompletes(...);
+  void PauseFiberTillActionCompletesForTest(idFiberHandle fiberHandle) {
+    PauseFiberTillActionCompletes(fiberHandle);
+  }
+  void PauseThreadTillActionCompletesForTest(idThread* thread) {
+    PauseThreadTillActionCompletes(thread);
+  }
   bool blocking{false};
 
 private:
   bool ForceFSMIntoExecutingScript();
+  void PauseFiberTillActionCompletes(idFiberHandle fiberHandle);
+  void PauseThreadTillActionCompletes(idThread* thread);
   invocation_t lastInvocation;
 };
 
@@ -701,6 +769,9 @@ struct idFirstPersonEvent {
 
 class idActor : public idEntity {
 public:
+  static damageDirection_t GetDamageDirection(const idMat3& axis,
+                                              const idVec3& direction,
+                                              int numberOfDirections);
   virtual void JobSync() {}
   virtual void UpdateAttachments();
   void UpdateEntityAttachmentPos();
@@ -743,6 +814,14 @@ public:
   }
   const idAnimator_AF* GetAF() const;
   idAnimator_AF* GetAFMutable() { return &articulatedFigureProperties; }
+  bool ExpandBoundsByJoints(idBounds& bounds, int jointGroup) const;
+  void ConfigureJointBoundsForTest(bool available, const idBounds& bounds) {
+    jointBoundsAvailable = available;
+    jointBounds = bounds;
+  }
+  int GetLastJointBoundsGroupForTest() const {
+    return lastJointBoundsGroup;
+  }
   void GetLastEyePos(idVec3* eyePosition) const;
   void GetEyeAxis(idMat3* eyeAxis) const;
   void SetEyeAxis(const idMat3* eyeAxis);
@@ -755,7 +834,7 @@ public:
   void SetLeanState(leanState_t leanState);
   weaponReadyState_t GetWeaponReadyState() const;
   void SetWeaponReadyState(weaponReadyState_t state);
-  void StopRagdoll() {
+  virtual void StopRagdoll() {
     ragdollActive = false;
     ++stopRagdollCount;
   }
@@ -914,6 +993,9 @@ protected:
   const idDeclDamage* lastDamageDefinition{nullptr};
   int actorUpdateAttachmentsCount{0};
   int actorUpdateEntityAttachmentPosCount{0};
+  bool jointBoundsAvailable{false};
+  idBounds jointBounds{};
+  mutable int lastJointBoundsGroup{-1};
 };
 
 class idPlayer : public idActor {
@@ -1292,6 +1374,13 @@ public:
       if (joint.index == jointIndex) return joint.name.c_str();
     return "";
   }
+  short FindJointIndexForAI(const char* jointName) const {
+    if (jointName == nullptr) return -1;
+    for (const auto& joint : jointNames) {
+      if (joint.name == jointName) return joint.index;
+    }
+    return -1;
+  }
   void AddAliasForTest(const char* aliasName, unsigned short handle) {
     aliases.push_back(
         {aliasName != nullptr ? aliasName : "", handle});
@@ -1302,6 +1391,12 @@ public:
       if (alias.name == aliasName) return alias.handle;
     }
     return 0xFFFFU;
+  }
+  const char* FindAliasNameForAI(unsigned short handle) const {
+    for (const auto& alias : aliases) {
+      if (alias.handle == handle) return alias.name.c_str();
+    }
+    return nullptr;
   }
   void AddEyeInfoForTest(const char* eyeInfoName, unsigned short handle) {
     eyeInfos.push_back(
@@ -1920,14 +2015,6 @@ struct idAIProjectileInfo {
 
 class idAIMemory;
 
-struct idThreadHandle {
-  int value{0};
-};
-
-struct idFiberHandle {
-  int value{0};
-};
-
 struct idEventDef {
   enum type_t { EVENT_NONE = 0, EVENT_FSMEVENT = 1 };
   int eventnum{0};
@@ -2071,6 +2158,12 @@ public:
   idAIFSMCallback* GetCallbackForTest() const { return callback; }
   int GetStatus() const { return status; }
   void SetStatusForTest(int value) { status = value; }
+  void Restart(int currentTime) {
+    lastRestartTime = currentTime;
+    ++restartCount;
+  }
+  int GetRestartCountForTest() const { return restartCount; }
+  int GetLastRestartTimeForTest() const { return lastRestartTime; }
 
 private:
   idStr name;
@@ -2095,6 +2188,8 @@ private:
   int callEventCount{0};
   idAIFSMCallback* callback{nullptr};
   int status{1};
+  int restartCount{0};
+  int lastRestartTime{-1};
 };
 
 class idThread {
@@ -2109,13 +2204,27 @@ public:
   int GetExecuteCount() const { return executeCount; }
   void ManualDelete() { manualDelete = true; }
   bool IsManualDeleteForTest() const { return manualDelete; }
+  void WaitForFSM(bool wait) {
+    waitingForFSM = wait;
+    ++waitForFSMCount;
+  }
+  bool IsWaitingForFSMForTest() const { return waitingForFSM; }
+  int GetWaitForFSMCountForTest() const { return waitForFSMCount; }
+  const idThreadHandle& GetThreadHandleForTest() const { return handle; }
+  const idStr& GetThreadNameForTest() const { return threadName; }
+  void SetThreadNameForTest(const char* value) {
+    threadName = value != nullptr ? value : "";
+  }
   static idThread* Find(int handleValue);
 
 private:
   idThreadHandle handle;
+  idStr threadName;
   bool dying{false};
   int executeCount{0};
   bool manualDelete{false};
+  bool waitingForFSM{false};
+  int waitForFSMCount{0};
 };
 
 struct idAIScriptState {
@@ -2783,6 +2892,20 @@ struct idAIStaggerPainObservation {
   int setPainCount{0};
 };
 
+struct idAIAdditivePainObservation {
+  int callCount{0};
+  int presentableUpdateCount{0};
+  int voiceCount{0};
+  damageDirection_t direction{DAMAGEDIR_NONE};
+  unsigned short aliasHandle{0xFFFFU};
+  int debugCount{0};
+  idStr debugJointName;
+  idStr debugGroupName;
+  idStr debugAliasName;
+  float debugDamage{0.0F};
+  float debugDamagePercent{0.0F};
+};
+
 struct idAIDebugState {
   idStr debugText;
   idStr damageText;
@@ -2906,6 +3029,25 @@ struct idAIRobotRuntimeState {
   int turnfastSoundPlayCount{0};
   idStr lastDebugText;
   idVec4 lastDebugColor{};
+};
+
+struct idAIInitPhysicsObservation {
+  bool initialized{false};
+  bool clonedDefaultClipModel{false};
+  bool canSetCrouchedPhysics{false};
+  int entityNumber{-1};
+  int numberOfClipModels{0};
+  int cylinderSides{0};
+  int clipMasks[2]{0, 0};
+  std::uint32_t contents[2]{0, 0};
+  float mass{0.0F};
+  float crouchedHeight{0.0F};
+  idVec3 gravity{};
+  idVec3 origin{};
+  idVec3 idealMoveDirection{};
+  idMat3 gravityAxis{};
+  idBounds defaultClipBounds{};
+  idBounds playerClipBounds{};
 };
 
 enum aiEffectUpdateType_t : int {
@@ -3455,13 +3597,11 @@ public:
     ~idAIVolatile();
 
     struct idAIRenderParamBlend {
-      int parameter{0};
-      float currentValue{0.0F};
-      float targetValue{0.0F};
-      float duration{0.0F};
+      aiRenderParam_t renderParam{AIRENDERPARAM_INVALID};
+      idInterpolate<float> interpolation;
 
       bool operator==(const idAIRenderParamBlend& other) const {
-        return parameter == other.parameter;
+        return renderParam == other.renderParam;
       }
     };
   };
@@ -4168,7 +4308,10 @@ public:
   bool CanFireRobot(int currentTime);
   virtual bool CanReceiveAIEvents(int currentTime) const;
   bool CanTeslaBlindFire(idAIEntityState* enemyState, int duration);
-  idRecoveredValue CheckDeathCollision(...);
+protected:
+  void CheckDeathCollision();
+public:
+  void CheckDeathCollisionForTest() { CheckDeathCollision(); }
   bool CheckForGore();
   bool CheckForGoreByName(const idAtomicString& goreName);
   bool CheckForOneShotKill(idEntity* attacker);
@@ -4319,6 +4462,7 @@ public:
                          idMat3& modelAxis) const override;
   aiSkill_t GetModifiedSkill() const;
   idAIMoveInterface& GetMoveInterface();
+  idAIMoveState* GetMoveStateForTest() const { return moveState.get(); }
   idAIOrientation& GetMoveOrientation();
   int GetOnlineUsableState();
   float GetPlayerViewDataFitness();
@@ -4382,7 +4526,10 @@ private:
 public:
   void InitMovementForTest() { InitMovement(); }
   void InitPerception(alertCycle_t cycle);
-  idRecoveredValue InitPhysics(...);
+private:
+  void InitPhysics();
+public:
+  void InitPhysicsForTest() { InitPhysics(); }
 private:
   void InitScriptObjects();
 public:
@@ -4471,8 +4618,11 @@ public:
   void OnAIEvent_VehicleSoundForTest(const idAIEventSound* event) {
     OnAIEvent_VehicleSound(event);
   }
-  idRecoveredValue OnHide(...);
-  idRecoveredValue OnIgnoreDamage(...);
+protected:
+  void OnHide(bool stopFx) override;
+public:
+  void OnHideForTest(bool stopFx) { OnHide(stopFx); }
+  void OnIgnoreDamage(idEntity* attacker, float damage);
   idRecoveredValue OnShow(...);
   bool PerceptionFlagIsSet(int flags) const;
   void PerformCrouchAction();
@@ -4481,7 +4631,21 @@ public:
   void PerformStandUpAction();
   void PlayAdditiveAlarmAnimation();
   void PlayAdditiveFireAnim();
-  idRecoveredValue PlayAdditivePain(...);
+protected:
+  bool PlayAdditivePain(
+      idEntity* inflictor, idEntity* attacker,
+      const idDeclDamage* damageDeclaration, float damage,
+      const idVec3& impactPoint, const idVec3& impactDirection,
+      idIndex<short, invalidJointIndex_t> joint, bool blind);
+public:
+  bool PlayAdditivePainForTest(
+      idEntity* inflictor, idEntity* attacker,
+      const idDeclDamage* damageDeclaration, float damage,
+      const idVec3& impactPoint, const idVec3& impactDirection,
+      idIndex<short, invalidJointIndex_t> joint, bool blind) {
+    return PlayAdditivePain(inflictor, attacker, damageDeclaration, damage,
+                            impactPoint, impactDirection, joint, blind);
+  }
   bool PlayAdditivePainAnim(const aiAnimationHandle_t& painAlias);
   idRecoveredValue PlayAnimWebPath(...);
   void PlayAnimWebPathPerfect(const idAnimWebPath& animPath,
@@ -4495,7 +4659,13 @@ public:
       bool desireScramble, bool desireMicro);
   void PlayDeathSound();
   void PlayHurtSound();
-  idRecoveredValue PushFromCollision(...);
+protected:
+  void PushFromCollision(const idBounds& bounds, idClipQuery& clipQuery);
+public:
+  void PushFromCollisionForTest(const idBounds& bounds,
+                                idClipQuery& clipQuery) {
+    PushFromCollision(bounds, clipQuery);
+  }
   bool RelinquishControl();
   void ReloadWeapon(idWeapon* weapon);
   idRecoveredValue Remove(...);
@@ -4536,7 +4706,7 @@ public:
   bool CheckDelayedVoiceForTest(int currentTime) {
     return CheckDelayedVoice(currentTime);
   }
-  idRecoveredValue SetEMPStunned(...);
+  void SetEMPStunned(bool stun, bool forceForever);
   void SetEnableAutoFocus(bool enable);
   void SetEnableHeadTracking(bool enable);
   void SetFakeEnemy(idEntity* entity);
@@ -4600,7 +4770,7 @@ public:
     StopWeaponFX(condition);
   }
   void StopFireRobot(int currentTime);
-  void StopRagdoll();
+  void StopRagdoll() override;
   idRecoveredValue StopTesla(...);
   void Takedown(idEntity* activator, bool dualWield, bool reversedGrip,
                 takedownMode_t takeDownMode);
@@ -4629,7 +4799,7 @@ public:
   void UpdateBodyOrientationWhileMoving();
   void UpdateDeathMovement();
   static void UpdateDeaths();
-  idRecoveredValue UpdateDrop(...);
+  void UpdateDrop();
   idRecoveredValue UpdateEnemyInAAS(...);
   idRecoveredValue UpdateExtendedClipModel(...);
   idRecoveredValue UpdateFSMs(...);
@@ -4640,10 +4810,17 @@ public:
   void UpdateMeleeCapabilities();
   void UpdateMovement();
   idRecoveredValue UpdatePathToEnemy(...);
-  idRecoveredValue UpdateRenderParamBlends(...);
-  idRecoveredValue UpdateSpriteAnimator(...);
+private:
+  void UpdateRenderParamBlends();
+  void UpdateWetness();
+public:
+  void UpdateRenderParamBlendsForTest() { UpdateRenderParamBlends(); }
+  void UpdateWetnessForTest() { UpdateWetness(); }
+private:
+  void UpdateSpriteAnimator();
+public:
+  void UpdateSpriteAnimatorForTest() { UpdateSpriteAnimator(); }
   void UpdateTesla();
-  idRecoveredValue UpdateWetness(...);
   bool Use(idEntity* activator, usableState_t usable);
   bool UsesSmoothAnimations() const;
   bool UsesTurrets() const;
@@ -4874,6 +5051,26 @@ public:
   const idList<idAIVolatile::idAIRenderParamBlend, 5>&
   GetRenderParameterBlends() const {
     return renderParameterBlends;
+  }
+  void ClearRenderParameterBlendsForTest() {
+    renderParameterBlends.Clear();
+  }
+  void AddRenderParameterBlendForTest(aiRenderParam_t parameter,
+                                      float startTime, float duration,
+                                      float startValue, float endValue) {
+    idAIVolatile::idAIRenderParamBlend blend;
+    blend.renderParam = parameter;
+    blend.interpolation = idInterpolate<float>(
+        startTime, duration, startValue, endValue);
+    renderParameterBlends.Append(blend);
+  }
+  const idInterpolate<float>& GetWetInterpolatorForTest() const {
+    return wetInterpolator;
+  }
+  void ConfigureWetInterpolatorForTest(float startTime, float duration,
+                                       float startValue, float endValue) {
+    wetInterpolator = idInterpolate<float>(startTime, duration, startValue,
+                                           endValue);
   }
   idAIScriptState& GetScriptState() { return scriptState; }
   const idAIScriptState& GetScriptState() const { return scriptState; }
@@ -5312,6 +5509,18 @@ public:
     blindedDuration = duration;
     reblindCooldown = reblindDelay;
   }
+  void ConfigureEMPStunForTest(bool enabled, float duration,
+                               bool drone, bool robot) {
+    usesEMPStun = enabled;
+    aiEventState.empStunDuration = duration;
+    usesDrone = drone;
+    robotState.usesRobot = robot;
+  }
+  int GetEndStunnedTimeForTest() const { return endStunnedTime; }
+  float GetEMPStunDurationForTest() const {
+    return aiEventState.empStunDuration;
+  }
+  bool IsBodyRotationEnabledForTest() const { return bodyRotationEnabled; }
   void SetBlindingTimeState(int currentTime, int stunnedEndTime,
                             bool painAnimationDoneValue,
                             float incomingDamageScaleValue = 1.0F) {
@@ -5755,6 +5964,28 @@ public:
   int GetDefaultPhysicsClipMaskForTest() const {
     return defaultPhysicsClipMask;
   }
+  void ConfigureInitPhysicsForTest(const idVec3& collisionSize,
+                                   float crouchedHeight,
+                                   bool canCrouch,
+                                   const idVec3& initialPosition) {
+    aiConstants->physics.playerCollisionSize = collisionSize;
+    aiConstants->physics.heightCrouched = crouchedHeight;
+    canSetCrouchedPhysics = canCrouch;
+    spawnPosition = initialPosition;
+  }
+  const idAIInitPhysicsObservation& GetInitPhysicsObservationForTest() const {
+    return initPhysicsObservation;
+  }
+  void ConfigureSpriteAnimatorForTest(const void* declaration,
+                                      idEntity* animatorEntity) {
+    spriteAnimatorDeclaration = declaration;
+    spriteAnimatorEntity = animatorEntity;
+  }
+  void ConfigureIgnoredDamageTriggerForTest(idEntity* trigger,
+                                            bool skipFriendlyFire) {
+    ignoredDamageTrigger = trigger;
+    skipDamageTriggerOnFriendlyFire = skipFriendlyFire;
+  }
   void SetNextAIEventTime(int value) { nextAIEventTime = value; }
   void SetAnimWebEventPending(bool value) { animWebEventPending = value; }
   void ConfigureGrenadeThrowState(bool usesGrenadesValue,
@@ -5817,12 +6048,27 @@ public:
     ignoreDamageWhileDropping = ignoreDamage;
     nonPlayerOneShotChance = nonPlayerChance;
   }
+  void ConfigureDropForTest(int state, std::uint64_t queryIndex) {
+    dropState = state;
+    dropToGroundQueryIndex = queryIndex;
+  }
+  int GetDropStateForTest() const { return dropState; }
+  std::uint64_t GetDropQueryIndexForTest() const {
+    return dropToGroundQueryIndex;
+  }
   void ConfigureRagdollForTest(bool enabled, bool suppressed,
                                const idVec3& pastVelocity) {
     ragdollEnabled = enabled;
     ragdollSuppressed = suppressed;
     dronePastVelocity = pastVelocity;
   }
+  void SetDeathSlideFromCollisionForTest(bool enabled) {
+    deathSlideFromCollisionEnabled = enabled;
+  }
+  bool IsDeathSlideFromCollisionEnabledForTest() const {
+    return deathSlideFromCollisionEnabled;
+  }
+  bool IsRagdollEnabledForTest() const { return ragdollEnabled; }
   const char* GetRagdollReasonForTest() const { return reasonForRagdoll.data; }
   idEntity* GetFakeEnemyEntity() const { return fakeEnemy; }
   void ConfigureAlertCycleState(int cycle, int timestamp) {
@@ -6085,6 +6331,23 @@ public:
   idAnimator_Pain* GetPainAnimatorForTest() const {
     return painAnimator.get();
   }
+  void ConfigureAdditivePainForTest(bool enabled, bool suppressed,
+                                    const idDeclTwitchPain* declaration,
+                                    const idMat3& modelAxis,
+                                    idTreeAnimator* animator) {
+    additivePainEnabled = enabled;
+    additivePainSuppressed = suppressed;
+    twitchPainDeclaration = declaration;
+    additivePainModelAxis = modelAxis;
+    effectsTreeAnimator = animator;
+  }
+  const idAIAdditivePainObservation&
+  GetAdditivePainObservationForTest() const {
+    return additivePainObservation;
+  }
+  void ResetAdditivePainObservationForTest() {
+    additivePainObservation = {};
+  }
   idAnimator_Channel* GetShootAnimatorForTest() const {
     return shootAnimator.get();
   }
@@ -6237,6 +6500,7 @@ private:
   idAIDebugState debugState;
   idAIEventState aiEventState;
   idList<idAIVolatile::idAIRenderParamBlend, 5> renderParameterBlends;
+  idInterpolate<float> wetInterpolator{0.0F, 120.0F, 0.0F, 0.0F};
   idAIScriptState scriptState;
   idAIUtilityState utilityState;
   idAICoreState coreState;
@@ -6333,6 +6597,7 @@ private:
   idVec3 teslaExplodePosition{};
   int teslaEvaluationTime{0};
   bool usesBlindness{true};
+  bool usesEMPStun{false};
   float blindedDuration{-1.0F};
   float reblindCooldown{-1.0F};
   int endBlindedTime{0};
@@ -6431,7 +6696,9 @@ private:
   bool speakingLidDeformationCapability{false};
   std::array<std::unique_ptr<idFocusInfo>, 2> focusInfos;
   std::unique_ptr<idCheckSurroundingsState> checkSurroundingsState;
-  std::unique_ptr<idAIMoveInterface> moveState;
+  std::unique_ptr<idAIMoveState> moveState;
+  std::unique_ptr<idPhysics> ownedAIPhysicsObject;
+  idPhysics* defaultPhysicsObjectForInit{nullptr};
   idScenePoint* currentScenePoint{nullptr};
   int currentScenePointActivationTime{0};
   const idDeclAIBehavior* behaviorDeclaration{nullptr};
@@ -6491,10 +6758,12 @@ private:
   idStr actionNodeGroupName;
   idEntity* stealthKillTrigger{nullptr};
   int dropState{0};
+  std::uint64_t dropToGroundQueryIndex{0};
   bool ignoreDamageWhileDropping{false};
   float nonPlayerOneShotChance{0.0F};
   bool ragdollEnabled{true};
   bool ragdollSuppressed{false};
+  bool deathSlideFromCollisionEnabled{false};
   idVec3 dronePastVelocity{};
   idStr reasonForRagdoll;
   int alertCycleTimestamp{-1};
@@ -6508,6 +6777,11 @@ private:
   int syncedOverrideAnimation{0};
   int syncedTargetSpawnId{0x1FFF};
   bool painAllowedAfterActionScript{true};
+  bool additivePainEnabled{true};
+  bool additivePainSuppressed{false};
+  const idDeclTwitchPain* twitchPainDeclaration{nullptr};
+  idMat3 additivePainModelAxis{};
+  idAIAdditivePainObservation additivePainObservation;
   bool canBecomeInjured{false};
   bool hasLongPainAnimations{false};
   bool staggeringPainActive{false};
@@ -6565,6 +6839,13 @@ private:
   std::unique_ptr<idFSMManager> fsmManager;
   std::uint32_t defaultPhysicsContents{0};
   bool solidState{false};
+  bool canSetCrouchedPhysics{false};
+  idVec3 spawnPosition{};
+  idAIInitPhysicsObservation initPhysicsObservation;
+  const void* spriteAnimatorDeclaration{nullptr};
+  idEntity* spriteAnimatorEntity{nullptr};
+  idEntity* ignoredDamageTrigger{nullptr};
+  bool skipDamageTriggerOnFriendlyFire{false};
   bool takedownRestrictedToBehind{false};
   std::unique_ptr<idAIActionManager> actionManager;
   std::unique_ptr<idAIFSMCallback> fsmCallback;

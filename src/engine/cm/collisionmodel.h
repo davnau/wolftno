@@ -48,27 +48,68 @@ struct contactInfo_t {
     CONTACT_SPHERE = 3,
   };
 
+  contactType_t type{CONTACT_NONE};
   idVec3 point{};
   idVec3 normal{};
-  float distance{};
-  std::uint32_t contents{};
-  int material{};
+  union {
+    float dist{};
+    float distance;
+  };
+  float separation{};
+  union {
+    std::uint32_t contentFlags{};
+    std::uint32_t contents;
+  };
+  union {
+    int surfaceFlags{};
+    int material;
+  };
   int surfaceType{};
   int modelFeature{-1};
-  int traceFeature{-1};
+  union {
+    int trmFeature{-1};
+    int traceFeature;
+  };
   int entityNum{-1};
-  contactType_t type{CONTACT_NONE};
-  int trmFeature{-1};
+  int physicsId{};
+  int bodyId{};
+  int selfId{};
+  std::uint8_t flags{};
+  std::uint8_t surfaceColor[3]{};
 };
 
 struct trace_t {
   float fraction{1.0f};
   idVec3 endpos{};
   idMat3 endAxis{mat3_identity};
-  contactInfo_t contact{};
-  bool startSolid{};
-  bool allSolid{};
+  union {
+    contactInfo_t c{};
+    contactInfo_t contact;
+    struct {
+      std::uint8_t recoveredContactPrefix[74];
+      bool startSolid;
+      bool allSolid;
+    };
+  };
 };
+
+static_assert(sizeof(contactInfo_t) == 0x4C,
+              "contactInfo_t ABI drift");
+static_assert(offsetof(contactInfo_t, point) == 0x04,
+              "contact point offset drift");
+static_assert(offsetof(contactInfo_t, normal) == 0x10,
+              "contact normal offset drift");
+static_assert(offsetof(contactInfo_t, contentFlags) == 0x24,
+              "contact contents offset drift");
+static_assert(offsetof(contactInfo_t, entityNum) == 0x38,
+              "contact entity offset drift");
+static_assert(sizeof(trace_t) == 0x80, "trace_t ABI drift");
+static_assert(offsetof(trace_t, endpos) == 0x04,
+              "trace end-position offset drift");
+static_assert(offsetof(trace_t, endAxis) == 0x10,
+              "trace end-axis offset drift");
+static_assert(offsetof(trace_t, c) == 0x34,
+              "trace contact offset drift");
 
 class idCollisionModel {
 public:

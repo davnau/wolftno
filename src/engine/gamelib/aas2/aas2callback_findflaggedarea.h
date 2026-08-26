@@ -1,6 +1,6 @@
 #pragma once
 
-#include "shared/idlib/math/vector.h"
+#include "engine/gamelib/aas2/aas2callback_avoidlocation.h"
 
 #include <cstddef>
 
@@ -18,17 +18,7 @@ public:
   virtual int Slot18() = 0; virtual int Slot19() = 0;
   virtual int Slot20() = 0; virtual int Slot21() = 0;
   virtual int Slot22() = 0;
-  virtual int GetAreaFlags(int areaNum) = 0;
-};
-
-class idAAS2Callback_AvoidLocation {
-public:
-  idAAS2Callback_AvoidLocation();
-  virtual ~idAAS2Callback_AvoidLocation();
-  virtual bool AreaIsGoal(idAAS2* aas, int areaNum,
-                          const idVec3* potentialGoal) = 0;
-
-  unsigned char state[0x20];
+  virtual int GetAreaFlags(int areaNum) const = 0;
 };
 
 class idAAS2Callback_FindFlaggedArea final
@@ -36,19 +26,14 @@ class idAAS2Callback_FindFlaggedArea final
 public:
   idAAS2Callback_FindFlaggedArea(int areaFlag, bool set);
   ~idAAS2Callback_FindFlaggedArea() override;
-  bool AreaIsGoal(idAAS2* aas, int areaNum,
-                  const idVec3* potentialGoal) override;
-
-  static void operator delete(void* memory) noexcept;
+  bool AreaIsGoal(const idAAS2* aas, int areaNum,
+                  const idVec3& potentialGoal) override;
 
   int areaFlag;
   int test;
 };
 
-static_assert(sizeof(idAAS2Callback_AvoidLocation) == 0x28,
-              "idAAS2Callback_AvoidLocation ABI drift");
 static_assert(offsetof(idAAS2Callback_FindFlaggedArea, areaFlag) == 0x28,
               "idAAS2Callback_FindFlaggedArea ABI drift");
 static_assert(sizeof(idAAS2Callback_FindFlaggedArea) == 0x30,
               "idAAS2Callback_FindFlaggedArea ABI drift");
-

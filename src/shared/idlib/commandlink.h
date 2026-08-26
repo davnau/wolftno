@@ -1,7 +1,7 @@
 #pragma once
 
-struct idCmdArgs;
-struct idAutoComplete;
+class idCmdArgs;
+class idAutoComplete;
 
 using commandFunction_t = void (*)(const idCmdArgs*);
 using argCompletion_t = void (*)(idAutoComplete*);

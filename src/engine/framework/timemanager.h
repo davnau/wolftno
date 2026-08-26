@@ -2,19 +2,36 @@
 
 #include <cstddef>
 
+#ifndef ID_GAME_TIME_UNIQUE_T_DEFINED
+#define ID_GAME_TIME_UNIQUE_T_DEFINED
 enum gameTimeUnique_t { GAME_TIME_UNIQUE };
+#endif
 
+#ifndef ID_MILLISECOND_UNIQUE_T_DEFINED
+#define ID_MILLISECOND_UNIQUE_T_DEFINED
+enum millisecondUnique_t { MILLISECOND_UNIQUE };
+#endif
+
+#ifndef ID_TYPESAFE_NUMBER_DEFINED
+#define ID_TYPESAFE_NUMBER_DEFINED
 template <typename T, typename UniqueType>
-class idTimeValue {
+class idTypesafeNumber {
 public:
-  constexpr idTimeValue() : value{} {}
-  constexpr explicit idTimeValue(T input) : value(input) {}
+  constexpr idTypesafeNumber() : value{} {}
+  constexpr idTypesafeNumber(T input) : value(input) {}
+  constexpr idTypesafeNumber(const idTypesafeNumber& other)
+      : value(other.value) {}
   constexpr operator T() const { return value; }
+  constexpr T GetValue() const { return value; }
 
   T value;
 };
+#endif
 
-using idGameTime = idTimeValue<int, gameTimeUnique_t>;
+template <typename T, typename UniqueType>
+using idTimeValue = idTypesafeNumber<T, UniqueType>;
+
+using idGameTime = idTypesafeNumber<int, gameTimeUnique_t>;
 
 class idTimeManager {
 public:
@@ -55,4 +72,3 @@ static_assert(offsetof(idTimeManager, gameTimePerFrame) == 0x08,
               "idTimeManager::gameTimePerFrame ABI drift");
 static_assert(offsetof(idTimeManager, inverseGameTimePerSecond) == 0x10,
               "idTimeManager::inverseGameTimePerSecond ABI drift");
-

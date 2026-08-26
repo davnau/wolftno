@@ -7,7 +7,8 @@
 #include <cmath>
 #include <cstring>
 
-struct idSerializer {
+class idSerializer {
+public:
   bool writing = false;
   std::uint8_t padding[7]{};
   idBitMsg* msg = nullptr;

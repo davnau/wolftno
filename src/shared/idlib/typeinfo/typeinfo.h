@@ -155,6 +155,7 @@ struct idEnumValueInfo {
 };
 struct idEnumInfo {
   idStr name;
+  int flags{};
   std::vector<idEnumValueInfo> values;
 };
 struct idClassVariableInfo {
@@ -177,6 +178,8 @@ public:
   int FindEnumIndex(const char*) const;
   const idEnumInfo* FindEnumInfo(const char*) const;
   const idEnumValueInfo* FindEnumValueInfo(const idEnumInfo&, int) const;
+  const idEnumValueInfo* FindEnumValueInfo(const idEnumInfo&, const char*,
+                                           bool allowScopedName = true) const;
   const char* FindEnumValueName(const idEnumInfo&, int) const;
   int FindClassIndex(const char*) const;
   const idClassInfo* FindClassInfo(const char*) const;

@@ -103,9 +103,12 @@
 // DIA: `dynamic atexit destructor for 'cg_optimizePresentsCountdown''
 #include <cstring>
 
-void idPresentable::SetParm(const idDeclRenderParm*, float value) {
+void idPresentable::SetParm(const idDeclRenderParm* parm, float value) {
   floatParms["aiRobotGlow"] = value;
   aiRobotGlow = value;
+  lastRenderParm = parm;
+  lastRenderParmValue = value;
+  ++renderParmSetCount;
 }
 
 void idClipModelInfo::Clear(){bounds={};contents=0;valid=false;}

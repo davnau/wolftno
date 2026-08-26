@@ -9,8 +9,10 @@ public:
 class idAtomicString {
 public:
   const char* str;
-  idAtomicString() : str("") {}
-  explicit idAtomicString(const char* text) : str("") { Set(text); }
+  static const char* const nullAtomicString;
+
+  idAtomicString() : str(nullAtomicString) {}
+  explicit idAtomicString(const char* text) : str(nullAtomicString) { Set(text); }
   void Set(const char* text);
   static void FreeDynamic();
   operator const char*() const { return str; }

@@ -14,19 +14,28 @@ public:
   idResource* r = nullptr;
   idResourceList* rl = nullptr;
 
-  inline static idBaseCodeResource* codeResourceList = nullptr;
+  static void AllocateCodeResources();
+  static void LoadCodeResources(const char* ofType = nullptr);
+
+  static idBaseCodeResource* codeResourceList;
+  static bool allocCodeResourcesHasBeenCalled;
 };
 
 template <typename T> class idCodeResource : public idBaseCodeResource {
 public:
   explicit idCodeResource(const char* resourceName = nullptr) {
     name = resourceName;
+    r = nullptr;
+    rl = &T::resourceList;
     next = codeResourceList;
     codeResourceList = this;
   }
-  const T* Get() const { return static_cast<const T*>(r); }
-  const T* operator->() const { return Get(); }
-  operator const T*() const { return Get(); }
+  T* Ptr() { return static_cast<T*>(r); }
+  const T* ConstPtr() const { return static_cast<const T*>(r); }
+  T* operator->() { return Ptr(); }
+  const T* operator->() const { return ConstPtr(); }
+  operator T*() { return Ptr(); }
+  operator const T*() const { return ConstPtr(); }
 };
 
 static_assert(sizeof(idBaseCodeResource) == 32, "idBaseCodeResource ABI drift");

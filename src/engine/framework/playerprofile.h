@@ -33,36 +33,36 @@ public:
   virtual bool Serialize(idSerializer& serializer) = 0;
   virtual bool UpdateDisplayModeFromCvars() { return false; }
   virtual bool CommitDisplayChanges() { return false; }
-  virtual float GetMouseSensitivity() const { return 1.0f; }
+  virtual float GetMouseSensitivity() { return 1.0f; }
   virtual void SetDefaultDevelopmentParameters() {}
   virtual int GetLevel() = 0;
   virtual void SetInvertLook(bool invert) = 0;
-  virtual unsigned GetSubtitleLanguageMask() const { return ~0u; }
+  virtual unsigned GetSubtitleLanguageMask() { return ~0u; }
   virtual void SetSubtitleLanguageMask(unsigned mask) = 0;
   virtual void GetLoadingScreenDevMessage(idStr& message) = 0;
   virtual bool HasPlayerProgress() = 0;
   virtual unsigned GetCompletionValue(bool includeSecrets) = 0;
 
-  int GetDeviceNumForProfile() const { return deviceNum; }
+  int GetDeviceNumForProfile() { return deviceNum; }
   void SetDeviceNumForProfile(int value) { deviceNum = value; }
   void SaveSettings(bool withIndicatorMessage);
   void LoadSettings();
-  state_t GetState() const { return state; }
-  state_t GetRequestedState() const { return requestedState; }
-  bool GetAchievement(int id) const;
+  state_t GetState() { return state; }
+  state_t GetRequestedState() { return requestedState; }
+  bool GetAchievement(int id);
   void SetAchievement(int id);
   void ClearAchievement(int id);
-  int GetDlcReleaseVersion() const { return dlcReleaseVersion; }
+  int GetDlcReleaseVersion() { return dlcReleaseVersion; }
   void SetDlcReleaseVersion(int version) { dlcReleaseVersion = version; }
   void SetGameModeType(int type) { gameModeType = type; }
-  int GetGameModeType() const { return gameModeType; }
+  int GetGameModeType() { return gameModeType; }
   void SetNoUser(bool noUser) { hasUser = !noUser; }
   void SetClearExistingOnWrite(bool clear) { clearExistingOnWrite = clear; }
-  bool GetClearExistingOnWrite() const { return clearExistingOnWrite; }
+  bool GetClearExistingOnWrite() { return clearExistingOnWrite; }
   void SetResetFileOwner(bool reset) { resetFileOwner = reset; }
-  bool GetResetFileOwner() const { return resetFileOwner; }
-  float GetMouseXFrac() const { return mouseXFrac; }
-  float GetMouseYFrac() const { return mouseYFrac; }
+  bool GetResetFileOwner() { return resetFileOwner; }
+  float GetMouseXFrac() { return mouseXFrac; }
+  float GetMouseYFrac() { return mouseYFrac; }
   void SetMouseFrac(float x, float y) { mouseXFrac = x; mouseYFrac = y; }
   bool AddSeenDLCItem(std::uint64_t item) {
     for (int index = 0; index < seenDLCItems.Num(); ++index)
@@ -72,8 +72,8 @@ public:
   }
   void StatSetInt(int stat, int value);
   void StatSetFloat(int stat, float value);
-  int StatGetInt(int stat) const;
-  float StatGetFloat(int stat) const;
+  int StatGetInt(int stat);
+  float StatGetFloat(int stat);
   void SetState(state_t value) { state = value; }
   void SetRequestedState(state_t value) { requestedState = value; }
   void SetDefaultsImpl();

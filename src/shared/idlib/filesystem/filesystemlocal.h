@@ -69,7 +69,7 @@ public:
   }
   void FixLongFilename(const char* basePath, const char* extension,
                        const char* input, char* output, int outputLength,
-                       bool) const {
+                       int) const {
     FixLongFilename(basePath, extension, input, output, outputLength);
   }
   std::uint32_t GetTimestamp(const char* path, bool) const {

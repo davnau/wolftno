@@ -23,6 +23,7 @@ struct idColor {
   static const idColor colorYellow;
   static const idColor colorWhite;
   static const idColor colorOrange;
+  static const idColor colorPurple;
   static const idColor colorMagenta;
   static const idColor colorXAxis;
   static const idColor colorYAxis;

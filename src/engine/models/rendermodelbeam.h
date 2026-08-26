@@ -61,6 +61,10 @@ public:
   beam_t* DrawBeamAlloc();
   void DrawBeam(beamNodeParms_t* node, const idMaterial* material,
                 beamOrientType_t orientType);
+  // Retail ABI used by gamelib callers. Keep the unsigned declaration until
+  // the render-model compiland itself is recovered.
+  void DrawBeam(beamNodeParms_t* nodes, int numNodes,
+                const idMaterial* material, beamOrientType_t orientType);
   void DrawBeam(beamNodeParms_t* nodes, unsigned numNodes,
                 const idMaterial* material, beamOrientType_t orientType);
 

@@ -1,4 +1,6 @@
+#define WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI
 #include "engine/gamelib/animstack/animator_treesway.h"
+#undef WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI
 
 #include "engine/gamelib/animstack/animator_treesway_abi.h"
 #include "shared/idlib/math/mathlib.h"

@@ -2,7 +2,7 @@
 
 #include "decl.h"
 
-struct idCmdArgs;
+class idCmdArgs;
 
 struct declFileDependency_t {
   idAtomicString fileName;

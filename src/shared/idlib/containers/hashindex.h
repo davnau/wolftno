@@ -54,6 +54,7 @@ public:
     indexChain[index & lookupMask] = -1;
   }
   void RemoveIndex(int key, int index);
+  void RemoveIndexFast(int key, int index);
   void Clear() {
     if (hash != INTERNAL_INVALID_INDEX) {
       for (int index = 0; index < hashSize; ++index)

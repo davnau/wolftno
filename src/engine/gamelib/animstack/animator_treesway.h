@@ -18,7 +18,11 @@ public:
   void SetTimeScale(float scale) { timeScale = scale; }
 
   static void operator delete(void* memory) noexcept {
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem::Singleton().Free(memory, ALIGN_16);
+#else
     idMem::Singleton()->Free(memory, ALIGN_16);
+#endif
   }
 
 protected:

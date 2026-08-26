@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class idAAS2;
 class idAASVisCache;
@@ -177,6 +178,10 @@ public:
     (void)bodyId;
     return {};
   }
+  virtual idVec3 GetOriginHistory(int millisecondsBack) const {
+    (void)millisecondsBack;
+    return GetOrigin();
+  }
 };
 
 class idEntity {
@@ -191,6 +196,14 @@ public:
   }
   virtual void OnShow() { hidden = false; }
   virtual void OnActivate(idEntity* activator) { (void)activator; }
+  void BecomeInactive(int flags) {
+    lastBecomeInactiveFlags = flags;
+    ++becomeInactiveCount;
+  }
+  int GetBecomeInactiveCountForTest() const { return becomeInactiveCount; }
+  int GetLastBecomeInactiveFlagsForTest() const {
+    return lastBecomeInactiveFlags;
+  }
   virtual void GetColor(idVec4& color) const;
   void SetColorForTest(const idVec4& color) { entityColor = color; }
   virtual void KilledNotification(idEntity* victim, idEntity* inflictor,
@@ -383,6 +396,8 @@ protected:
   bool lastDropToFloorActivate{false};
   unsigned int entityFlags{0};
   idVec4 entityColor{1.0F, 1.0F, 1.0F, 1.0F};
+  int becomeInactiveCount{0};
+  int lastBecomeInactiveFlags{0};
 };
 
 class idSoundWorld {
@@ -482,11 +497,70 @@ public:
     (void)debugName;
     return 0;
   }
+  virtual bool GetStepMoveQueryResult(std::uint64_t queryIndex,
+                                      trace_t& result, bool peek) {
+    (void)queryIndex;
+    (void)result;
+    (void)peek;
+    return false;
+  }
+  virtual bool GetClipQueryResult(std::uint64_t queryIndex,
+                                  std::vector<idVec3>& contactPoints,
+                                  bool peek) {
+    (void)queryIndex;
+    (void)contactPoints;
+    (void)peek;
+    return false;
+  }
+  virtual bool GetContactsQueryResult(std::uint64_t queryIndex,
+                                      std::vector<idVec3>& contactPoints,
+                                      bool peek) {
+    (void)queryIndex;
+    (void)contactPoints;
+    (void)peek;
+    return false;
+  }
+  virtual bool AcquireRecycledTraceModel() { return false; }
+  virtual std::uint64_t SubmitClipQuery(
+      const idBounds& localBounds, const idVec3& origin,
+      const idMat3& axis, int maximumResults, int contentsMask,
+      const char* debugName) {
+    (void)localBounds;
+    (void)origin;
+    (void)axis;
+    (void)maximumResults;
+    (void)contentsMask;
+    (void)debugName;
+    return 0;
+  }
+  virtual std::uint64_t SubmitContactsQuery(
+      const idBounds& localBounds, const idVec3& origin,
+      const idVec3& direction, float depth, const idMat3& axis,
+      int maximumResults, int contentsMask, const char* debugName) {
+    (void)localBounds;
+    (void)origin;
+    (void)direction;
+    (void)depth;
+    (void)axis;
+    (void)maximumResults;
+    (void)contentsMask;
+    (void)debugName;
+    return 0;
+  }
+  virtual void ShowCollisionPoint(const idVec3& point) {
+    (void)point;
+  }
+  virtual void RecycleTraceModel(bool traceModelWasAcquired,
+                                 bool clear) {
+    (void)traceModelWasAcquired;
+    (void)clear;
+  }
   virtual idEncounterGroupManager* GetEncounterGroupManager() {
     return nullptr;
   }
   virtual int GetCurrentCheckpoint() const { return -1; }
   virtual void RemoveAIWorldStateUser(idEntity* entity) { (void)entity; }
+  virtual void RemoveActiveAI(idAI2* ai) { (void)ai; }
   virtual void RemoveAIEventReceiver(idEntity* entity) { (void)entity; }
   virtual void RemoveAIEntityEvents(const idEntity* entity) { (void)entity; }
   virtual void AddAIBehaviorBodyEvent(const void* declaration,
