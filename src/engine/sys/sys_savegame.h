@@ -213,3 +213,4 @@ inline bool SavegameReadDetailsFromFile(idFile* file, idSaveGameDetails& details
 void Sys_ExecuteSavegameCommandAsync(idSaveLoadParms* savegameParms);
 void Sys_ExecuteSavegameCommandAsyncImpl(idSaveLoadParms* savegameParms);
 void Sys_SaveGameCheck(bool& exists, bool& autosaveExists);
+bool Sys_SaveGameProfileCheck();

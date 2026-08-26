@@ -13,6 +13,17 @@ public:
   std::uint64_t index;
 };
 
+class idResidencyQuery {
+public:
+  static constexpr std::uint64_t INVALID_INDEX = 0;
+
+  idResidencyQuery() : index(INVALID_INDEX) {}
+  explicit idResidencyQuery(std::uint64_t queryIndex) : index(queryIndex) {}
+  void Cancel() { index = INVALID_INDEX; }
+
+  std::uint64_t index;
+};
+
 class idClip;
 class idTraceModelCache;
 
@@ -64,6 +75,12 @@ public:
     idCollisionQuery query;
   };
 
+  struct idClipResidencyQuery {
+    std::uint8_t recoveredPrefix[0x18];
+    bool resident;
+    std::uint8_t recoveredTail[7];
+  };
+
   idClipQuery Translation(trace_t* result, const idVec3& start,
                           const idVec3& end, const idClipModel* clipModel,
                           const idMat3& startAxis, int clipMask,
@@ -75,6 +92,7 @@ public:
   int GetClipModelsTouchingBounds(const idBounds& bounds, int clipMask,
                                   idClipModel** clipModelList,
                                   int maxCount) const;
+  idResidencyQuery TestResidency(const idBounds& bounds);
 
   std::uint8_t recoveredPrefix[0x400F8];
   idTraceModelCache* traceModelCache;
@@ -82,14 +100,23 @@ public:
   idClipCollisionQuery collisionQueries[4096];
   std::uint64_t collisionQueryFirstSubmittedIndex;
   std::uint64_t collisionQueryLastSubmittedIndex;
-  std::uint8_t recoveredTail[0x15078];
+  std::uint8_t recoveredResidencyPrefix[0xD058];
+  idClipResidencyQuery residencyQueries[1024];
+  std::uint64_t residencyQueryFirstSubmittedIndex;
+  std::uint64_t residencyQueryLastSubmittedIndex;
+  std::uint64_t residencyQueryFirstAllocedIndex;
+  std::uint64_t residencyQueryLastAllocedIndex;
 };
 
 static_assert(sizeof(idClipQuery) == 8, "idClipQuery ABI drift");
+static_assert(sizeof(idResidencyQuery) == 8,
+              "idResidencyQuery ABI drift");
 static_assert(sizeof(idCollisionQuery) == 8,
               "idCollisionQuery ABI drift");
 static_assert(sizeof(idClip::idClipCollisionQuery) == 0x18,
               "idClip collision-query ABI drift");
+static_assert(sizeof(idClip::idClipResidencyQuery) == 0x20,
+              "idClip residency-query ABI drift");
 static_assert(sizeof(idClipModel) == 0x138, "idClipModel ABI drift");
 static_assert(offsetof(idClipModel, physicsId) == 0x0C,
               "idClipModel physics offset drift");
@@ -109,4 +136,12 @@ static_assert(offsetof(idClip, collisionQueryFirstSubmittedIndex) == 0x74288,
               "idClip first-submitted offset drift");
 static_assert(offsetof(idClip, collisionQueryLastSubmittedIndex) == 0x74290,
               "idClip last-submitted offset drift");
+static_assert(offsetof(idClip, residencyQueries) == 0x812F0,
+              "idClip residency-query array offset drift");
+static_assert(offsetof(idClip::idClipResidencyQuery, resident) == 0x18,
+              "idClip residency result offset drift");
+static_assert(offsetof(idClip, residencyQueryFirstSubmittedIndex) == 0x892F0,
+              "idClip residency first-submitted offset drift");
+static_assert(offsetof(idClip, residencyQueryLastSubmittedIndex) == 0x892F8,
+              "idClip residency last-submitted offset drift");
 static_assert(sizeof(idClip) == 0x89310, "idClip ABI drift");

@@ -112,6 +112,50 @@ int idActor::GetActorWaterEffectsBodyIdForTest() const {
 
 idRecoveredValue idActor::SaveDamageGroup(...) { return {}; }
 
+idDamageGroup* idActor::GetDamageGroupFromJoint(
+    const idIndex<short, invalidJointIndex_t> joint) {
+  for (std::size_t index = 0; index < damageGroupJointIndices.size(); ++index) {
+    if (damageGroupJointIndices[index] == joint.value) {
+      return GetDamageGroupFromName(damageGroupJointNames[index].c_str());
+    }
+  }
+  return nullptr;
+}
+
+idDamageGroup* idActor::GetDamageGroupFromName(
+    const char* damageGroupName) {
+  if (damageGroupName == nullptr) return nullptr;
+  for (idDamageGroup* damageGroup : registeredDamageGroups) {
+    if (damageGroup != nullptr &&
+        idStr::Icmp(damageGroup->groupName.data, damageGroupName) == 0) {
+      return damageGroup;
+    }
+  }
+  return nullptr;
+}
+
+void idActor::RegisterDamageGroupForActor(idDamageGroup* damageGroup) {
+  if (damageGroup != nullptr) registeredDamageGroups.push_back(damageGroup);
+}
+
+void idActor::ClearDamageGroupsForActor() {
+  registeredDamageGroups.clear();
+}
+
+void idActor::SetDamageGroupForJointForTest(
+    const short joint, const char* damageGroupName) {
+  for (std::size_t index = 0; index < damageGroupJointIndices.size(); ++index) {
+    if (damageGroupJointIndices[index] == joint) {
+      damageGroupJointNames[index] =
+          damageGroupName != nullptr ? damageGroupName : "";
+      return;
+    }
+  }
+  damageGroupJointIndices.push_back(joint);
+  damageGroupJointNames.emplace_back(
+      damageGroupName != nullptr ? damageGroupName : "");
+}
+
 void idActor::SetLastDamageInfo(
     const idEntity* inflictor,
     const idDeclDamage* damageDefinition) {
@@ -123,12 +167,28 @@ const idAnimator_AF* idActor::GetAF() const {
   return &articulatedFigureProperties;
 }
 
+// DIA: idActor::GetEyeOffset
+const idVec3 idActor::GetEyeOffset() const {
+  return eyeOffset;
+}
+
 bool idActor::ExpandBoundsByJoints(idBounds& bounds,
                                    const int jointGroup) const {
   lastJointBoundsGroup = jointGroup;
   if (!jointBoundsAvailable) return false;
   bounds = jointBounds;
   return true;
+}
+
+// DIA: idActor::GetViewTransform
+void idActor::GetViewTransform(idVec3& origin, idMat3& axis) const {
+  idPhysics* const gravityPhysics = GetPhysics();
+  idPhysics* const originPhysics = GetPhysics();
+  const float eyeHeightAlongGravity = -GetEyeOffset().z;
+  const idVec3& gravityNormal = gravityPhysics->GetGravityNormal();
+  const idVec3& physicsOrigin = originPhysics->GetOrigin();
+  origin = physicsOrigin + gravityNormal * eyeHeightAlongGravity;
+  axis = *GetPresentableAxis();
 }
 
 // DIA: idActor::GetEyePos
@@ -153,6 +213,8 @@ void idActor::SetEyeAxis(const idMat3* inputEyeAxis) {
 const idInventoryCollection* idActor::GetInventory() const {
   return &inventory;
 }
+
+idAttachmentCollection* idActor::GetAttachments() { return &attachments; }
 
 const idAttachmentCollection* idActor::GetAttachments() const {
   return &attachments;

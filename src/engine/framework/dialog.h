@@ -17,6 +17,7 @@ enum gameDialogMessages_t : int {
   GDM_QUICK_SAVE = 0x35,
   GDM_LOADING_PROFILE = 0x3A,
   GDM_STORAGE_REQUIRED = 0x3B,
+  GDM_INSUFFICENT_STORAGE_SPACE = 0x3C,
   GDM_QUIT_GAME = 0x42,
   GDM_MUST_SIGNIN = 0x46,
   GDM_ERROR_LOADING_SAVEGAME = 0x5A,
@@ -31,6 +32,8 @@ enum gameDialogMessages_t : int {
   GDM_NEW_CONTENT_GO_TO_STORE = 0x8E,
   GDM_SEASON_PASS_CONTENT_AVAILABLE = 0x8F,
   GDM_BOUGHT_CONTENT_NOT_FOUND = 0x90,
+  GDM_DISCONNECTED = 0x78,
+  GDM_OUT_OF_MEMORY = 0x83,
   GDM_MAX = 0xAF,
 };
 
@@ -58,7 +61,7 @@ public:
   idDialogInfo()
       : msg(GDM_INVALID),type(DIALOG_ACCEPT),acceptCB(nullptr),cancelCB(nullptr),
         altCBOne(nullptr),altCBTwo(nullptr),clear(false),waitClear(false),
-        pause(false),forcePause(false),leaveOnClear(false),waitOnAtlas(false),
+        pause(false),leaveOnClear(false),waitOnAtlas(false),
         renderDuringLoad(false),startTime(0),killTime(0),prio(0),overrideMsg(),
         txt1(),txt2(),txt3(),txt4() {}
 

@@ -59,6 +59,7 @@ public:
     return impulses.Num() > 0 ? &impulses[impulses.Num() - 1] : nullptr;
   }
   idJointIndex GetJointIndex() const { return jointIndex; }
+  void SetJointIndexForTest(short value) { jointIndex.value = value; }
   float GetFrameDamage() const { return frameDamage; }
   float GetFrameArmorDamage() const { return frameArmorDamage; }
   float GetRecentUnscaledDamage() const { return recentUnscaledDamage; }
@@ -67,10 +68,13 @@ public:
   void SetShouldPain(bool value) { shouldPain = value; }
   const char* GetInjuryDamageGroup() const { return injuryDamageGroup.data; }
   int GetInjuryGoreLevelIndex() const { return injuryGoreLevelIndex; }
-  void ConfigureInjuryGroupForTest(const char* groupName,
-                                   int goreLevelIndex) {
+  void SetInjuryGoreLevel(const char* groupName, int goreLevelIndex) {
     injuryDamageGroup = groupName != nullptr ? groupName : "";
     injuryGoreLevelIndex = goreLevelIndex;
+  }
+  void ConfigureInjuryGroupForTest(const char* groupName,
+                                   int goreLevelIndex) {
+    SetInjuryGoreLevel(groupName, goreLevelIndex);
   }
   int GetMostDamagedIndex() const { return mostDamagedIndex; }
   void SetMostDamagedIndex(int value) { mostDamagedIndex = value; }

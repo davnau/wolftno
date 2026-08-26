@@ -5,7 +5,8 @@
 
 #include <cstdint>
 
-struct blendParms_t {
+class blendParms_t {
+public:
   struct parms_t {
     const idMD6Anim* srcAnim;
     const idMD6Anim* destAnim;

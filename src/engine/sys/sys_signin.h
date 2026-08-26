@@ -35,6 +35,7 @@ public:
   }
   bool ProcessInputEvent(const sysEvent_t* event);
   idPlayerProfile* GetDefaultProfile();
+  idLocalUser* GetMasterLocalUser();
   idLocalUser* GetLocalUserByInputDevice(int inputDevice);
   idPlayerProfile* GetPlayerProfileByInputDevice(int inputDevice);
   idLocalUser* GetLocalUserByHandle(localUserHandle_t handle);

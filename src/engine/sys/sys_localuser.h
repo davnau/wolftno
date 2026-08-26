@@ -14,6 +14,7 @@ struct localUserHandle_t {
   friend bool operator==(localUserHandle_t lhs, localUserHandle_t rhs) { return lhs.handle == rhs.handle; }
 };
 
+#if !defined(WOLFTNO_PLAYERPROFILE_DEFINED)
 class idPlayerProfile {
 public:
   enum state_t { IDLE = 0, LOADING, SAVING, ERROR };
@@ -32,6 +33,7 @@ public:
   std::array<float, 500> floatStats{};
   int dlcReleaseVersion{};
 };
+#endif
 
 class idProfileMgr {
 public:

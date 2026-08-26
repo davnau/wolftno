@@ -226,7 +226,7 @@ void idAI2::GetSubWebName(const idStr* input, idStr* output) {
   *output = *input;
   idStr weaponPrefix;
   GetWeaponPrefix(&weaponPrefix);
-  output->Replace("$weapon$", weaponPrefix.data);
+  output->Replace("$weapon", weaponPrefix.data);
 }
 
 // DIA: idAI2::ForceAndChangeAnimWebState
@@ -307,6 +307,7 @@ const idMD6Anim* idAI2::GetAnimForAnimWebNode(
     const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>& subWebIndex,
     const idIndex<short, idDeclAnimWeb::invalidStateIndex_t>& stateIndex)
     const {
+  ++animWebState.nodeAnimationLookupCount;
   if (subWebIndex.value < 0 || stateIndex.value < 0) return nullptr;
   const int index = (subWebIndex.value + stateIndex.value) %
                     static_cast<int>(animWebState.nodeAnimations.size());
@@ -320,6 +321,18 @@ float idAI2::GetAnimTimeScaleForAnimWebNode(
   const idAIAnimNodePlayback* animation =
       GetAnimForAnimWebNode(subWebIndex, stateIndex);
   return animation != nullptr ? animation->timeScale : 0.0F;
+}
+
+float idAI2::GetAnimTimeScaleForAnimWebNode(
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>& subWebIndex,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t>& stateIndex)
+    const {
+  ++animWebState.nodeTimeScaleLookupCount;
+  if (subWebIndex.value < 0 || stateIndex.value < 0) return 0.0F;
+  const int index = (subWebIndex.value + stateIndex.value) %
+                    static_cast<int>(animWebState.nodeAnimations.size());
+  return animWebState.nodeAnimations[static_cast<std::size_t>(index)]
+      .timeScale;
 }
 
 // DIA: idAI2::GetAnimForAnimWebNodeIndex

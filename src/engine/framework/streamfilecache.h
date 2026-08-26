@@ -1,9 +1,5 @@
 #pragma once
 
-// NEEDS_WORK(engine/framework): this is the PDB-derived renderer boundary.
-// The implementation and full layout belong to engine/framework and are
-// intentionally deferred until that folder is recovered.
-
 #include "shared/idlib/filesystem/file.h"
 #include "shared/idlib/parallelism/thread.h"
 #include "shared/idlib/sys/sys_alloc.h"
@@ -51,12 +47,14 @@ public:
                                    memTag_t,volatile bool**,int);
   void BatchFreeMemory(void**,int);
   void SignalWork();
-  // NEEDS_WORK(engine/framework): implementation belongs to the framework
-  // recovery pass; this ABI is required by renderer virtual-texture streaming.
   void BatchRequestCacheLines(const cacheLineRequest_t* requests,
                               int numRequests);
+  bool PinCachedData(idFile* file, std::int64_t offset, int length,
+                     struct pinnedCacheLines_t& lines, bool blockingRead,
+                     int priority, int persistence, pfcRequest_t request);
+  void UnpinData(struct pinnedCacheLines_t& lines);
 
-  std::int64_t GetCurrentUsageLimit();
+  std::int64_t GetCurrentUsageLimit() const;
 
   idSysMutex interfaceMutex;
   class idStreamControlThread* controlThread;
@@ -69,6 +67,7 @@ static_assert(sizeof(cacheLineRequest_t) == 0x18,
 
 extern idStreamFileCache* streamFileCache;
 extern idStreamFileCache StreamFileCacheLocal;
+bool StaticOutOfMemoryCallback();
 
 static_assert(offsetof(idStreamFileCache,controlThread)==8,
               "stream cache control offset drift");

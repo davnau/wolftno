@@ -87,7 +87,7 @@ void idAIMoveState::Init(idAI2* value) {
 }
 
 // DIA: idAIMoveState::Stop
-void idAIMoveState::Stop(aiMoveStatus_t reason) {
+aiMoveStatus_t idAIMoveState::Stop(aiMoveStatus_t reason) {
   moveStatus = reason;
   currentVelocity = {};
   pushVelocity = {};
@@ -95,6 +95,7 @@ void idAIMoveState::Stop(aiMoveStatus_t reason) {
   smoothBlend = false;
   traversalPlaying = false;
   turning = false;
+  return reason;
 }
 
 // DIA: idAIMoveState::PointReachableAreaNum
@@ -360,6 +361,8 @@ idEntity* idAIMemory::GetActionEntity() const { return actionEntity; }
 
 // DIA: idObstacleInfo::Reset
 void idObstacleInfo::Reset() {
+  wallCorners[0] = {};
+  wallCorners[1] = {};
   obstacle = nullptr;
   avoidPoint = {};
   valid = false;

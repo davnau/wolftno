@@ -86,6 +86,9 @@ public:
     return blendVariableNames;
   }
   float GetForwardRunIndex() const { return forwardRunIndex; }
+  float GetIdleIndex() const { return idleIndex; }
+  runIndexType_t GetRunIndexType() const { return runIndexType; }
+  float GetForwardRunBlendLinear() const { return forwardRunBlendLinear; }
   float GetForwardRunBlend() const { return forwardRunBlend; }
   float GetDesiredTurn() const { return desiredTurn; }
   float GetToCombatTurn() const { return toCombatTurn; }

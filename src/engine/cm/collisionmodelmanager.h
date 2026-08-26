@@ -135,6 +135,7 @@ public:
   void EndQueryFrame();
   void SubmitQueries(idCollisionQueryJobManager& jobs) const;
   void WaitForAllQueries(idCollisionQueryJobManager& jobs) const;
+  void WaitForAllQueries();
   std::size_t NumModels() const { return models.size(); }
   void DrawCollisionModel(cmHandle_t handle) const;
   void DebugOutput() const;

@@ -118,7 +118,8 @@ public:
   const float& operator[](int index) const { return (&x)[index]; }
 };
 
-struct idVec6 {
+class idVec6 {
+public:
   float p[6];
 };
 
@@ -186,9 +187,11 @@ public:
     return mat[0] * vector.x + mat[1] * vector.y + mat[2] * vector.z;
   }
   idMat3 operator*(const idMat3& rhs) const;
+  idMat3& operator*=(const idMat3& rhs);
   bool Compare(const idMat3& other, float epsilon) const;
   float Determinant() const;
   bool InverseSelf();
+  idMat3& OrthoNormalizeSelf(std::uint8_t prio1, std::uint8_t prio2);
   idMat3& InertiaTranslateSelf(float mass, const idVec3& centerOfMass, const idVec3& translation);
   const idMat3& RotateSelf(const idVec3& axis, float angleDegrees);
   float ToPitch() const;

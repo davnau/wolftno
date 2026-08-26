@@ -9,6 +9,11 @@ std::unordered_map<int, idThread*>& ThreadRegistry() {
   return registry;
 }
 
+idThread*& CurrentThread() {
+  static idThread* currentThread = nullptr;
+  return currentThread;
+}
+
 }  // namespace
 
 idThread::idThread(int handleValue) : handle{handleValue} {
@@ -16,6 +21,7 @@ idThread::idThread(int handleValue) : handle{handleValue} {
 }
 
 idThread::~idThread() {
+  if (CurrentThread() == this) CurrentThread() = nullptr;
   const auto found = ThreadRegistry().find(handle.value);
   if (found != ThreadRegistry().end() && found->second == this) {
     ThreadRegistry().erase(found);
@@ -25,6 +31,12 @@ idThread::~idThread() {
 idThread* idThread::Find(int handleValue) {
   const auto found = ThreadRegistry().find(handleValue);
   return found != ThreadRegistry().end() ? found->second : nullptr;
+}
+
+idThread* idThread::GetCurrentThread() { return CurrentThread(); }
+
+void idThread::SetCurrentThreadForTest(idThread* thread) {
+  CurrentThread() = thread;
 }
 
 // DIA: idAI2::ExecuteThread

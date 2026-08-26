@@ -17,13 +17,6 @@ void SetMD6ParseTreeBranchUpdate(idMD6ParseTreeBranchUpdate update) {
   g_branchUpdate = update;
 }
 
-bool idMD6Anim::AnimIsOkForModel(const idMD6Model* model) const {
-  if (g_modelCompatible != nullptr)
-    return g_modelCompatible(this, model);
-  return model != nullptr && model->skeleton != nullptr &&
-         (animData != nullptr || postedForGeneration);
-}
-
 bool idMD6Node::IsValid() const {
   if (this == nullptr)
     return false;

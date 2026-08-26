@@ -7,19 +7,15 @@
 
 class idUserCmdMgr {
 public:
+  idUserCmdMgr();
   usercmd_t cmdBuffer[128][16];
   int writeFrame[16];
   int readFrame[16];
 
   usercmd_t& Command(int frame,int player) { return cmdBuffer[frame%128][player]; }
   const usercmd_t& Command(int frame,int player) const { return cmdBuffer[frame%128][player]; }
-  void PutUserCmdForPlayer(int player,const usercmd_t& command) {
-    Command(writeFrame[player],player)=command;
-    if(writeFrame[player]-readFrame[player]+1>128) {
-      readFrame[player]=writeFrame[player]-64;
-    }
-    ++writeFrame[player];
-  }
+  void PutUserCmdForPlayer(int player,const usercmd_t& command);
+  void ResetPlayer(int playerIndex);
 };
 
 static_assert(sizeof(idUserCmdMgr)==155776,"idUserCmdMgr ABI drift");

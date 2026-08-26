@@ -181,6 +181,8 @@ public:
   const idEnumValueInfo* FindEnumValueInfo(const idEnumInfo&, const char*,
                                            bool allowScopedName = true) const;
   const char* FindEnumValueName(const idEnumInfo&, int) const;
+  const char* GetEnumName(const char* enumTypeName, int enumValue,
+                          const char* defaultValue) const;
   int FindClassIndex(const char*) const;
   const idClassInfo* FindClassInfo(const char*) const;
   const idClassVariableInfo* FindClassVariableInfo(const idClassInfo&, const char*) const;

@@ -10,7 +10,7 @@ class idFile_Memory;
 class idFile_Stat;
 class idGame;
 class idGameSpawnInfo;
-class idVideoDesc;
+struct idVideoDesc;
 
 class idResourceManager {
 public:

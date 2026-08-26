@@ -4,7 +4,8 @@
 
 #include <cstdint>
 
-struct idColor {
+class idColor {
+public:
   float r, g, b, a;
 
   // The retail renderer's debug interface is expressed in idVec4.  idColor

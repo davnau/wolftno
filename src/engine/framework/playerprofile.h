@@ -1,5 +1,7 @@
 #pragma once
 
+#define WOLFTNO_PLAYERPROFILE_DEFINED 1
+
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/text/str.h"
 

@@ -17,7 +17,8 @@
 #include <new>
 
 idCVar buoy_damping("buoy_damping", "0.002", CVAR_FLOAT,
-                    "velocity damping in buoyancy", nullptr);
+                    "velocity damping in buoyancy",
+                    static_cast<argCompletionRef_t>(nullptr));
 
 namespace {
 

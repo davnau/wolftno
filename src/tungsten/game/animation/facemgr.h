@@ -2,7 +2,9 @@
 
 #include "tungsten/game/game_runtime.h"
 #include "tungsten/game/declvoiceover.h"
+#include "engine/animation/md6.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -140,6 +142,15 @@ public:
   int GetGlanceIndex() const { return glanceIndex; }
   int GetFidgetIndex() const { return fidgetIndex; }
   const std::vector<std::string>& GetVisemes() const { return visemeAnimations; }
+  short GetEyeJointIndexForAI(int eye) const {
+    return eye >= 0 && eye < static_cast<int>(eyeJointIndex.size())
+               ? eyeJointIndex[static_cast<std::size_t>(eye)].value
+               : static_cast<short>(-1);
+  }
+  void SetEyeJointIndicesForTest(short leftEye, short rightEye) {
+    eyeJointIndex[0] = idIndex<short, invalidJointIndex_t>(leftEye);
+    eyeJointIndex[1] = idIndex<short, invalidJointIndex_t>(rightEye);
+  }
 
 private:
   int Now() const;
@@ -172,6 +183,7 @@ private:
   int setMoodAnimationCount{0};
   mood_t currentMood{MOOD_NONE};
   mood_t defaultMood{MOOD_NONE};
+  std::array<idIndex<short, invalidJointIndex_t>, 2> eyeJointIndex{};
 };
 
 #define FACE_CVAR_LIST(X) \

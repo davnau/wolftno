@@ -10,7 +10,17 @@
 
 class idMD6MorphSet;
 
-template <typename T> struct idListAllocReturnsReference : std::false_type {};
+template <typename T, typename = void>
+struct idListAllocReturnsReference : std::false_type {};
+
+// Some retail idList instantiations expose Alloc as T&.  A nested marker lets
+// a type request that ABI before the containing list instantiates, including
+// for nested types whose enclosing class is not complete soon enough for an
+// ordinary explicit specialization.
+template <typename T>
+struct idListAllocReturnsReference<
+    T, std::void_t<typename T::idListAllocReturnsReferenceMarker>>
+    : std::true_type {};
 
 template <typename T, int DefaultTag = 5> class idList {
 public:
@@ -106,7 +116,8 @@ public:
   AllocResult Alloc() {
     EnsureCapacity(num + 1);
     const int index = num >= size ? size - 1 : num++;
-    if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet>)
+    if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
+                  idListAllocReturnsReference<T>::value)
       return list[index];
     else
       return index >= 0 ? &list[index] : nullptr;

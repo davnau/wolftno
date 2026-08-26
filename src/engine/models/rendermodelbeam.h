@@ -15,6 +15,8 @@ enum beamOrientType_t : int {
 };
 
 struct beamNodeParms_t {
+  using idListAllocReturnsReferenceMarker = void;
+
   idVec3 startPos;
   idVec3 endPos;
   idVec3 startPos2;

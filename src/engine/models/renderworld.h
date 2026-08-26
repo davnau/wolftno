@@ -190,10 +190,10 @@ public:
   virtual void DebugCone(const idVec4& color, const idVec3& apex,
                          const idVec3& direction, float radius1,
                          float radius2, int lifetime, bool depthTest) = 0;
-  virtual void DebugAxis(const idVec4& color, const idVec3& origin,
-                         const idMat3& axis, int lifetime, bool depthTest) = 0;
   virtual void DebugAxis(const idVec3& origin, const idMat3& axis,
                          int lifetime, bool depthTest) = 0;
+  virtual void DebugAxis(const idVec4& color, const idVec3& origin,
+                         const idMat3& axis, int lifetime, bool depthTest) = 0;
   virtual void DebugAxisScaled(const idVec3& origin, const idMat3& axis,
                                float scale, int lifetime, bool depthTest) = 0;
   virtual void DebugPoint(const idVec4& color, const idVec3& point,
@@ -253,9 +253,9 @@ public:
                  bool) override;
   void DebugCone(const idVec4&, const idVec3&, const idVec3&, float, float,
                  int, bool) override;
+  void DebugAxis(const idVec3&, const idMat3&, int, bool) override;
   void DebugAxis(const idVec4&, const idVec3&, const idMat3&, int,
                  bool) override;
-  void DebugAxis(const idVec3&, const idMat3&, int, bool) override;
   void DebugAxisScaled(const idVec3&, const idMat3&, float, int,
                        bool) override;
   void DebugPoint(const idVec4&, const idVec3&, int, bool) override;

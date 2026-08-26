@@ -1,0 +1,180 @@
+#pragma once
+
+#include "engine/gamelib/physics/clip.h"
+#include "shared/idlib/sys/sys_alloc.h"
+
+#include <cstddef>
+
+struct idRotation;
+struct impactInfo_t;
+enum bindFlags_t : int;
+
+enum physicsType_t : int {
+  PHYSICS_INVALID = 0,
+  PHYSICS_STATIC = 1,
+  PHYSICS_STATICMULTI = 2,
+  PHYSICS_AI = 3,
+  PHYSICS_PLAYER = 4,
+  PHYSICS_PARAMETRIC = 5,
+  PHYSICS_PARAMETRICMM = 6,
+  PHYSICS_RIGIDBODY = 7,
+  PHYSICS_RIGIDBODY3DOF = 8,
+  PHYSICS_AF = 9,
+  PHYSICS_ROBOT = 10,
+  PHYSICS_PARAMETRICDOOR = 11,
+};
+
+class idPhysicsCallbacks {
+public:
+  const void* const* vtable;
+};
+
+class idPhysics {
+public:
+  enum residency_t : int {
+    RESIDENCY_NOT_TESTED = 0,
+    RESIDENCY_YES = 1,
+    RESIDENCY_NO = 2,
+  };
+
+  idPhysics();
+  virtual ~idPhysics();
+
+  static idPhysics* GetPhysicsForId(int physicsId_);
+  static void ClearHash();
+
+  void InitPhysics(idClip* clip_, idPhysicsCallbacks* callbacks_,
+                   int entityNumber_);
+
+  physicsType_t GetType() const { return type; }
+  int GetPhysicsId() const { return physicsId; }
+  int GetEntityNumber() const { return entityNumber; }
+  idClip* GetClip() const { return clip; }
+  idPhysicsCallbacks* GetCallbacks() const { return callbacks; }
+
+  virtual void SetClipModel(idClipModel*, float, int, bool) = 0;
+  virtual idClipModel* GetClipModel(int) const = 0;
+  virtual int GetNumClipModels() const = 0;
+  virtual void SetMass(float, int) = 0;
+  virtual float GetMass(int) const = 0;
+  virtual void SetContents(int, int) = 0;
+  virtual int GetContents(int) const = 0;
+  virtual void SetClipMask(int, int) = 0;
+  virtual int GetClipMask(int) const = 0;
+  virtual const idBounds& GetBounds(int) const = 0;
+  virtual const idBounds& GetAbsBounds(int) const = 0;
+  virtual void SetOrigin(const idVec3&, int) = 0;
+  virtual void SetAxis(const idMat3&, int) = 0;
+  virtual void Translate(const idVec3&, int) = 0;
+  virtual void Rotate(const idRotation&, int) = 0;
+  virtual const idVec3& GetOrigin(int) const = 0;
+  virtual const idMat3& GetAxis(int) const = 0;
+  virtual const idVec3& GetLocalOrigin(int) const = 0;
+  virtual const idMat3& GetLocalAxis(int) const = 0;
+  virtual void SetLinearVelocity(const idVec3&, int) = 0;
+  virtual void SetAngularVelocity(const idVec3&, int) = 0;
+  virtual idVec3 GetLinearVelocity(int) const = 0;
+  virtual idVec3 GetAngularVelocity(int) const = 0;
+  virtual void SetGravity(const idVec3&) = 0;
+  virtual const idVec3& GetGravity() const = 0;
+  virtual const idVec3& GetGravityNormal() const = 0;
+  virtual void SetWaterLevel(float, int, bool, int, float) = 0;
+  virtual float GetWaterLevel(int) const = 0;
+  virtual void SetWaterViscosity(float, int) = 0;
+  virtual float GetWaterViscosity(int) const = 0;
+  virtual int GetWaterEntNum() const = 0;
+  virtual float GetWaterSurfaceWrldHeight() const = 0;
+  virtual float GetBuoyancyScale() const = 0;
+  virtual void GetImpactInfo(int, const idVec3&, impactInfo_t&) const = 0;
+  virtual void ApplyImpulse(int, const idVec3&, const idVec3&) = 0;
+  virtual void ApplyForce(int, const idVec3&, const idVec3&) = 0;
+  virtual void Activate() = 0;
+  virtual void PutToRest() = 0;
+  virtual bool IsAtRest() const = 0;
+  virtual bool IsPushable(int) const = 0;
+  virtual void SaveState() = 0;
+  virtual void RestoreState() = 0;
+  virtual bool Evaluate(int, int) = 0;
+  virtual void UpdateTime(int) = 0;
+  virtual void ClipTranslation(trace_t&, const idVec3&,
+                               const idClipModel*) const = 0;
+  virtual void ClipRotation(trace_t&, const idRotation&,
+                            const idClipModel*) const = 0;
+  virtual int ClipContents(const idClipModel*, int) const = 0;
+  virtual void DisableClip() = 0;
+  virtual void EnableClip() = 0;
+  virtual void UnlinkClip() = 0;
+  virtual void LinkClip() = 0;
+  virtual bool EvaluateContacts() = 0;
+  virtual int GetNumContacts() const = 0;
+  virtual const contactInfo_t& GetContact(int) const = 0;
+  virtual void ClearContacts() = 0;
+  virtual void AddContactPhysics(idPhysics*) = 0;
+  virtual void RemoveContactPhysics(idPhysics*) = 0;
+  virtual int GetNumContactPhysics() const = 0;
+  virtual idPhysics* GetContactPhysics(int) const = 0;
+  virtual void ActivateContactPhysics() = 0;
+  virtual bool HasGroundContacts() const = 0;
+  virtual bool IsGroundEntity(int) const = 0;
+  virtual bool IsGroundClipModel(int, int) const = 0;
+  virtual void SetPushed(int) = 0;
+  virtual idVec3 GetPushedLinearVelocity(int) const = 0;
+  virtual idVec3 GetPushedAngularVelocity(int) const = 0;
+  virtual void SetMaster(bool, const idVec3&, const idMat3&,
+                         bindFlags_t) = 0;
+  virtual void SetLocalOrigin(const idVec3&, int) = 0;
+  virtual void SetLocalAxis(const idMat3&, int) = 0;
+  virtual int GetBlockingEntityNum() const = 0;
+  virtual int GetLinearEndTime() const = 0;
+  virtual int GetAngularEndTime() const = 0;
+  virtual bool IsInNonResidentCollisionArea(bool assumeNonResident);
+
+  void SetType(physicsType_t physicsType) { type = physicsType; }
+
+protected:
+  void UpdateCollisionResidency(const contactInfo_t& contact);
+
+public:
+  physicsType_t type;
+  int physicsId;
+  int entityNumber;
+  idPhysics* nextInHash;
+  idClip* clip;
+  idPhysicsCallbacks* callbacks;
+  idResidencyQuery residencyQuery;
+  residency_t collisionResidency;
+
+  static void operator delete(void* memory) noexcept {
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem::Singleton().Free(memory, ALIGN_16);
+#else
+    idMem::Singleton()->Free(memory, ALIGN_16);
+#endif
+  }
+
+private:
+  static int currentPhysicsId;
+  static idPhysics* hash[1024];
+
+  void Link();
+
+  friend class PhysicsValidationAccess;
+};
+
+static_assert(sizeof(idPhysics) == 0x40, "idPhysics ABI drift");
+static_assert(offsetof(idPhysics, type) == 0x08,
+              "idPhysics type offset drift");
+static_assert(offsetof(idPhysics, physicsId) == 0x0C,
+              "idPhysics id offset drift");
+static_assert(offsetof(idPhysics, entityNumber) == 0x10,
+              "idPhysics entity offset drift");
+static_assert(offsetof(idPhysics, nextInHash) == 0x18,
+              "idPhysics hash-link offset drift");
+static_assert(offsetof(idPhysics, clip) == 0x20,
+              "idPhysics clip offset drift");
+static_assert(offsetof(idPhysics, callbacks) == 0x28,
+              "idPhysics callback offset drift");
+static_assert(offsetof(idPhysics, residencyQuery) == 0x30,
+              "idPhysics residency-query offset drift");
+static_assert(offsetof(idPhysics, collisionResidency) == 0x38,
+              "idPhysics residency-state offset drift");

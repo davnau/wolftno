@@ -37,7 +37,8 @@ public:
   ~mgWarningsFilter();
   bool Handle(const char* text) const;
   void ParseWarningsFile(const char* file);
-  void Init(const char* file = "warnings.json", bool enabled = true);
+  void Init();
+  void Init(const char* file, bool enabled);
   int NumFilters() const { return filters.Num(); }
 
 private:

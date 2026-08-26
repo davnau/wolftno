@@ -34,6 +34,13 @@ idEntity* idEntity::GetTarget(int index) {
   return index >= 0 && index < targets.Num() ? targets[index] : nullptr;
 }
 
+idFXManager* idEntity::GetFXManagerForAI() {
+  if (aiFXManager == nullptr) {
+    aiFXManager = std::make_shared<idFXManager>();
+  }
+  return aiFXManager.get();
+}
+
 bool idEntity::ModifyCrosshairInfo(const idEntity* activator,
                                    const idFocusTrace* focusTrace,
                                    usableState_t usable,

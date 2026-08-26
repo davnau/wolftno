@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // NEEDS_WORK(engine/framework/session): PDB-exact interface slice required by
 // renderer/renderthread.cpp.  The full session implementation remains owned by
 // the framework/session recovery pass.
@@ -9,11 +11,17 @@ class idBitMsg;
 class idRenderModelGui;
 class idFile_SaveGame;
 class idSaveGameDetails;
+class idPlayerProfile;
+class idSignInManagerBase;
 template <typename T,int Capacity> class idStaticList;
 
 class idLobbyBase {
 public:
   const void* const* vtable;
+  bool IsHost() {
+    using Fn=bool(*)(idLobbyBase*);
+    return reinterpret_cast<Fn>(vtable[1])(this);
+  }
   bool IsPeer() {
     using Fn=bool(*)(idLobbyBase*);
     return reinterpret_cast<Fn>(vtable[2])(this);
@@ -21,6 +29,14 @@ public:
   bool HasActivePeers() {
     using Fn=bool(*)(idLobbyBase*);
     return reinterpret_cast<Fn>(vtable[3])(this);
+  }
+  int GetNumLobbyUsers() {
+    using Fn=int(*)(idLobbyBase*);
+    return reinterpret_cast<Fn>(vtable[4])(this);
+  }
+  const struct idMatchParameters& GetMatchParms() {
+    using Fn=const idMatchParameters&(*)(idLobbyBase*);
+    return reinterpret_cast<Fn>(vtable[36])(this);
   }
   void DrawDebugNetworkHUD_ServerSnapshotMetrics(idRenderModelGui* gui,bool draw) {
     using Fn=void(*)(idLobbyBase*,idRenderModelGui*,bool);
@@ -43,9 +59,93 @@ public:
 
   const void* const* vtable;
 
+  void Initialize() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[197])(this);
+  }
+
+  void InitForge() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[202])(this);
+  }
+
+  void HandleBootableInvite(std::int64_t lobbyId) {
+    using Fn=void(*)(idSession*,std::int64_t);
+    reinterpret_cast<Fn>(vtable[362])(this,lobbyId);
+  }
+
+  void InitializeSoundRelatedSystems() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[3])(this);
+  }
+
+  void ShutdownSoundRelatedSystems() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[4])(this);
+  }
+
+  void Shutdown() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[2])(this);
+  }
+
+  void MoveToPressStart() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[23])(this);
+  }
+
   bool IsLosingConnectionToHost() {
     using Fn=bool(*)(idSession*);
     return reinterpret_cast<Fn>(vtable[28])(this);
+  }
+
+  void SetUserSignedOutDuringLoading(bool signedOut) {
+    using Fn=void(*)(idSession*,bool);
+    reinterpret_cast<Fn>(vtable[57])(this,signedOut);
+  }
+
+  void Pump() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[35])(this);
+  }
+  void EndMatch(bool premature) {
+    using Fn=void(*)(idSession*,bool);
+    reinterpret_cast<Fn>(vtable[14])(this,premature);
+  }
+  void JoinAfterSwap(void* inviteInfo) {
+    using Fn=void(*)(idSession*,void*);
+    reinterpret_cast<Fn>(vtable[72])(this,inviteInfo);
+  }
+  void ClearSessionOption(int option) {
+    using Fn=void(*)(idSession*,int);
+    reinterpret_cast<Fn>(vtable[19])(this,option);
+  }
+  void CreateMatch(const idMatchParameters& parameters) {
+    using Fn=void(*)(idSession*,const idMatchParameters&);
+    reinterpret_cast<Fn>(vtable[9])(this,parameters);
+  }
+  void StartMatch() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[13])(this);
+  }
+  bool CheckMapInstallAndShowGui(const char* mapName,bool block,
+                                 bool showGui) {
+    using Fn=bool(*)(idSession*,const char*,bool,bool);
+    return reinterpret_cast<Fn>(vtable[137])(this,mapName,block,showGui);
+  }
+  bool ProcessInputEvent(const struct sysEvent_t& event) {
+    using Fn=bool(*)(idSession*,const sysEvent_t&);
+    return reinterpret_cast<Fn>(vtable[51])(this,event);
+  }
+
+  void ProcessSnapAckQueue() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[36])(this);
+  }
+
+  void UpdateSignInManager() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[144])(this);
   }
 
   idLobbyBase& GetActingGameStateLobbyBase() {
@@ -53,9 +153,44 @@ public:
     return reinterpret_cast<Fn>(vtable[45])(this);
   }
 
+  idPlayerProfile* GetProfileFromInputDevice(int inputDevice) {
+    using Fn=idPlayerProfile*(*)(idSession*,int);
+    return reinterpret_cast<Fn>(vtable[50])(this,inputDevice);
+  }
+
   int GetState() {
     using Fn=int(*)(idSession*);
     return reinterpret_cast<Fn>(vtable[60])(this);
+  }
+  const char* GetStateString() {
+    using Fn=const char*(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[61])(this);
+  }
+  const char* GetStateString(int state) {
+    using Fn=const char*(*)(idSession*,int);
+    return reinterpret_cast<Fn>(vtable[62])(this,state);
+  }
+
+  float GetTitleStorageFloat(const char* name,float defaultValue=0.0f) const {
+    using Fn=float(*)(const idSession*,const char*,float);
+    return reinterpret_cast<Fn>(vtable[88])(this,name,defaultValue);
+  }
+
+  void SendSnapshot(idSnapShot& snapshot) {
+    using Fn=void(*)(idSession*,idSnapShot&);
+    reinterpret_cast<Fn>(vtable[142])(this,snapshot);
+  }
+  idPlayerProfile* GetProfileFromMasterLocalUser() {
+    using Fn=idPlayerProfile*(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[143])(this);
+  }
+  idSignInManagerBase& GetSignInManager() {
+    using Fn=idSignInManagerBase&(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[145])(this);
+  }
+  bool IsSystemUIShowing() {
+    using Fn=bool(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[149])(this);
   }
 
   int GetNumContentPackages() {
@@ -87,6 +222,14 @@ public:
   idSaveGameManager* GetSaveGameManager() {
     using Fn = idSaveGameManager* (*)(idSession*);
     return reinterpret_cast<Fn>(vtable[146])(this);
+  }
+  const char* GetCurrentSaveSlot() {
+    using Fn=const char*(*)(idSession*);
+    return reinterpret_cast<Fn>(vtable[130])(this);
+  }
+  void VoiceRecognition_ClearUnprocessedPhrases() {
+    using Fn=void(*)(idSession*);
+    reinterpret_cast<Fn>(vtable[161])(this);
   }
 
   int GetTitleStorageInt(const char* name,int fallback) {

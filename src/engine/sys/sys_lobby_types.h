@@ -1,6 +1,8 @@
 #pragma once
 
 #include "shared/idlib/networking/bitmsg.h"
+#include "shared/idlib/hashing/uuid.h"
+#include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/text/str.h"
 #include "engine/sys/sys_localuser.h"
 
@@ -31,6 +33,20 @@ struct lobbyConnectInfo_t {
 };
 
 struct idMatchParameters {
+  idMatchParameters();
+  idMatchParameters(const idMatchParameters&);
+  idMatchParameters(int gameMode,int searchMode,int gameMap,int gameType,
+      int numSlots,std::uint8_t matchFlags,const idStr& mapName,
+      const idStr& layersActive,const idStr& layersDeactive,
+      const idStr& spawnSpot,const idStr& loadingScreen,
+      float minRespawnDelay,float timeLimit,int scoreLimit,int teamCount,
+      bool swapTeams,bool stopWatch,bool comboMap,bool devmap,
+      bool transitional,bool forceHeapReset,int checkpointSlot,bool playVideo);
+  ~idMatchParameters();
+  idMatchParameters& operator=(const idMatchParameters&)=default;
+  void SetMapName(const char* name);
+
+  idUUID4 matchID;
   int gameMode{};
   int searchMode{};
   int gameMap{};
@@ -38,11 +54,12 @@ struct idMatchParameters {
   int numSlots{};
   int startCheckSlot{};
   std::uint8_t matchFlags{};
-  idStr mapName;
-  idStr layersActive;
-  idStr layersDeactive;
-  idStr spawnSpot;
-  idStr loadingScreen;
+  std::byte padding0[7]{};
+  idStrStatic<128> mapName;
+  idStrStatic<2048> layersActive;
+  idStrStatic<2048> layersDeactive;
+  idStrStatic<64> spawnSpot;
+  idStrStatic<128> loadingScreen;
   int timeLimit{};
   int scoreLimit{};
   int numBots{};
@@ -56,9 +73,18 @@ struct idMatchParameters {
   bool isTransitionalMapRequest{};
   bool forceHeapReset{};
   bool playVideo{};
+  std::byte padding1[1]{};
+  int nightmareCompletionStat{-1};
+  idStaticList<int,4> completionStats;
+  int collectionStat{-1};
+  int specialCollectionStat{-1};
+  int challengeLeaderboardId{-1};
   int skillLevel{};
   bool nextMapDiscSwap{};
+  std::byte padding2[7]{};
 };
+
+static_assert(sizeof(idMatchParameters)==4896,"idMatchParameters ABI drift");
 
 struct serverInfo_t {
   idStr name;

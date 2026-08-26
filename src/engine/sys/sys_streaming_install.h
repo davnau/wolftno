@@ -25,6 +25,7 @@ public:
   float GetDownloadProgressForChunk(int chunkId) const;
   int GetChunkIdForResourceContainerIndex(int containerIndex) const;
   void PrioritizeChunksForMapLoad(int chunkId);
+  void Pump();
 
   bool IsInitialized() const { return initializied; }
   bool HasSpecification() const { return hasSpecification; }
@@ -40,4 +41,4 @@ private:
 };
 
 extern idStreamingInstallManager streamingInstallMgrLocal;
-
+extern idStreamingInstallManager* streamingInstallMgr;

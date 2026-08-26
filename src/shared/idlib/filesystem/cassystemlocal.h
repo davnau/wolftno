@@ -27,6 +27,10 @@ public:
   virtual idContentAddress Store(const void* data, std::size_t size) = 0;
   virtual idFile* OpenCasFileRead(const idContentAddress&) = 0;
   virtual bool Contains(const idContentAddress&) const = 0;
+  void InitRetail() {
+    using Fn=void(*)(idCasSystem*);
+    reinterpret_cast<Fn>((*reinterpret_cast<const void* const* const*>(this))[1])(this);
+  }
 };
 class idCasSystemLocal final : public idCasSystem {
 public:
@@ -45,12 +49,19 @@ private:
 class idCasSystem2 {
 public:
   virtual ~idCasSystem2() = default;
+  virtual void Init(const char* root) = 0;
+  virtual void Shutdown() = 0;
   virtual idContentAddress2 Store(const void*, std::size_t) = 0;
   virtual idFile* OpenPayloadForRead(const idContentAddress2&) = 0;
+  void InitRetail() {
+    using Fn=void(*)(idCasSystem2*);
+    reinterpret_cast<Fn>((*reinterpret_cast<const void* const* const*>(this))[1])(this);
+  }
 };
 class idCasSystemLocal2 final : public idCasSystem2 {
 public:
-  void Init(const char* root) { legacy.Init(root); }
+  void Init(const char* root) override { legacy.Init(root); }
+  void Shutdown() override { legacy.Shutdown(); }
   idContentAddress2 Store(const void*, std::size_t) override;
   idFile* OpenPayloadForRead(const idContentAddress2&) override;
 

@@ -44,6 +44,7 @@ struct idDeclAIBehavior {
     float injuredStandUpTime{0.0F};
     std::array<float, 5> difficultyDamageScale{};
     bool canTakeDamage{false};
+    aiInjuredRunMode_t injuredRunMode{AIINJUREDRUNMODE_MOSTDAMAGED};
   } damageBehaviors;
   struct movementBehaviors_t {
     float crouchMoveMax{0.0F};

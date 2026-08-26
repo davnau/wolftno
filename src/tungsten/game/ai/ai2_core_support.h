@@ -5,6 +5,7 @@
 #include "tungsten/game/ai/aidamageinfo.h"
 #include "tungsten/game/ai/aimemory.h"
 #include "tungsten/game/ai/aimovestate.h"
+#include "tungsten/game/ai/aiorientation.h"
 #include "tungsten/game/ai/rotationtracker.h"
 #include "tungsten/game/ai/fsm/fsmlog.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
@@ -37,6 +38,16 @@ public:
       validFiberHandles.erase(found);
     }
   }
+  idFiberHandle GetCurrentFiberHandle() const {
+    ++currentFiberQueryCount;
+    return currentFiberHandle;
+  }
+  void SetCurrentFiberHandleForTest(idFiberHandle handle) {
+    currentFiberHandle = handle;
+  }
+  int GetCurrentFiberQueryCountForTest() const {
+    return currentFiberQueryCount;
+  }
   void WaitForFSM() { ++waitForFSMCount; }
   int GetWaitForFSMCountForTest() const { return waitForFSMCount; }
   int GetValidityQueryCountForTest() const { return validityQueryCount; }
@@ -48,6 +59,8 @@ private:
   std::vector<int> validFiberHandles;
   mutable int validityQueryCount{0};
   mutable idFiberHandle lastValidityQuery{};
+  idFiberHandle currentFiberHandle{};
+  mutable int currentFiberQueryCount{0};
   int waitForFSMCount{0};
 };
 
@@ -158,7 +171,7 @@ class idAIDeathInfo {
 public:
   idAIDeathInfo();
   ~idAIDeathInfo();
-  void Set(idAIDamageInfo* info);
+  void Set(const idAIDamageInfo& info);
   const idEntity* GetAttacker() const { return attacker; }
   const idEntity* GetInflictor() const { return inflictor; }
   const idDamageImpulse& GetImpulse() const { return impulse; }
@@ -274,6 +287,16 @@ public:
     return std::find(goreNames.begin(), goreNames.end(), goreName.str) !=
            goreNames.end();
   }
+  bool CheckForGoreByDamageGroup(const idAtomicString& damageGroupName,
+                                 goreLevel_t goreLevel,
+                                 const idVec3& direction) {
+    ++checkForGoreByDamageGroupCount;
+    lastDamageGroupName =
+        damageGroupName.str != nullptr ? damageGroupName.str : "";
+    lastDamageGroupGoreLevel = goreLevel;
+    lastDamageGroupDirection = direction;
+    return CheckForGoreByName(damageGroupName);
+  }
   void SetGoreAvailable(const char* goreName, bool available) {
     if (goreName == nullptr) return;
     const auto found = std::find(goreNames.begin(), goreNames.end(), goreName);
@@ -294,6 +317,18 @@ public:
   int GetCheckForGoreQueryCountForTest() const {
     return checkForGoreQueryCount;
   }
+  int GetCheckForGoreByDamageGroupCountForTest() const {
+    return checkForGoreByDamageGroupCount;
+  }
+  const std::string& GetLastDamageGroupNameForTest() const {
+    return lastDamageGroupName;
+  }
+  goreLevel_t GetLastDamageGroupGoreLevelForTest() const {
+    return lastDamageGroupGoreLevel;
+  }
+  const idVec3& GetLastDamageGroupDirectionForTest() const {
+    return lastDamageGroupDirection;
+  }
   bool UpdateGoreDeaths() {
     ++updateGoreDeathsCount;
     return updateGoreDeathsResult;
@@ -308,13 +343,36 @@ private:
   bool checkForGoreResult{false};
   bool goredFullBody{false};
   int checkForGoreQueryCount{0};
+  int checkForGoreByDamageGroupCount{0};
+  std::string lastDamageGroupName;
+  goreLevel_t lastDamageGroupGoreLevel{GORELEVEL_NONE};
+  idVec3 lastDamageGroupDirection{};
   bool updateGoreDeathsResult{false};
   int updateGoreDeathsCount{0};
 };
 
-class idComponentActionScript {
+class idComponentTimeLine {
 public:
-  void Update() { ++updateCount; }
+  void Update() {
+    ++updateCount;
+    if (updateSequenceCounter != nullptr) {
+      lastUpdateOrder = ++(*updateSequenceCounter);
+    }
+  }
+  int GetUpdateCount() const { return updateCount; }
+  void SetUpdateSequenceCounterForTest(int* value) {
+    updateSequenceCounter = value;
+  }
+  int GetLastUpdateOrderForTest() const { return lastUpdateOrder; }
+
+private:
+  int updateCount{0};
+  int* updateSequenceCounter{nullptr};
+  int lastUpdateOrder{0};
+};
+
+class idComponentActionScript : public idComponentTimeLine {
+public:
   void Start(const idEntity* owner) {
     lastStartOwner = owner;
     running = true;
@@ -335,7 +393,6 @@ public:
     runningQueryCount = 0;
     lastRunningQueryOwner = nullptr;
   }
-  int GetUpdateCount() const { return updateCount; }
   int GetStartCountForTest() const { return startCount; }
   const idEntity* GetLastStartOwnerForTest() const { return lastStartOwner; }
   int NumScriptActions(const idEntity* owner) const {
@@ -375,7 +432,6 @@ public:
   bool GetLastInheritedForTest() const { return lastInherited; }
 
 private:
-  int updateCount{0};
   int startCount{0};
   int scriptActionCount{0};
   int clearCount{0};
@@ -393,7 +449,8 @@ private:
 
 class idFormationCoverMgr {};
 
-struct idAnimWebRoute {
+class idAnimWebRoute {
+public:
   std::array<idAnimWebIndex, 32> path{};
   int num{0};
   int cost{0};
@@ -480,6 +537,14 @@ public:
     lastForceStateFlags = flags;
     ++forceStateCount;
   }
+  awPathResult_t ForceState(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+      const blendParms_t& blendParms, int flags) {
+    ForceState(idAnimWebIndex{subWebIndex.value},
+               idAnimWebIndex{stateIndex.value}, blendParms, flags);
+    return forceStateResult;
+  }
   int ForceState(const char* subWebName, const char* stateName,
                  const blendParms_t& blendParms, int flags) {
     lastForcedSubWebName = subWebName != nullptr ? subWebName : "";
@@ -496,8 +561,11 @@ public:
       return 0;
     }
 
-    ForceState(idAnimWebIndex{subWebIndex.value},
-               idAnimWebIndex{stateIndex.value}, blendParms, flags);
+    ForceState(
+        idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>{
+            subWebIndex.value},
+        idIndex<short, idDeclAnimWeb::invalidStateIndex_t>{stateIndex.value},
+        blendParms, flags);
     return 1;
   }
   void ConfigureMergeBranchForTest(bool present, bool hasLeft) {
@@ -565,6 +633,24 @@ public:
         static_cast<int>(interruptPath), static_cast<int>(interruptBlend),
         flags));
   }
+  awPathResult_t ForceAndChangeState(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> forcedSubWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> forcedState,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> destinationSubWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> destinationState,
+      const blendParms_t& blendParameters, int flags) {
+    lastForceAndChangeForcedSubWeb = idAnimWebIndex{forcedSubWeb.value};
+    lastForceAndChangeForcedState = idAnimWebIndex{forcedState.value};
+    lastForceAndChangeDestinationSubWeb =
+        idAnimWebIndex{destinationSubWeb.value};
+    lastForceAndChangeDestinationState = idAnimWebIndex{destinationState.value};
+    lastForceAndChangeDuration = blendParameters.parms.destDuration;
+    lastForceAndChangeDestinationStartFrame =
+        blendParameters.parms.destStartFrame;
+    lastForceAndChangeFlags = flags;
+    ++forceAndChangeStateCount;
+    return forceAndChangeStateResult;
+  }
   void SetDestinationIndicesForTest(idAnimWebIndex subWebIndex,
                                     idAnimWebIndex stateIndex,
                                     bool valid = true) {
@@ -584,6 +670,18 @@ public:
     lastFindPathInputRoute = *route;
     ++findPathCount;
     return findPathResult;
+  }
+  bool FindPath(
+      idIndex<short, idDeclAnimWeb::invalidNodeIndex_t> fromNodeIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> targetStateIndex,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> targetSubWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> excludedSubWebIndex,
+      idAnimWebRoute& route) const {
+    return const_cast<idAnimator_AnimWeb*>(this)->FindPath(
+        idAnimWebIndex{fromNodeIndex.value},
+        idAnimWebIndex{targetStateIndex.value},
+        idAnimWebIndex{targetSubWebIndex.value},
+        idAnimWebIndex{excludedSubWebIndex.value}, &route);
   }
   idAnimWebIndex GetCurrentNodeIndex() const { return currentNodeIndex; }
   void SetCurrentNodeIndexForTest(idAnimWebIndex value) {
@@ -612,6 +710,12 @@ public:
     changeStateViaResult = value;
   }
   void SetChangeStateResultForTest(int value) { changeStateResult = value; }
+  void SetForceStateResultForTest(awPathResult_t value) {
+    forceStateResult = value;
+  }
+  void SetForceAndChangeStateResultForTest(awPathResult_t value) {
+    forceAndChangeStateResult = value;
+  }
   int GetSetEventCount() const { return setEventCount; }
   animWebEvent_t GetLastEventType() const { return lastEventType; }
   idAnimWebIndex GetLastSubWebIndex() const { return lastSubWebIndex; }
@@ -706,6 +810,30 @@ public:
     return lastChangeInterruptBlend;
   }
   int GetLastChangeFlagsForTest() const { return lastChangeFlags; }
+  int GetForceAndChangeStateCountForTest() const {
+    return forceAndChangeStateCount;
+  }
+  idAnimWebIndex GetLastForceAndChangeForcedSubWebForTest() const {
+    return lastForceAndChangeForcedSubWeb;
+  }
+  idAnimWebIndex GetLastForceAndChangeForcedStateForTest() const {
+    return lastForceAndChangeForcedState;
+  }
+  idAnimWebIndex GetLastForceAndChangeDestinationSubWebForTest() const {
+    return lastForceAndChangeDestinationSubWeb;
+  }
+  idAnimWebIndex GetLastForceAndChangeDestinationStateForTest() const {
+    return lastForceAndChangeDestinationState;
+  }
+  int GetLastForceAndChangeDurationForTest() const {
+    return lastForceAndChangeDuration;
+  }
+  int GetLastForceAndChangeDestinationStartFrameForTest() const {
+    return lastForceAndChangeDestinationStartFrame;
+  }
+  int GetLastForceAndChangeFlagsForTest() const {
+    return lastForceAndChangeFlags;
+  }
   void SetSelect01ForTest(float value) { select01 = value; }
   float GetSelect01ForTest() const { return select01; }
   void SetMeleeAttackForTest(float value) { meleeAttack = value; }
@@ -762,7 +890,7 @@ private:
   idAnimWebIndex lastFindPathDestinationSubWebIndex{-1};
   idAnimWebIndex lastFindPathExcludedSubWebIndex{-1};
   idAnimWebRoute lastFindPathInputRoute{};
-  int changeStateViaResult{0};
+  int changeStateViaResult{AWPATH_OK};
   int changeStateViaCount{0};
   idAnimWebIndex lastChangeViaDestinationSubWeb{-1};
   idAnimWebIndex lastChangeViaDestinationState{-1};
@@ -771,13 +899,23 @@ private:
   int lastChangeViaInterruptPath{-1};
   int lastChangeViaInterruptBlend{-1};
   int lastChangeViaFlags{-1};
-  int changeStateResult{0};
+  int changeStateResult{AWPATH_OK};
   int changeStateCount{0};
   idAnimWebIndex lastChangeDestinationSubWeb{-1};
   idAnimWebIndex lastChangeDestinationState{-1};
   int lastChangeInterruptPath{-1};
   int lastChangeInterruptBlend{-1};
   int lastChangeFlags{-1};
+  awPathResult_t forceStateResult{AWPATH_OK};
+  awPathResult_t forceAndChangeStateResult{AWPATH_OK};
+  int forceAndChangeStateCount{0};
+  idAnimWebIndex lastForceAndChangeForcedSubWeb{-1};
+  idAnimWebIndex lastForceAndChangeForcedState{-1};
+  idAnimWebIndex lastForceAndChangeDestinationSubWeb{-1};
+  idAnimWebIndex lastForceAndChangeDestinationState{-1};
+  int lastForceAndChangeDuration{-1};
+  int lastForceAndChangeDestinationStartFrame{-1};
+  int lastForceAndChangeFlags{-1};
   float select01{0.0F};
   float meleeAttack{0.0F};
   idStr lastForcedSubWebName;
@@ -1632,6 +1770,12 @@ public:
   void SetNextDirectionToTraceForTest(int value) {
     nextDirectionToTrace = value;
   }
+  int GetLookedAtEntitySpawnIdForTest(int index) const {
+    return lookedAtEntitySpawnIDs[static_cast<std::size_t>(index)].value;
+  }
+  int GetLookedAtEntityTimeForTest(int index) const {
+    return lookedAtEntitiesTime[static_cast<std::size_t>(index)];
+  }
 
 private:
   bool TraceVector(const idAI2* ai, const idVec3& from,
@@ -1874,6 +2018,33 @@ private:
   idStr debugText;
 };
 
+struct idAI2::idAIVolatile::idAIFocusInfo {
+  idAIFocusInfo();
+
+  const idFocusInfo& GetFocusForTest(int index) const {
+    return foci[static_cast<std::size_t>(index)];
+  }
+  const idAIOrientation& GetBodyOrientationForTest() const {
+    return bodyOrientation;
+  }
+  bool GetEnableHeadTrackingForTest() const { return enableHeadTracking; }
+  bool GetEnableAutoFocusForTest() const { return enableAutoFocus; }
+  bool GetEnableBodyRotationForTest() const { return enableBodyRotation; }
+  bool GetEnableGreetingsForTest() const { return enableGreetings; }
+  const idCheckSurroundingsState& GetCheckSurroundingsStateForTest() const {
+    return checkSurroundingsState;
+  }
+
+private:
+  std::array<idFocusInfo, 2> foci;
+  idAIOrientation bodyOrientation;
+  bool enableHeadTracking{true};
+  bool enableAutoFocus{true};
+  bool enableBodyRotation{false};
+  bool enableGreetings{true};
+  idCheckSurroundingsState checkSurroundingsState;
+};
+
 #if 0  // Definition moved before idAIFSMCallback for retail inheritance.
 class idFSMCallback {
 public:
@@ -2111,6 +2282,10 @@ public:
     lastStartAxis = *axis;
     lastStartTime = gameTime;
     lastStartCondition = static_cast<int>(condition);
+    startTimes.push_back(gameTime);
+    startConditions.push_back(static_cast<int>(condition));
+    startPositions.push_back(*position);
+    startAxes.push_back(*axis);
     ++startCount;
     return nextStartHandle++;
   }
@@ -2118,6 +2293,9 @@ public:
     lastStopTime = gameTime;
     lastStopCondition = static_cast<int>(condition);
     lastStopImmediate = immediate;
+    stopTimes.push_back(gameTime);
+    stopConditions.push_back(static_cast<int>(condition));
+    stopImmediateValues.push_back(immediate);
     ++stopCount;
   }
   void StopAllFX(int gameTime, bool immediate) {
@@ -2142,6 +2320,27 @@ public:
   bool GetLastStopImmediate() const { return lastStopImmediate; }
   int GetLastStopAllTime() const { return lastStopAllTime; }
   bool GetLastStopAllImmediate() const { return lastStopAllImmediate; }
+  int GetStartTimeForTest(int index) const {
+    return startTimes[static_cast<std::size_t>(index)];
+  }
+  int GetStartConditionForTest(int index) const {
+    return startConditions[static_cast<std::size_t>(index)];
+  }
+  const idVec3& GetStartPositionForTest(int index) const {
+    return startPositions[static_cast<std::size_t>(index)];
+  }
+  const idMat3& GetStartAxisForTest(int index) const {
+    return startAxes[static_cast<std::size_t>(index)];
+  }
+  int GetStopTimeForTest(int index) const {
+    return stopTimes[static_cast<std::size_t>(index)];
+  }
+  int GetStopConditionForTest(int index) const {
+    return stopConditions[static_cast<std::size_t>(index)];
+  }
+  bool GetStopImmediateForTest(int index) const {
+    return stopImmediateValues[static_cast<std::size_t>(index)];
+  }
   void SetNextStartHandle(int value) { nextStartHandle = value; }
 
 private:
@@ -2161,25 +2360,22 @@ private:
   int stopCount{0};
   int stopAllCount{0};
   int nextStartHandle{1};
+  std::vector<int> startTimes;
+  std::vector<int> startConditions;
+  std::vector<idVec3> startPositions;
+  std::vector<idMat3> startAxes;
+  std::vector<int> stopTimes;
+  std::vector<int> stopConditions;
+  std::vector<bool> stopImmediateValues;
 };
 
-class idLegsFSM {
+class idLegsFSM : public idFiniteStateMachine {
 public:
   ~idLegsFSM();
   idFiniteStateMachine::fsmStatus_t GetStatus() const { return status; }
   void SetStatus(int value) {
     status = static_cast<idFiniteStateMachine::fsmStatus_t>(value);
   }
-  void Update(bool allowTransitions, int curTime, const void* eventData) {
-    lastAllowTransitions = allowTransitions;
-    lastUpdateTime = curTime;
-    lastEventData = eventData;
-    ++updateCount;
-  }
-  int GetUpdateCount() const { return updateCount; }
-  int GetLastUpdateTime() const { return lastUpdateTime; }
-  bool GetLastAllowTransitions() const { return lastAllowTransitions; }
-  const void* GetLastEventData() const { return lastEventData; }
   void SetRespondsToEvent(int eventNumber, bool responds) {
     if (eventNumber >= 0 &&
         eventNumber < static_cast<int>(respondingEvents.size())) {
@@ -2215,10 +2411,6 @@ public:
 private:
   idFiniteStateMachine::fsmStatus_t status{
       idFiniteStateMachine::FSMSTATUS_NONE};
-  int updateCount{0};
-  int lastUpdateTime{0};
-  bool lastAllowTransitions{false};
-  const void* lastEventData{nullptr};
   std::array<bool, 64> respondingEvents{};
   idAI2* lastMeleeBlockedSource{nullptr};
   int meleeBlockedEventCount{0};

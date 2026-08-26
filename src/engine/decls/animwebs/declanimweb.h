@@ -149,10 +149,14 @@ public:
   std::uint64_t Size() const override;
   void SetupHashes();
   const char* GetStateName(animWebStateIndex_t index) const;
+  const char* GetStateName(
+      idIndex<std::int16_t, invalidStateIndex_t> index) const;
   idAtomicString GetStateNameAtomic(animWebStateIndex_t index) const;
   animWebStateIndex_t GetStateIndexForName(const char* name) const;
   animWebSubWebIndex_t GetSubWebIndexForName(const char* name) const;
   const char* GetSubWebName(animWebSubWebIndex_t index) const;
+  const char* GetSubWebName(
+      idIndex<std::int16_t, invalidSubWebIndex_t> index) const;
   idAtomicString GetSubWebNameAtomic(animWebSubWebIndex_t index) const;
   animWebNodeIndex_t FindNodeIndex(animWebSubWebIndex_t subWeb,const stateList_t& states,bool exactMatch) const;
   animWebNodeIndex_t FindNodeIndex(animWebSubWebIndex_t subWeb,animWebStateIndex_t state) const;

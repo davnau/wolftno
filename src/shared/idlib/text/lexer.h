@@ -119,6 +119,7 @@ public:
   bool Parse2DMatrix(int rows, int columns, float* matrix);
   void SetFlags(int lexerFlags) { flags = lexerFlags; }
   unsigned GetFileTime() const { return fileTime; }
+  const char* GetScriptP() const { return script_p; }
 
   static const punctuation_t defaultPunctuations[];
 

@@ -73,6 +73,10 @@ void idAIFireControl::StopFiringEffects(idAI2* owner, idWeapon* weapon,
 // DIA: idAIFireControl::InhibitFire
 void idAIFireControl::InhibitFire(const idWeapon* weapon, int inhibitLength,
                                   bool script) {
+  ++inhibitFireCallCount;
+  lastInhibitedWeapon = weapon;
+  lastInhibitLength = inhibitLength;
+  lastInhibitScript = script;
   if (script) {
     allowFireStamp = std::max(allowFireStamp, currentTime + inhibitLength);
     savedMode = fireMode;

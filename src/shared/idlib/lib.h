@@ -16,7 +16,7 @@ class idPrintListener {
 public:
   idPrintListener(bool color = false, bool safe = false, printSeverity_t minimum = PRINT_DEBUG)
       : next(nullptr), wantColor(color), threadSafe(safe), minSeverity(minimum) {}
-  virtual ~idPrintListener() = default;
+  virtual ~idPrintListener() { UnRegisterPrintListener(); }
   virtual void Print(const char* text) = 0;
   void RegisterPrintListener();
   void UnRegisterPrintListener();

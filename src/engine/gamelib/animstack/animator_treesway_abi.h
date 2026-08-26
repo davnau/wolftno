@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/animation/md6.h"
+#include "engine/gamelib/animstack/animstack.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -34,6 +35,7 @@ struct idMD6SkelData {
 
 class idMD6Skel {
 public:
+  idJointIndex_t GetJointIndex(const char* name) const;
   idJointIndex_t GetJointIndex(const idJointHandle_t& handle) const;
 
 private:
@@ -71,12 +73,8 @@ public:
   void SetJointMat3x4(animationPose_t pose, idJointIndex_t jointIndex,
                       jointModTransform_t transform,
                       const idMat3x4& matrix, bool markDirty);
-};
-
-class idAnimStack {
-public:
-  void* treeAnimator;
-  idJointAnimator* jointAnimator;
+  void SetJointAxis(animationPose_t pose, idJointIndex_t jointIndex,
+                    jointModTransform_t transform, const idMat3& axis);
 };
 
 static_assert(sizeof(idJointHandle_t) == 0x02,
@@ -91,5 +89,3 @@ static_assert(sizeof(idMD6Skel) == 0x58, "idMD6Skel ABI drift");
 static_assert(offsetof(idMD6Skel, data) == 0x38,
               "idMD6Skel::data ABI drift");
 static_assert(sizeof(idMat3x4) == 0x30, "idMat3x4 ABI drift");
-static_assert(offsetof(idAnimStack, jointAnimator) == 0x08,
-              "idAnimStack::jointAnimator ABI drift");

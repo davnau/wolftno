@@ -123,17 +123,34 @@ public:
   void End(std::size_t);
   std::uint64_t GetOverHeadTicks() const;
   idStr ShowUniqueEntries() const;
+  void ShowUniqueEntries(float thresholdMS,std::int64_t) const {
+    std::uint64_t total=0;
+    for(const entry_t& entry : entries) total+=entry.ticks;
+    if(static_cast<float>(total)*0.001f>=thresholdMS) {
+      const idStr output=ShowUniqueEntries();
+      idLib::Printf("%s",output.c_str());
+    }
+  }
   idStr BuildLogData() const;
   idStr ShowCallGraph() const;
+  void ShowCallGraph(float thresholdMS,std::int64_t) const {
+    std::uint64_t total=0;
+    for(const entry_t& entry : entries) total+=entry.ticks;
+    if(static_cast<float>(total)*0.001f>=thresholdMS) {
+      const idStr output=ShowCallGraph();
+      idLib::Printf("%s",output.c_str());
+    }
+  }
   void Enable(std::uint64_t mask = ~0ull) {
     enabled = true;
     groupMask = mask;
   }
   void Disable() { enabled = false; }
+  std::uint64_t GroupMask() const { return groupMask; }
 
 private:
   bool enabled{true};
-  std::uint64_t groupMask{~0ull};
+  std::uint64_t groupMask{0};
   std::vector<entry_t> entries;
 };
 

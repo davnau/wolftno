@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/gamelib/timeline/timelinekeytypes.h"
 #include "shared/idlib/math/vector.h"
 #include "shared/idlib/text/str.h"
 
@@ -39,10 +40,6 @@ enum tlEventType_t {
   TL_EVENT_NONE = 0,
 };
 
-enum tlKeyName_t {
-  TL_KEY_INVALID = -1,
-};
-
 struct tlEventData_t {
   tlEventData_t();
 
@@ -57,7 +54,7 @@ struct tlEventData_t {
   const idSoundShader* sound;
   idVec3 worldPos;
   idAngles worldRot;
-  tlKeyName_t keyName;
+  tlKeyId_t keyName;
   unsigned char padding2[4];
   idStr keyValue;
   mgTimelineKeyAnimData keyAnimData;

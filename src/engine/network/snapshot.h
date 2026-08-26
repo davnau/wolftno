@@ -2,78 +2,12 @@
 
 #include "engine/network/serializerlog.h"
 #include "engine/network/snapshot_jobs.h"
+#include "shared/idlib/containers/blockalloc.h"
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/networking/bitmsg.h"
 
 #include <cstdint>
 #include <new>
-
-template <typename T, int BlockSize, int Tag> class idBlockAlloc {
-public:
-  union element_t {
-    T data;
-    element_t* next;
-    std::uint8_t buffer[sizeof(T)];
-    element_t() {}
-    ~element_t() {}
-  };
-  struct alignas(8) idBlock {
-    element_t elements[BlockSize];
-    idBlock* next;
-    element_t* free;
-    int freeCount;
-  };
-
-  idBlockAlloc() : allowAllocs(true), clearAllocs(true) {}
-  ~idBlockAlloc() { Shutdown(); }
-  void AllocNewBlock() {
-    auto* block = static_cast<idBlock*>(::operator new(sizeof(idBlock)));
-    block->next = blocks;
-    block->free = nullptr;
-    block->freeCount = BlockSize;
-    blocks = block;
-    for (int i = 0; i < BlockSize; ++i) {
-      block->elements[i].next = free;
-      free = &block->elements[i];
-    }
-    total += BlockSize;
-  }
-  T* Alloc() {
-    if (free == nullptr) {
-      if (!allowAllocs) return nullptr;
-      AllocNewBlock();
-    }
-    element_t* element = free;
-    free = element->next;
-    ++active;
-    return new (&element->data) T();
-  }
-  void Free(T* value) {
-    if (value == nullptr) return;
-    value->~T();
-    auto* element = reinterpret_cast<element_t*>(value);
-    element->next = free;
-    free = element;
-    --active;
-  }
-  void Shutdown() {
-    while (blocks != nullptr) {
-      idBlock* block = blocks;
-      blocks = block->next;
-      ::operator delete(block);
-    }
-    free = nullptr;
-    total = 0;
-    active = 0;
-  }
-
-  idBlock* blocks{};
-  element_t* free{};
-  int total{};
-  int active{};
-  bool allowAllocs;
-  bool clearAllocs;
-};
 
 class idSnapShot {
 public:

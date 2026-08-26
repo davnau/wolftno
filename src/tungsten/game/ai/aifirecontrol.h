@@ -82,6 +82,14 @@ public:
   int GetMissTimeEnd() const { return missTimeEnd; }
   bool IsMissTimeTargetVisible() const { return missTimeTargetVisible; }
   bool IsFreeAmmo() const { return freeAmmo; }
+  int GetInhibitFireCallCountForTest() const {
+    return inhibitFireCallCount;
+  }
+  const idWeapon* GetLastInhibitedWeaponForTest() const {
+    return lastInhibitedWeapon;
+  }
+  int GetLastInhibitLengthForTest() const { return lastInhibitLength; }
+  bool GetLastInhibitScriptForTest() const { return lastInhibitScript; }
 
 protected:
   void ReleaseAllWeapons(idAI2* owner);
@@ -101,6 +109,10 @@ protected:
   idAIEntityState* targetState{nullptr};
   int currentTime{0};
   int blockedShotsConsecutive{0};
+  int inhibitFireCallCount{0};
+  const idWeapon* lastInhibitedWeapon{nullptr};
+  int lastInhibitLength{0};
+  bool lastInhibitScript{false};
 };
 
 class idAIFireControl_Human final : public idAIFireControl {

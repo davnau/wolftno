@@ -70,6 +70,15 @@ struct md6AnimCommand_t {
 };
 
 struct md6BlendOutputs_t {
+  md6BlendOutputs_t()
+      : deltaRotation{0.0f, 0.0f, 0.0f, 1.0f},
+        deltaScale{1.0f, 1.0f, 1.0f, 1.0f}, deltaTranslation{},
+        animRotation{0.0f, 0.0f, 0.0f, 1.0f},
+        animScale{1.0f, 1.0f, 1.0f, 1.0f}, animTranslation{}, done(true),
+        fudged(false), pad{}, time(-1),
+        jointBounds{1.0e30f, 1.0e30f, 1.0e30f, -1.0e30f, -1.0e30f,
+                    -1.0e30f} {}
+
   float deltaRotation[4];
   float deltaScale[4];
   float deltaTranslation[4];

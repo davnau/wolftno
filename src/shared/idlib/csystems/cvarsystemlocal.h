@@ -39,6 +39,18 @@ public:
   idCVar();
   idCVar(const char* name, const char* value, int flags,
          const char* description, argCompletion_t completion = nullptr);
+  // Retail overload used by gamelib CVars whose completion callback accepts
+  // idAutoComplete by reference.  Its distinct MSVC decoration is part of the
+  // executable ABI even when the supplied callback is null.
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, argCompletionRef_t completion);
+  // Preserve untyped nullptr call sites while the two retail callback ABIs
+  // coexist.  Decompiled compilands that require one exact decoration cast to
+  // that callback type explicitly.
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, decltype(nullptr))
+      : idCVar(name, value, flags, description,
+               static_cast<argCompletion_t>(nullptr)) {}
   idCVar(const char* name, const char* value, int flags,
          const char* description, float minimum, float maximum,
          argCompletion_t completion = nullptr);

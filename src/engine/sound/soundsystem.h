@@ -3,9 +3,12 @@
 #include "engine/sound/soundshader.h"
 #include "shared/idlib/math/vector.h"
 
+#ifndef ID_MILLISECOND_UNIQUE_T_DEFINED
+#define ID_MILLISECOND_UNIQUE_T_DEFINED
 struct millisecondUnique_t {
   int value{0};
 };
+#endif
 
 class idSoundEmitter {
 public:
@@ -30,12 +33,14 @@ public:
   virtual ~idSoundEmitter();
 };
 
+#if !defined(WOLFTNO_ID_SOUND_WORLD_DEFINED)
 class idSoundWorld {
 public:
   virtual ~idSoundWorld();
   virtual void StopAllSounds() = 0;
   virtual idSoundEmitter* AllocSoundEmitter() = 0;
 };
+#endif
 
 class idSoundSystem {
 public:
@@ -51,6 +56,23 @@ public:
   virtual void SetEditorSoundWorld(idSoundWorld*) = 0;
   virtual idSoundWorld* GetEditorSoundWorld() = 0;
   virtual idSoundWorld* GetGlobalSoundWorld() = 0;
+  virtual void Render(bool) = 0;
+  virtual void RenderDebugPage(class idRenderModelGui*) {}
+  virtual void WaitForSoundThread() = 0;
+  virtual void MuteBackgroundMusic(bool) {}
+  virtual void SetMute(bool) {}
+  virtual void SoundSystemSlot17() {}
+  virtual void SoundSystemSlot18() {}
+  virtual void StopAllSounds() = 0;
+
+  std::int64_t GetSampleClock() const {
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<std::int64_t(*)(const idSoundSystem*)>(slots[23])(this);
+  }
+  int GetSampleRate() const {
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<int(*)(const idSoundSystem*)>(slots[24])(this);
+  }
 };
 
 extern idSoundSystem* soundSystem;

@@ -5,6 +5,7 @@
 #include "engine/models/renderworld.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,12 +15,14 @@ class idAIGameState;
 class idEncounterGroupManager;
 class idDeclEntityDef;
 class idDeclDamage;
+class idDeclFlare;
 class idFaction;
 class idAI2;
 class idAIVoiceController;
 class idTarget_AITensionManager;
 class idEventDef;
 class idEntity;
+class idFXManager;
 class idPlayer;
 class idWaypoint;
 enum aimPoint_t : int;
@@ -198,6 +201,11 @@ public:
   }
   virtual void OnShow() { hidden = false; }
   virtual void OnActivate(idEntity* activator) { (void)activator; }
+  void UpdateVisuals() { ++updateVisualsCount; }
+  void BecomeActive(int flags) {
+    lastBecomeActiveFlags = flags;
+    ++becomeActiveCount;
+  }
   void BecomeInactive(int flags) {
     lastBecomeInactiveFlags = flags;
     ++becomeInactiveCount;
@@ -205,6 +213,11 @@ public:
   int GetBecomeInactiveCountForTest() const { return becomeInactiveCount; }
   int GetLastBecomeInactiveFlagsForTest() const {
     return lastBecomeInactiveFlags;
+  }
+  int GetUpdateVisualsCountForTest() const { return updateVisualsCount; }
+  int GetBecomeActiveCountForTest() const { return becomeActiveCount; }
+  int GetLastBecomeActiveFlagsForTest() const {
+    return lastBecomeActiveFlags;
   }
   virtual void GetColor(idVec4& color) const;
   void SetColorForTest(const idVec4& color) { entityColor = color; }
@@ -282,6 +295,14 @@ public:
       axis = {};
     }
   }
+  virtual bool GetStaticWeaponViewForAI(const idPlayer* player,
+                                        idVec3& origin,
+                                        idMat3& axis) const {
+    (void)player;
+    (void)origin;
+    (void)axis;
+    return false;
+  }
   virtual bool ShouldEnterDormancy() const { return hidden; }
   virtual void Unbind() { ++unbindCount; }
   virtual void StopSound(int channel, unsigned int peerMask) {
@@ -333,6 +354,7 @@ public:
 
   idPhysics* GetPhysics() const { return physics; }
   void SetPhysics(idPhysics* value) { physics = value; }
+  idFXManager* GetFXManagerForAI();
 
   const char* GetName() const { return name.c_str(); }
   void SetName(const char* value) { name = value != nullptr ? value : ""; }
@@ -400,6 +422,10 @@ protected:
   idVec4 entityColor{1.0F, 1.0F, 1.0F, 1.0F};
   int becomeInactiveCount{0};
   int lastBecomeInactiveFlags{0};
+  int updateVisualsCount{0};
+  int becomeActiveCount{0};
+  int lastBecomeActiveFlags{0};
+  std::shared_ptr<idFXManager> aiFXManager;
 };
 
 class idSoundWorld {
@@ -635,6 +661,23 @@ public:
     (void)spotted;
     (void)killedByTakedown;
   }
+  virtual int AddGlobalLensFlare(idRenderWorld* renderWorld,
+                                 const idDeclFlare* declaration,
+                                 const idVec3& sunDirection,
+                                 const idVec3& occlusionOffset,
+                                 bool isAutosprited) {
+    (void)renderWorld;
+    (void)declaration;
+    (void)sunDirection;
+    (void)occlusionOffset;
+    (void)isAutosprited;
+    return -1;
+  }
+  virtual void SetupGlobalLensFlareRenderModels(int handle,
+                                                 float quadSize) {
+    (void)handle;
+    (void)quadSize;
+  }
   virtual void UpdateGlobalLensFlarePosition(int handle,
                                              const idVec3& origin,
                                              const idMat3& axis,
@@ -684,6 +727,13 @@ public:
     (void)origin;
     (void)radius;
     return false;
+  }
+  virtual void ClearDangerZone(int currentTime) { (void)currentTime; }
+  virtual void ReportDangerZone(int currentTime, const idVec3& origin,
+                                float radius) {
+    (void)currentTime;
+    (void)origin;
+    (void)radius;
   }
   virtual idTarget_AITensionManager* GetAITensionManager() const {
     return nullptr;

@@ -143,6 +143,15 @@ void InitializeDrawVert(idDrawVert& vert) {
   vert.tangent[3] = 128;
   std::memset(vert.color, 255, sizeof(vert.color));
 }
+
+struct WaterSimConstructionGuard {
+  void* storage{};
+  bool active{true};
+  ~WaterSimConstructionGuard() {
+    if (active)
+      idMem::Singleton()->Free(storage, ALIGN_16);
+  }
+};
 } // namespace
 
 idCVar r_skipWater("r_skipWater", "0", CVAR_INTEGER,
@@ -251,7 +260,10 @@ void idRenderModelWaterSurface::BuildStaticModel(
   verts[3].st = {1.0f, 1.0f};
   const std::uint16_t indices[6] = {0, 1, 2, 2, 1, 3};
   auto* geometry = new idTriangles;
-  geometry->bounds = waterBounds;
+  geometry->bounds.b[0] = {waterBounds.b[0].x, waterBounds.b[0].y,
+                           waterBounds.b[1].z};
+  geometry->bounds.b[1] = {waterBounds.b[1].x, waterBounds.b[1].y,
+                           waterBounds.b[1].z};
   geometry->bounds.b[0] -= idVec3{1.0f, 1.0f, 1.0f};
   geometry->bounds.b[1] += idVec3{1.0f, 1.0f, 1.0f};
   geometry->numVerts = 4;
@@ -561,8 +573,10 @@ void idRenderModelWaterSurface::BuildWaterModel(
     const char* imageName) {
   FreeData();
   void* simStorage = AllocWater(sizeof(idWaterSurfaceSim), false);
+  WaterSimConstructionGuard constructionGuard{simStorage, true};
   waterSim = new (simStorage)
       idWaterSurfaceSim(waterBounds, spacing, damping, speed, timeStep);
+  constructionGuard.active = false;
   waterSimParms.spacing = spacing;
   waterSimParms.damping = damping;
   waterSimParms.speed = speed;

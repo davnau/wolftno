@@ -9,6 +9,12 @@ class idRenderModelGui;
 class idSWF;
 class idSWFSpriteInstance;
 
+class idLoadScreenInfo {
+public:
+  idStr varName;
+  idStr value;
+};
+
 class idLoadScreenInfo2 {
 public:
   idStr varName;
@@ -56,6 +62,7 @@ public:
 extern idLoadScreen loadScreen;
 
 static_assert(sizeof(idLoadScreenInfo2)==80,"idLoadScreenInfo2 ABI drift");
+static_assert(sizeof(idLoadScreenInfo)==80,"idLoadScreenInfo ABI drift");
 static_assert(sizeof(idLoadScreenThread)==120,"idLoadScreenThread ABI drift");
 static_assert(offsetof(idLoadScreenThread,initialized)==0x58,"load thread initialized ABI drift");
 static_assert(offsetof(idLoadScreenThread,logo)==0x60,"load thread logo ABI drift");

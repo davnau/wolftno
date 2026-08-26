@@ -11,12 +11,54 @@ class idClip;
 class idGameTimeManager;
 class idSerializer;
 class idTreeAnimator;
+class AnimatorPainValidationAccess;
 
 #ifndef ID_GAME_TIME_UNIQUE_T_DEFINED
 #define ID_GAME_TIME_UNIQUE_T_DEFINED
 enum gameTimeUnique_t : int;
 #endif
-enum serializeType_t { SERIALIZE_TYPE_NONE = 0 };
+enum serializeType_t {
+  STYPE_GENERIC = 0,
+  STYPE_AF = 1,
+  STYPE_ANIMWEB_HANDS = 2,
+  STYPE_WALK_IK = 3,
+  STYPE_TORSO_TRACKER = 4,
+  STYPE_PAIN = 5,
+  STYPE_SHOOT = STYPE_PAIN,
+  STYPE_JOINTMOD = 6,
+  STYPE_REACH_IK = 7,
+  STYPE_HAND_IK = STYPE_REACH_IK,
+  STYPE_VEHICLECAR = STYPE_REACH_IK,
+  STYPE_MAX = 8,
+  SERIALIZE_TYPE_NONE = STYPE_GENERIC,
+};
+
+class idAnimatorParms_Base {
+public:
+  idAnimatorParms_Base(idAnimStack* stack, const char* animatorName,
+                       idMD6Blend::blendOp_t operation,
+                       idMD6Blend::originBlend_t originOperation,
+                       md6WeightGroup_t animatorWeightGroup,
+                       md6WeightGroup_t animatorFilterGroup, float animatorAlpha)
+      : animStack(stack), name(animatorName), blendOp(operation),
+        originBlend(originOperation), weightGroup(animatorWeightGroup),
+        filterGroup(animatorFilterGroup), alpha(animatorAlpha) {}
+  ~idAnimatorParms_Base() = default;
+
+  idAnimStack* animStack;
+  idStr name;
+  idMD6Blend::blendOp_t blendOp;
+  idMD6Blend::originBlend_t originBlend;
+  md6WeightGroup_t weightGroup;
+  md6WeightGroup_t filterGroup;
+  float alpha;
+  std::uint8_t padding[4];
+};
+
+class idGameTimeManagerPtr {
+public:
+  idGameTimeManager* gameTimeManager;
+};
 
 #ifndef ID_TYPESAFE_NUMBER_DEFINED
 #define ID_TYPESAFE_NUMBER_DEFINED
@@ -35,8 +77,21 @@ class idAnimator_Base {
 public:
   enum priority_t { PRIORITY_DEFAULT = 0 };
 
+  struct serializeProps_t {
+    idMD6Branch* serializedTrees[2];
+    idTreeAnimator* treeAnimator;
+    idAnimStack* animStack;
+    idClip* clip;
+    bool createdThroughSerialization;
+    std::uint8_t padding[7];
+  };
+
   idAnimator_Base();
   virtual ~idAnimator_Base();
+
+  bool Init(idGameTimeManager* gameTimeManager,
+            const idAnimatorParms_Base& parms);
+  bool IsContributing() const;
 
   virtual priority_t GetStackPriority() const;
   virtual serializeType_t GetSerializeType();
@@ -73,18 +128,37 @@ protected:
   virtual const idMD6Branch* InternalGetEndBranch() const;
   virtual idMD6Branch* InternalGetEndBranch();
 
-private:
-  void* gameTimeManager;
+protected:
+  idGameTimeManagerPtr gametimeManager;
   md6WeightGroup_t filterGroup;
   md6WeightGroup_t weightGroup;
-  std::uint8_t serializeProps[0x30];
+  serializeProps_t serializeProps;
   std::uint8_t initialized : 1;
   std::uint8_t shutdownCalled : 1;
   std::uint8_t flagsPadding : 6;
   std::uint8_t tailPadding[7];
+
+  friend class AnimatorPainValidationAccess;
 };
 
 static_assert(sizeof(idTypesafeNumber<int, gameTimeUnique_t>) == 0x04,
               "idTypesafeNumber ABI drift");
+static_assert(sizeof(idAnimatorParms_Base) == 0x48,
+              "idAnimatorParms_Base ABI drift");
+static_assert(offsetof(idAnimatorParms_Base, name) == 0x08,
+              "idAnimatorParms_Base::name ABI drift");
+static_assert(offsetof(idAnimatorParms_Base, blendOp) == 0x30,
+              "idAnimatorParms_Base::blendOp ABI drift");
+static_assert(offsetof(idAnimatorParms_Base, alpha) == 0x40,
+              "idAnimatorParms_Base::alpha ABI drift");
+static_assert(sizeof(idGameTimeManagerPtr) == 0x08,
+              "idGameTimeManagerPtr ABI drift");
+static_assert(sizeof(idAnimator_Base::serializeProps_t) == 0x30,
+              "animator serialize properties ABI drift");
+static_assert(offsetof(idAnimator_Base::serializeProps_t, animStack) == 0x18,
+              "serialize anim-stack ABI drift");
+static_assert(offsetof(idAnimator_Base::serializeProps_t,
+                       createdThroughSerialization) == 0x28,
+              "serialize creation flag ABI drift");
 static_assert(sizeof(idAnimator_Base) == 0x50,
               "idAnimator_Base ABI drift");

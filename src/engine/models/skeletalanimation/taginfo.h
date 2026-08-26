@@ -25,7 +25,7 @@ struct tagData_t {
   idVec3 trans{};
   idQuat rot{};
   idTagJointHandle parentJoint{};
-  std::uint16_t padding = 0;
+  std::uint16_t padding;
 
   bool IsValid() const { return parentJoint.value != 0xffff; }
 };

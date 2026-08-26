@@ -35,6 +35,10 @@ public:
   static void ArgCompletion_ConfigName(idAutoComplete*);
   static void ArgCompletion_MapName(idAutoComplete*);
   static void ArgCompletion_Boolean(idAutoComplete*);
+  static void ArgCompletion_FileName(idAutoComplete*);
+  static void ArgCompletion_SaveGame(idAutoComplete*);
+  static void ArgCompletion_EventName(idAutoComplete*);
+  static void ArgCompletion_DemoFile(idAutoComplete*);
   template <int Minimum, int Maximum>
   static void ArgCompletion_Integer(idAutoComplete* completion) {
     for (int value = Minimum; value <= Maximum; ++value) {

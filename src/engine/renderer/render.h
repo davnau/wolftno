@@ -79,6 +79,8 @@ struct idStaticEnvBlendParms : public idEnvBlendParms {
 };
 
 struct renderView_t {
+  renderView_t();
+  ~renderView_t() = default;
   void BuildProjectionMatrix(idRenderMatrix& projectionMatrix, int jitterWidth,
                              int jitterHeight) const;
   void BuildViewMatrix(idRenderMatrix& viewMatrix) const;

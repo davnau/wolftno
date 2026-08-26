@@ -543,14 +543,14 @@ public:
   idSoundWorld* GetGlobalSoundWorld() override;
 
   void Restart();
-  void Render(bool threaded = false);
+  void Render(bool threaded = false) override;
   void RenderDebugPage(idRenderModelGui* gui);
-  void WaitForSoundThread();
+  void WaitForSoundThread() override;
   void MuteBackgroundMusic(bool mute);
   void SetMute(bool mute);
   bool IsMuted() const;
   void OnReloadSound(const idDecl* sound);
-  void StopAllSounds();
+  void StopAllSounds() override;
   void StopVoicesWithSample(const idSoundSample* sample);
   void* GetIXAudio2();
   int GetNumSpeakers() const;

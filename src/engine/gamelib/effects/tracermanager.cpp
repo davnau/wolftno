@@ -19,7 +19,8 @@
                 "?ReadBits@idBitMsg@@QEAAHH@Z")
 
 idCVar net_tracerMgrDebug("net_tracerMgrDebug", "0", CVAR_BOOL,
-                          "net_tracerMgrDebug", nullptr);
+                          "net_tracerMgrDebug",
+                          static_cast<argCompletionRef_t>(nullptr));
 
 namespace {
 

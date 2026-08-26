@@ -2,6 +2,7 @@
 
 #include "shared/idlib/filesystem/file.h"
 #include "shared/idlib/containers/list.h"
+#include "shared/idlib/containers/heaparray.h"
 
 #include <cstdint>
 #include <memory>
@@ -18,6 +19,11 @@ public:
   virtual void Init(const char* root) = 0;
   virtual void Shutdown() = 0;
   virtual void ClearZipCache() {}
+  void SetFilePreCallbackRetail(void* callback) {
+    using Fn=void(*)(idFileSystem*,void*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[4])(this,callback);
+  }
   virtual idFile* OpenFileRead(const char* path) = 0;
   virtual idFile* OpenFileWrite(const char* path) = 0;
   virtual idFile* OpenFileAppend(const char* path, fsPath_t basePath) = 0;
@@ -88,6 +94,85 @@ public:
   }
   idFile* OpenFileWrite(const char* path, fsPath_t) {
     return OpenFileWrite(path);
+  }
+  idFile* OpenFileWriteRetail(const char* path, fsPath_t basePath) {
+    using Fn=idFile*(*)(idFileSystem*,const char*,fsPath_t);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[34])(this,path,basePath);
+  }
+  idFile* OpenFileReadRetail(const char* path,bool allowCopyFiles,
+                             bool gamedirOnly) {
+    using Fn=idFile*(*)(idFileSystem*,const char*,bool,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[31])(
+        this,path,allowCopyFiles,gamedirOnly);
+  }
+  idFileList* ListFilesTreeRetail(const char* directory,const char* extension,
+                                  bool sort) {
+    using Fn=idFileList*(*)(idFileSystem*,const char*,const char*,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[9])(this,directory,extension,sort);
+  }
+  void FreeFileListRetail(idFileList* files) {
+    using Fn=void(*)(idFileSystem*,idFileList*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[10])(this,files);
+  }
+  void GetNumberedFilenameRetail(int& lastNumber,const char* baseName,
+                                 const char* extension,idStr& output,
+                                 bool reserve) {
+    using Fn=void(*)(idFileSystem*,int&,const char*,const char*,idStr&,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[23])(
+        this,lastNumber,baseName,extension,output,reserve);
+  }
+  bool FileExistsRetail(const char* path,bool gamedirOnly) {
+    using Fn=bool(*)(idFileSystem*,const char*,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[17])(this,path,gamedirOnly);
+  }
+  void ClearZipCacheRetail() {
+    using Fn=void(*)(idFileSystem*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[41])(this);
+  }
+  void InitRetail() {
+    using Fn=void(*)(idFileSystem*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[1])(this);
+  }
+  std::uint32_t GetTimestampRetail(const char* path,bool searchAll) {
+    using Fn=std::uint32_t(*)(idFileSystem*,const char*,bool);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[21])(this,path,searchAll);
+  }
+  std::uint64_t ReadFileRetail(const char* path,
+                               idHeapArray<unsigned char>& data,
+                               std::uint32_t* timestamp) {
+    using Fn=std::uint64_t(*)(idFileSystem*,const char*,
+                              idHeapArray<unsigned char>*,std::uint32_t*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[24])(this,path,&data,timestamp);
+  }
+  int ReadFileRetail(const char* path,void** buffer,std::uint32_t* timestamp) {
+    using Fn=int(*)(idFileSystem*,const char*,void**,std::uint32_t*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    return reinterpret_cast<Fn>(slots[25])(this,path,buffer,timestamp);
+  }
+  void FreeFileRetail(void* buffer) {
+    using Fn=void(*)(idFileSystem*,void*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[26])(this,buffer);
+  }
+  void RemoveFileRetail(const char* path,fsPath_t basePath) {
+    using Fn=void(*)(idFileSystem*,const char*,fsPath_t);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[28])(this,path,basePath);
+  }
+  void CreateOSPathRetail(const char* path) {
+    using Fn=void(*)(idFileSystem*,const char*);
+    const auto slots=*reinterpret_cast<const void* const* const*>(this);
+    reinterpret_cast<Fn>(slots[16])(this,path);
   }
   // NEEDS_WORK(shared/idlib/filesystem): this is the renderer-facing retail
   // boundary. Recover the platform/path-selection implementation with the

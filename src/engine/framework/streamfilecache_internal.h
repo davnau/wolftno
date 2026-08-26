@@ -118,6 +118,13 @@ public:
   void AddCacheLineRequest(idFile*,int,int,int,int);
   void BatchFreeMemory(void**,int);
   void ClearMem(bool);
+  void ResetFileIDs();
+  int GetHardDiskFileID(idFile*);
+  void ShutdownHDC();
+  int FindHardDiskCacheLine(int,int);
+  int AllocHardDiskCacheLine(int,int);
+  bool CreateNewHDC();
+  void ProcessRequests();
   bool FreeLRU();
   unsigned char* AllocProvidedLineBuffer();
   void FreeLineBuffer(unsigned char*,memoryType_t);

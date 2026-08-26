@@ -93,6 +93,7 @@ public:
   bool IsEmpty() const;
   bool IsNumeric() const;
   int Length() const;
+  const char* c_str() const;
   int Allocated() const;
   int Size() const;
   int CountChar(char value) const;

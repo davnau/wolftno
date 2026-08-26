@@ -16,6 +16,7 @@
 #include <cstdint>
 
 class idBitMsg;
+class idCmdArgs;
 class idSerializer;
 class idSWF;
 class idSWFHelper;
@@ -23,6 +24,10 @@ class idRenderModelGui;
 class idGameSpawnInfo;
 struct sysEvent_t;
 class idDialogInfo;
+class idMapChangeListener;
+class idRegression;
+class idRenderWorld;
+struct millisecondUnique_t;
 
 struct idUniqueWarning {
   idUniqueWarning() : message(),count(0) {}
@@ -35,10 +40,87 @@ struct idUniqueWarning {
 class idCommonLocal : public idCommon {
   friend class idRenderManager;
 public:
+  idCommonLocal();
+  ~idCommonLocal() override;
+  void Init(int,const char**,const char*) override;
+  void Shutdown(int) override;
+  bool IsTerminationThreadStopped() override;
+  void SyncAllBackgroundOperations(bool) override;
+  void ActivateTool(bool) override;
+  void RegisterMapChangeListener(idMapChangeListener*) override;
+  void UnRegisterMapChangeListener(idMapChangeListener*) override;
+  void Quit(int) override;
+  void InitCommands();
+  void SetCommandLineCVars(const idCmdArgs&,bool);
+  void ResetMapHeap(bool);
+  void ResetNetworkingState();
+  void PrepareForMapChange();
+  void WriteSysEvent(const sysEvent_t&);
+  bool ReadSysEvent(sysEvent_t&);
+  void CheckStartupStorageRequirements();
+  gameFrameParms_t GameFrameParms(int) override;
+  void PurgeOverlays();
+  int CalcSnapTimeBuffered(int*,int*);
+  void GetToolReferenceMap(toolFlag_t,idStr&) override {}
+  idLocalUser* GetMasterLocalUser() override;
+  idPlayerProfile* GetProfileFromMasterLocalUser() override;
+  int GetMasterLocalUserInputDevice() override;
+  int GetMasterLocalUserPlayerId() override;
+  idSWFHelper* GetSWFHelper() override;
+  bool IsInGame() override;
+  snapshotState_t SnapshotState() override;
+  bool IsToolActive() override;
+  bool IsDemoPlaying() override { return Field<int>(0x6D0)==3; }
+  bool IsDemoRecording() override { return Field<int>(0x6D0)==1; }
+  void InitLanguageDict();
+  void WriteConfigToFile(const char*) override;
+  void RecordPlayback(bool,const char*);
+  idFile* DetachActiveReadSnapshotFile();
+  idFile* DetachActiveWriteSnapshotFile();
+  void QueueSnapshotMemFile(idFile_Memory*,unsigned int);
+  void ClearQueuedSnapshotFile();
+  void PlayQueuedSnapshotFile();
+  void StopSnapshotFileRecord();
+  void StopSnapshotFilePlayback();
+  void CloseSnapshotFiles();
+  void PlaySnapshotFile(idFile*,unsigned int);
+  void RecordSnapshotFile(idFile*,unsigned int);
+  void ResetPlayerInput(int);
+  void UpdateBotUserCmds(int,const usercmd_t&);
+  void VoiceRecognition_ClearUnprocessedCmd();
+  void VoiceRecognition_GetBareWordlist(idList<idStr,44>& outList);
+  void UpdateConsoleDisplay(bool drawGameGui) override;
+  static void Hitch_f(const idCmdArgs*);
+  static void Map_f(const idCmdArgs*);
+  static void ComboMap_f(const idCmdArgs*);
+  static void DevComboMap_f(const idCmdArgs*);
+  static void CheckLoad_f(const idCmdArgs*);
+  static void DevMap_f(const idCmdArgs*);
+  static void RestartMap_f(const idCmdArgs*);
+  static void RestartMapHere_f(const idCmdArgs*);
+  static void NextMap_f(const idCmdArgs*);
+  static void RestartLoadGame_f(const idCmdArgs*);
+  static void RestartPassMainMenu_f(const idCmdArgs*);
+  static void RestartMapAfterSwap_f(const idCmdArgs*);
+  static void RestartMultiplayerInvite_f(const idCmdArgs*);
+  static void Disconnect_f(const idCmdArgs*);
+  static void LeaveGame_f(const idCmdArgs*);
+  static void SaveGame_f(const idCmdArgs*);
+  static void LoadGame_f(const idCmdArgs*);
+  static void RecordDemo_f(const idCmdArgs*);
+  static void PlayDemo_f(const idCmdArgs*);
+  static void StopDemo_f(const idCmdArgs*);
+  static void CaptureDemoFrames_f(const idCmdArgs*);
+  static void CaptureDemoSounds_f(const idCmdArgs*);
+  static void CompressFile_f(const idCmdArgs*);
+  static void DecompressFile_f(const idCmdArgs*);
+  static void DeleteGenerated_f(const idCmdArgs*);
   class idLogFileWriter : public idPrintListener {
   public:
-    idLogFileWriter() : logFile(nullptr),recursing(false),lock() {}
-    ~idLogFileWriter() override { CloseLogFile(); }
+    idLogFileWriter()
+        : idPrintListener(false,true,PRINT_INFO),logFile(nullptr),
+          recursing(false),lock() {}
+    ~idLogFileWriter() override = default;
     void Print(const char*) override;
     void Init() { logFile=nullptr;recursing=false; }
     void CloseLogFile();
@@ -50,7 +132,9 @@ public:
 
   class idWarningList : public idPrintListener {
   public:
-    idWarningList() : list(),hash(1024,1024),caption() {}
+    idWarningList()
+        : idPrintListener(true,false,PRINT_WARNING),list(),hash(1024,1024),
+          caption() {}
     ~idWarningList() override=default;
     void Print(const char*) override;
     idList<idUniqueWarning,3> list;
@@ -60,7 +144,8 @@ public:
 
   class idRefreshOnPrint : public idPrintListener {
   public:
-    idRefreshOnPrint() : cl(nullptr),set(false) {}
+    idRefreshOnPrint()
+        : idPrintListener(false,false,PRINT_INFO),cl(nullptr),set(false) {}
     ~idRefreshOnPrint() override=default;
     void Print(const char*) override;
     idCommonLocal* cl;
@@ -75,7 +160,41 @@ public:
   bool IsLosingConnectionToHost() override;
   bool AreWeRunningPC() const override;
   bool IsInitialized() const override;
-  void UpdateLevelLoadPacifier(float,pacifierState_t,bool) override;
+  bool IsMainMenuActive() override;
+  bool IsGamePaused() override;
+  bool SnapshotsAreStalled() override;
+  bool IsMultiplayer() const override;
+  bool IsDialogPausing() override;
+  int GetRecentInputDevice() override;
+  int GetFocusDeviceNum() override;
+  void SetFocusDeviceNum(int) override;
+  int GetPauseMenuDeviceNum() override;
+  void SetPauseMenuDeviceNum(int) override;
+  bool GetAutosaveEnabled() override;
+  void EnableAutosaves(bool) override;
+  idRenderWorld* RW() override;
+  idSoundWorld* SW() override;
+  idRegression* GetRegression() override;
+  bool ShouldDelayShutdown() override;
+  void SetShouldDelayShutdown(bool) override;
+  bool GetAbnormalFileRead() override;
+  void SetAbnormalFileRead(bool) override;
+  bool IsPurgeOverlaysPending() override;
+  int GetSnapRate() override;
+  idRenderVideoOverlay* VideoOverlay() override;
+  void UpdateLevelLoadPacifier(float,pacifierState_t,bool,bool=false) override;
+  millisecondUnique_t PlayLoadSound() override;
+  void SetLoadScreenInfo(const idStr&,const idStr&) override;
+  const char* GetLoadMaterialForMission(const char*,bool) override;
+  void LoadVirtualTextures();
+  void StopLevelLoad(bool);
+  void StartLevelLoad(const idStr&,const char*,bool);
+  void StartLevelLoadGame(const idGameSpawnInfo&,bool);
+  void ExecuteMapChange(const idGameSpawnInfo&,idFile*) override;
+  void LeaveGame(bool);
+  void Disconnect(bool);
+  void EndLevelLoad(bool);
+  void ForceLoadingBlack();
   recordState_t GetRecordState() override;
   bool HasDialogMsg(gameDialogMessages_t,bool*) override;
   void ClearDialog(gameDialogMessages_t,const char*,int) override;
@@ -94,14 +213,22 @@ public:
   void RemoveWaitDialogs();
   void ReleaseCallBacks(int);
   bool HandleDialogEvent(const sysEvent_t*);
+  bool CutScenePress(const sysEvent_t&,bool);
   void ShowDialog(idDialogInfo&,bool);
   void KillDialog();
   void ShowNextDialog(bool);
   void InitDialog();
+  void LoadMainMenu();
   void RenderDialog(bool);
   void AddDialogInternal(idDialogInfo&);
   void DrawSnapshotMetrics(bool);
   void LoadingScreenSetup(idSWF*,idRenderModelGui*,const idGameSpawnInfo&);
+  void PrepareSnapshot(idSnapShot&,gameReturn_t&,idSnapShot*);
+  void RunNormalFrame(gameReturn_t&);
+  void RunNetworkSnapshotFrame(gameReturn_t&);
+  void ShowJobListTimeRanges(std::uint64_t);
+  void CalcPerfTimings();
+  void Frame();
 
 private:
   void NetReceiveReliable(int,idBitMsg&,int) override;
@@ -153,7 +280,7 @@ public:
   idLogFileWriter logFileWriter;
   idWarningList warningList;
   idRefreshOnPrint refreshOnPrint;
-  std::byte opaqueTail[375504-352]{};
+  std::byte opaqueTail[375504-352];
 };
 
 extern idCommonLocal commonLocal;

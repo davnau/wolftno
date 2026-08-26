@@ -41,6 +41,8 @@ public:
   float GetLastTurnRate() const { return lastTurnRate; }
   void SetTolerance(float dotTolerance) { tolerance = dotTolerance; }
   float GetTurnVelocity() const { return turnVelocity; }
+  float GetMinimumRateForTest() const { return minRate; }
+  float GetMaximumRateForTest() const { return maxRate; }
   void SetTurnVelocity(float value) { turnVelocity = value; }
   void SetCurrentTurnDirection(turnDirection_t value) {
     currentTurnDir = value;

@@ -61,6 +61,7 @@ struct moveFailureInfo_t {
 
 struct idObstacleInfo {
   void Reset();
+  idVec3 wallCorners[2]{};
   idEntity* obstacle{nullptr};
   idVec3 avoidPoint{};
   bool valid{false};
@@ -87,7 +88,7 @@ public:
   idScenePoint* GetDestinationTraversal() const;
   void SetMoveStatus(aiMoveStatus_t value);
   void Init(idAI2* value);
-  void Stop(aiMoveStatus_t reason = MOVE_STATUS_ABORTED);
+  aiMoveStatus_t Stop(aiMoveStatus_t reason = MOVE_STATUS_ABORTED);
   int PointReachableAreaNum(const idVec3& point) const;
   bool PointReachable(const idVec3& point) const;
   bool PointInMovementRange(const idVec3& point) const;
@@ -201,6 +202,8 @@ public:
   void ResetAlignToNextPointCallCountForTest() {
     alignToNextPointCallCount = 0;
   }
+  const idObstacleInfo* GetObstacleInfo() const { return &obstacleInfo; }
+  idObstacleInfo* GetObstacleInfo() { return &obstacleInfo; }
 private:
   void AdvanceLinearMovement(int time, float speedScale);
 

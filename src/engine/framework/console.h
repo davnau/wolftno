@@ -31,6 +31,9 @@ enum rangeId_t : int {
   RANGE_JBL_VIRT = 10,
   RANGE_JBL_SNDO = 11,
   RANGE_JBL_SNAP = 12,
+  RANGE_STREAM_CT = 13,
+  RANGE_STREAM_HD = 14,
+  RANGE_STREAM_OD = 15,
 };
 
 struct idConsoleVTablePrefix {
@@ -50,9 +53,50 @@ struct idConsoleVTablePrefix {
 struct idConsole {
   const idConsoleVTablePrefix* vtable;
 
+  void Init() {
+    using Fn=void(*)(idConsole*);
+    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[1])(this);
+  }
+
+  void LoadGraphics() {
+    using Fn=void(*)(idConsole*);
+    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[4])(this);
+  }
+
+  void ClearNotifyLines() {
+    using Fn=void(*)(idConsole*);
+    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[8])(this);
+  }
+
+  bool IsActive() {
+    using Fn=bool(*)(idConsole*);
+    return reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[7])(this);
+  }
+  bool IsInitialized() {
+    using Fn=bool(*)(idConsole*);
+    const auto slots=reinterpret_cast<const void* const*>(vtable);
+    return reinterpret_cast<Fn>(slots[6])(this);
+  }
+  bool ProcessEvent(const struct sysEvent_t* event,bool forceAccept) {
+    using Fn=bool(*)(idConsole*,const sysEvent_t*,bool);
+    return reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[5])(
+        this,event,forceAccept);
+  }
+
+  void InitGuiModel() {
+    using Fn=void(*)(idConsole*);
+    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[3])(this);
+  }
+
   void AddTimeRange(rangeId_t range, const idColor* color,
                     std::uint64_t start, std::uint64_t end) {
     vtable->AddTimeRange(this, range, color, start, end);
+  }
+
+  void SetTimeRangeLabel(rangeId_t range,const char* label) {
+    using Fn=void(*)(idConsole*,rangeId_t,const char*);
+    reinterpret_cast<Fn>(reinterpret_cast<const void* const*>(vtable)[18])(
+        this,range,label);
   }
 
   void AddJobListTimeRange(rangeId_t range, const idColor* color,
@@ -99,6 +143,24 @@ struct idConsole {
     using Fn = void (*)(idConsole*, bool);
     const auto slots = reinterpret_cast<const void* const*>(vtable);
     reinterpret_cast<Fn>(slots[10])(this, force);
+  }
+
+  void ClearEditLine() {
+    using Fn = void (*)(idConsole*);
+    const auto slots = reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[9])(this);
+  }
+
+  void Shutdown() {
+    using Fn = void (*)(idConsole*);
+    const auto slots = reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[2])(this);
+  }
+
+  void Dump(const char* fileName, idStr* text = nullptr) {
+    using Fn = void (*)(idConsole*, const char*, idStr*);
+    const auto slots = reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[12])(this, fileName, text);
   }
 
   void Draw(bool forceFullScreen, bool noNotifies) {

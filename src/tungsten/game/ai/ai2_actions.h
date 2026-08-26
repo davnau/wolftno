@@ -13,6 +13,7 @@
 #include "engine/gamelib/physics/clip.h"
 #include "engine/animation/md6.h"
 #include "engine/decls/animwebs/declanimweb.h"
+#include "engine/models/skeletalanimation/taginfo.h"
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/text/atomicstring.h"
@@ -32,6 +33,7 @@
 class idScriptAction;
 enum fxCondition_t : int;
 class idAIVoiceController;
+class idAnimWebAI;
 class idAI2;
 class idAIFSM;
 class idAIState;
@@ -43,8 +45,10 @@ class idAICover;
 class idAnimWebPath;
 class idAnimStack;
 class idMD6Anim;
+class idDamageGroup;
 class idAnimator_Pain;
 class idDeclFX;
+class idDeclFlare;
 class idWeapon;
 class idInventoryItem;
 class idProxyMove;
@@ -60,6 +64,10 @@ class idAIEventSound;
 class idAIEventVoice;
 class idDeclAiEvent;
 class idFiniteStateMachine;
+class idState {
+public:
+  struct transitionInfo_t {};
+};
 class idFSMManager;
 class idAIActionManager;
 class idAIFSMCallback;
@@ -78,10 +86,16 @@ enum aiExtendedClipModelStatus_t : int {
   AIEXTENDEDCLIPMODELSTATUS_DEATHJOINTS = 2,
 };
 enum invalidAliasHandle_t : int;
+enum invalidAttachment_t : int { INVALID_ATTACHMENT = -1 };
+enum animationPose_t : int {
+  ANIMATION_POSE_CURRENT = 0,
+  DRIVER_MODEL = 1,
+};
 enum invalidFiberId_t : int { INVALID_FIBER_ID = 0 };
 enum invalidThreadHandle_t : int { INVALID_THREAD_HANDLE = 0 };
 template <typename T, typename InvalidEnum, T InvalidValue>
-struct idHandle {
+class idHandle {
+public:
   T value{InvalidValue};
   bool operator==(const idHandle& other) const {
     return value == other.value;
@@ -92,6 +106,7 @@ struct idHandle {
 };
 using aiAnimationHandle_t =
     idHandle<unsigned short, invalidAliasHandle_t, 65535>;
+using idAttachmentHandle = idHandle<int, invalidAttachment_t, -1>;
 using idFiberHandle = idHandle<int, invalidFiberId_t, 0>;
 using idThreadHandle = idHandle<int, invalidThreadHandle_t, 0>;
 class idThread;
@@ -134,6 +149,8 @@ extern idCVar ai_debugAim;
 extern idCVar ai_debugLook;
 extern idCVar ai_debugMissTime;
 extern idCVar ai_debugLevel;
+extern idCVar ai_enableInjuredRuns;
+extern idCVar ai_debugGore;
 extern idCVar ai_debugPain;
 extern idCVar ai_debugPushFromCollision;
 extern idCVar ai_debugDeath;
@@ -259,6 +276,8 @@ public:
   void ClearForGoreTest();
   int NumForAI() const;
   class idAttachment* ForIndexForAI(int index) const;
+  idAttachmentHandle FindAttachment(idInventoryItem* item) const;
+  void ShowAttachment(const idAttachmentHandle& handle);
 };
 
 class idAttachment {
@@ -280,13 +299,45 @@ public:
   bool GetRecoveredWeaponFlagForTest() const {
     return recoveredWeaponFlag;
   }
+  void ShowForAI() {
+    visible = true;
+    ++showCount;
+  }
+  bool IsVisibleForTest() const { return visible; }
+  int GetShowCountForTest() const { return showCount; }
 
 private:
   idInventoryItem* item{nullptr};
   short jointIndex{-1};
   int handle{-1};
   bool recoveredWeaponFlag{true};
+  bool visible{false};
+  int showCount{0};
 };
+
+inline idAttachmentHandle idAttachmentCollection::FindAttachment(
+    idInventoryItem* item) const {
+  idAttachmentHandle result;
+  for (int index = 0; index < NumForAI(); ++index) {
+    const idAttachment* const attachment = ForIndexForAI(index);
+    if (attachment != nullptr && attachment->GetItemForAI() == item) {
+      result.value = attachment->GetHandleForAI();
+      break;
+    }
+  }
+  return result;
+}
+
+inline void idAttachmentCollection::ShowAttachment(
+    const idAttachmentHandle& handle) {
+  for (int index = 0; index < NumForAI(); ++index) {
+    idAttachment* const attachment = ForIndexForAI(index);
+    if (attachment != nullptr && attachment->GetHandleForAI() == handle.value) {
+      attachment->ShowForAI();
+      return;
+    }
+  }
+}
 struct idStrId {
   unsigned int id{0};
 };
@@ -327,6 +378,12 @@ public:
       "holster_belt_left", "holster_belt_right", "holster_belt_back",
       "holster_belt_front", "vehicle",            "vehicle_ram",
   };
+  static unsigned int EquipSlotForName(const char* name) {
+    for (unsigned int slot = 0; slot < 15; ++slot) {
+      if (idStr::Icmp(equipSlotTagNames[slot], name) == 0) return slot;
+    }
+    return 15;
+  }
   const char* declTypeName{"inventoryItem"};
   bool resourceValid{true};
   idAngles aiWeaponKick{};
@@ -698,14 +755,29 @@ enum runIndexType_t {
   ANIMWEBAI_RUNINDEXTYPE_DUCK = 8,
   ANIMWEBAI_RUNINDEXTYPE_MAX = 9,
 };
+enum aiInjuredRunMode_t : int {
+  AIINJUREDRUNMODE_MOSTDAMAGED = 0,
+  AIINJUREDRUNMODE_RECENTLYDAMAGED = 1,
+  AIINJUREDRUNMODE_AFTERPAIN = 2,
+  AIINJUREDRUNMODE_GORE_LEVEL = 3,
+};
+enum goreLevel_t : int {
+  GORELEVEL_NONE = 0,
+  GORELEVEL_BLOOD = 1,
+  GORELEVEL_LIGHT_DAMAGE = 2,
+  GORELEVEL_HEAVY_DAMAGE = 3,
+  GORELEVEL_TATTERED = 4,
+  GORELEVEL_DISMEMBERED = 5,
+};
 struct idAnimWebEvent {
   enum priority_t { PRIORITY_LOW = 0, PRIORITY_NORMAL = 1, PRIORITY_HIGH = 2 };
 };
 enum aiAnimWeb_t { AIANIMWEB_BODY = 0, AIANIMWEB_HEAD = 1 };
 enum awPathResult_t {
-  AWPATH_FAILED = -1,
-  AWPATH_OK = 0,
-  AWPATH_ALREADY_AT_DESTINATION = 1,
+  AWPATH_FAILED = 0,
+  AWPATH_OK = 1,
+  AWPATH_ALREADY_THERE = 2,
+  AWPATH_ALREADY_AT_DESTINATION = AWPATH_ALREADY_THERE,
 };
 enum interruptPath_t { INTR_PATH_NO = 0, INTR_PATH_YES = 1 };
 enum interruptBlend_t {
@@ -796,8 +868,12 @@ public:
   void SetExecutingScriptStateForTest(bool executing);
   idAI2* GetOwnerForTest() const;
   idRecoveredValue InternalCallEvent(...);
-  idRecoveredValue PauseCurrentFiberTillActionCompletes(...);
-  idRecoveredValue PauseCurrentThreadTillActionCompletes(...);
+  void PauseCurrentFiberTillActionCompletesForTest() {
+    PauseCurrentFiberTillActionCompletes();
+  }
+  void PauseCurrentThreadTillActionCompletesForTest() {
+    PauseCurrentThreadTillActionCompletes();
+  }
   void PauseFiberTillActionCompletesForTest(idFiberHandle fiberHandle) {
     PauseFiberTillActionCompletes(fiberHandle);
   }
@@ -808,6 +884,8 @@ public:
 
 private:
   bool ForceFSMIntoExecutingScript();
+  void PauseCurrentFiberTillActionCompletes();
+  void PauseCurrentThreadTillActionCompletes();
   void PauseFiberTillActionCompletes(idFiberHandle fiberHandle);
   void PauseThreadTillActionCompletes(idThread* thread);
   invocation_t lastInvocation;
@@ -843,7 +921,8 @@ public:
   virtual actorClass_t GetActorClass() const { return ACTORCLASS_HUMAN; }
   idFaction* GetFaction() const override { return faction; }
   void SetFactionForTest(idFaction* value) { faction = value; }
-  virtual const idVec3 GetEyeOffset() const { return eyeOffset; }
+  virtual const idVec3 GetEyeOffset() const;
+  virtual void GetViewTransform(idVec3& origin, idMat3& axis) const;
   virtual void GetEyePos(idVec3* eyePosition) const;
   void SetEyeOffsetForTest(const idVec3& value) { eyeOffset = value; }
   bool IsCrouching() const { return posture == POSTURE_CROUCHED; }
@@ -857,6 +936,13 @@ public:
   int GetActorWaterEffectsPhysIdForTest() const;
   int GetActorWaterEffectsBodyIdForTest() const;
   idRecoveredValue SaveDamageGroup(...);
+  idDamageGroup* GetDamageGroupFromJoint(
+      idIndex<short, invalidJointIndex_t> joint);
+  idDamageGroup* GetDamageGroupFromName(const char* damageGroupName);
+  void RegisterDamageGroupForActor(idDamageGroup* damageGroup);
+  void ClearDamageGroupsForActor();
+  void SetDamageGroupForJointForTest(short joint,
+                                     const char* damageGroupName);
   void SetLastDamageInfo(const idEntity* inflictor,
                          const idDeclDamage* damageDefinition);
   const idEntity* GetLastDamageInflictorForTest() const {
@@ -879,6 +965,7 @@ public:
   void GetEyeAxis(idMat3* eyeAxis) const;
   void SetEyeAxis(const idMat3* eyeAxis);
   const idInventoryCollection* GetInventory() const;
+  idAttachmentCollection* GetAttachments();
   const idAttachmentCollection* GetAttachments() const;
   const idList<idEntityPtr<idEntity>, 5>* GetTriggerTouchList() const;
   idStrId GetDisplayName() const;
@@ -1049,6 +1136,9 @@ protected:
   bool jointBoundsAvailable{false};
   idBounds jointBounds{};
   mutable int lastJointBoundsGroup{-1};
+  std::vector<idDamageGroup*> registeredDamageGroups;
+  std::vector<short> damageGroupJointIndices;
+  std::vector<std::string> damageGroupJointNames;
 };
 
 class idPlayer : public idActor {
@@ -1384,19 +1474,14 @@ private:
 
 class idTreeAnimator {
 public:
+  using tagData_t = ::tagData_t;
+
   struct headTrackingLimits_t {
     float minYaw{-80.0F};
     float maxYaw{80.0F};
     float minPitch{-80.0F};
     float maxPitch{80.0F};
   };
-  struct tagData_t {
-    idVec3 trans{};
-    idQuat rot{};
-    unsigned short parentJoint{0xFFFFU};
-    unsigned short padding{0};
-  };
-
   const char* GetModelDefName();
   void SetModelDefName(const char* value) { modelDefName = value; }
   void SetModelCapsForTest(unsigned int value) { modelCaps = value; }
@@ -1483,7 +1568,8 @@ public:
   void AddTagForTest(const char* tagName, const idVec3& translation,
                      const idQuat& rotation, unsigned short parentJoint) {
     tags.push_back({"", tagName != nullptr ? tagName : "",
-                    {translation, rotation, parentJoint, 0}});
+                    {translation, rotation,
+                     idTagJointHandle{parentJoint}, 0}});
   }
   void AddArmorPropTagForTest(const char* propName, const char* tagName,
                               const idVec3& translation,
@@ -1491,7 +1577,8 @@ public:
                               unsigned short parentJoint) {
     tags.push_back({propName != nullptr ? propName : "",
                     tagName != nullptr ? tagName : "",
-                    {translation, rotation, parentJoint, 0}});
+                    {translation, rotation,
+                     idTagJointHandle{parentJoint}, 0}});
   }
   const tagData_t* FindTagForAI(const char* tagName) const {
     if (tagName == nullptr) return nullptr;
@@ -1502,6 +1589,9 @@ public:
   }
   const tagData_t* FindArmorPropTagForAI(const char* propName,
                                          const char* tagName) const {
+    ++armorPropTagQueryCount;
+    lastArmorPropName = propName != nullptr ? propName : "";
+    lastArmorTagName = tagName != nullptr ? tagName : "";
     if (tagName == nullptr) return nullptr;
     const std::string requestedProp =
         propName != nullptr ? propName : "";
@@ -1511,6 +1601,15 @@ public:
       }
     }
     return FindTagForAI(tagName);
+  }
+  int GetArmorPropTagQueryCountForTest() const {
+    return armorPropTagQueryCount;
+  }
+  const char* GetLastArmorPropNameForTest() const {
+    return lastArmorPropName.c_str();
+  }
+  const char* GetLastArmorTagNameForTest() const {
+    return lastArmorTagName.c_str();
   }
   void ConfigureWorldSpaceTagTransformForTest(bool succeeds,
                                                const idVec3& origin,
@@ -1528,6 +1627,30 @@ public:
     origin = worldSpaceTagOrigin;
     axis = worldSpaceTagAxis;
     return true;
+  }
+  bool GetWorldSpaceTagTransform(const tagData_t& tagData,
+                                 idVec3& origin,
+                                 idMat3& axis) const {
+    return GetWorldSpaceTagTransformForAI(tagData, origin, axis);
+  }
+  void ConfigureWorldSpaceTagPositionForTest(bool succeeds,
+                                             const idVec3& origin) {
+    worldSpaceTagPositionSucceeds = succeeds;
+    worldSpaceTagPositionOrigin = origin;
+  }
+  bool GetWorldSpaceTagPosition(const tagData_t& tagData,
+                                idVec3& origin) const {
+    lastWorldSpaceTagPositionData = tagData;
+    ++worldSpaceTagPositionCount;
+    if (!worldSpaceTagPositionSucceeds) return false;
+    origin = worldSpaceTagPositionOrigin;
+    return true;
+  }
+  int GetWorldSpaceTagPositionCountForTest() const {
+    return worldSpaceTagPositionCount;
+  }
+  const tagData_t& GetLastWorldSpaceTagPositionDataForTest() const {
+    return lastWorldSpaceTagPositionData;
   }
   int GetWorldSpaceTagTransformCountForTest() const {
     return worldSpaceTagTransformCount;
@@ -1571,6 +1694,76 @@ public:
   int GetWorldSpaceJointPositionCountForTest() const {
     return worldSpaceJointPositionCount;
   }
+  void AddWorldSpaceJointPositionForTest(short jointIndex, bool succeeds,
+                                         const idVec3& origin) {
+    worldSpaceJointPositions.push_back({jointIndex, succeeds, origin});
+  }
+  void ClearWorldSpaceJointPositionsForTest() {
+    worldSpaceJointPositions.clear();
+    worldSpaceJointTransformQueries.clear();
+  }
+  bool GetWorldSpaceJointPosition(
+      animationPose_t pose,
+      idIndex<short, invalidJointIndex_t> jointIndex,
+      idVec3& origin) const {
+    worldSpaceJointTransformQueries.push_back({pose, jointIndex.value});
+    for (const worldSpaceJointPosition_t& configured :
+         worldSpaceJointPositions) {
+      if (configured.index != jointIndex.value) continue;
+      if (!configured.succeeds) return false;
+      origin = configured.origin;
+      return true;
+    }
+    if (!worldSpaceJointPositionSucceeds) return false;
+    origin = worldSpaceJointOrigin;
+    return true;
+  }
+  int GetExactWorldSpaceJointPositionCountForTest() const {
+    return static_cast<int>(worldSpaceJointTransformQueries.size());
+  }
+  animationPose_t GetWorldSpaceJointPositionPoseForTest(int index) const {
+    return worldSpaceJointTransformQueries[static_cast<std::size_t>(index)]
+        .pose;
+  }
+  short GetWorldSpaceJointPositionIndexForTest(int index) const {
+    return worldSpaceJointTransformQueries[static_cast<std::size_t>(index)]
+        .index;
+  }
+  void ConfigureWorldSpaceJointTransformForTest(bool succeeds,
+                                                const idVec3& origin,
+                                                const idMat3& axis) {
+    worldSpaceJointTransformSucceeds = succeeds;
+    worldSpaceJointTransformOrigin = origin;
+    worldSpaceJointTransformAxis = axis;
+  }
+  bool GetWorldSpaceJointTransform(
+      animationPose_t pose,
+      idIndex<short, invalidJointIndex_t> jointIndex,
+      idVec3& origin, idMat3& axis) const {
+    lastWorldSpaceJointTransformPose = pose;
+    lastWorldSpaceJointTransformIndex = jointIndex.value;
+    ++worldSpaceJointTransformCount;
+    if (!worldSpaceJointTransformSucceeds) return false;
+    origin = worldSpaceJointTransformOrigin;
+    axis = worldSpaceJointTransformAxis;
+    return true;
+  }
+  int GetWorldSpaceJointTransformCountForTest() const {
+    return worldSpaceJointTransformCount;
+  }
+  animationPose_t GetLastWorldSpaceJointTransformPoseForTest() const {
+    return lastWorldSpaceJointTransformPose;
+  }
+  short GetLastWorldSpaceJointTransformIndexForTest() const {
+    return lastWorldSpaceJointTransformIndex;
+  }
+  void ConfigureAnimationFrameForTest(int blendTime,
+                                      const idVec3& origin) {
+    lastBlendTime = blendTime;
+    globalOrigin = origin;
+  }
+  int GetLastBlendTimeForAI() const { return lastBlendTime; }
+  const idVec3& GetGlobalOriginForAI() const { return globalOrigin; }
   void StrongLoadTwitchPainAliasesForAI() {
     ++twitchPainStrongLoadCount;
   }
@@ -1656,6 +1849,15 @@ private:
     short index;
     std::string name;
   };
+  struct worldSpaceJointPosition_t {
+    short index;
+    bool succeeds;
+    idVec3 origin;
+  };
+  struct worldSpaceJointTransformQuery_t {
+    animationPose_t pose;
+    short index;
+  };
 
   idStr modelDefName;
   unsigned int modelCaps{0};
@@ -1672,11 +1874,18 @@ private:
   std::vector<namedHandle_t> aliases;
   std::vector<namedHandle_t> eyeInfos;
   std::vector<namedTag_t> tags;
+  mutable int armorPropTagQueryCount{0};
+  mutable std::string lastArmorPropName;
+  mutable std::string lastArmorTagName;
   bool worldSpaceTagTransformSucceeds{false};
   idVec3 worldSpaceTagOrigin{};
   idMat3 worldSpaceTagAxis{};
   mutable tagData_t lastWorldSpaceTagData{};
   mutable int worldSpaceTagTransformCount{0};
+  bool worldSpaceTagPositionSucceeds{false};
+  idVec3 worldSpaceTagPositionOrigin{};
+  mutable tagData_t lastWorldSpaceTagPositionData{};
+  mutable int worldSpaceTagPositionCount{0};
   short armorJointIndex{-1};
   bool worldSpaceJointPositionSucceeds{false};
   idVec3 worldSpaceJointOrigin{};
@@ -1686,6 +1895,18 @@ private:
   mutable int jointNameIndexQueryCount{0};
   mutable std::string lastJointName;
   mutable int worldSpaceJointPositionCount{0};
+  std::vector<worldSpaceJointPosition_t> worldSpaceJointPositions;
+  mutable std::vector<worldSpaceJointTransformQuery_t>
+      worldSpaceJointTransformQueries;
+  bool worldSpaceJointTransformSucceeds{false};
+  idVec3 worldSpaceJointTransformOrigin{};
+  idMat3 worldSpaceJointTransformAxis{};
+  mutable animationPose_t lastWorldSpaceJointTransformPose{
+      ANIMATION_POSE_CURRENT};
+  mutable short lastWorldSpaceJointTransformIndex{-1};
+  mutable int worldSpaceJointTransformCount{0};
+  int lastBlendTime{0};
+  idVec3 globalOrigin{};
   int twitchPainStrongLoadCount{0};
   bool walkIKEnabled{false};
   const void* modelWalkIKDecl{nullptr};
@@ -2255,6 +2476,24 @@ public:
   }
   int GetRestartCountForTest() const { return restartCount; }
   int GetLastRestartTimeForTest() const { return lastRestartTime; }
+  void Update(bool evaluate, int currentTime,
+              idList<idState::transitionInfo_t, 5>* info) {
+    lastUpdateEvaluate = evaluate;
+    lastUpdateTime = currentTime;
+    lastUpdateInfo = info;
+    ++updateCount;
+    if (updateSequenceCounter != nullptr) {
+      lastUpdateOrder = ++(*updateSequenceCounter);
+    }
+  }
+  int GetUpdateCount() const { return updateCount; }
+  int GetLastUpdateTime() const { return lastUpdateTime; }
+  bool GetLastAllowTransitions() const { return lastUpdateEvaluate; }
+  const void* GetLastUpdateInfoForTest() const { return lastUpdateInfo; }
+  void SetUpdateSequenceCounterForTest(int* value) {
+    updateSequenceCounter = value;
+  }
+  int GetLastUpdateOrderForTest() const { return lastUpdateOrder; }
 
 private:
   idStr name;
@@ -2281,6 +2520,12 @@ private:
   int status{1};
   int restartCount{0};
   int lastRestartTime{-1};
+  int updateCount{0};
+  int lastUpdateTime{0};
+  bool lastUpdateEvaluate{false};
+  idList<idState::transitionInfo_t, 5>* lastUpdateInfo{nullptr};
+  int* updateSequenceCounter{nullptr};
+  int lastUpdateOrder{0};
 };
 
 class idThread {
@@ -2307,6 +2552,8 @@ public:
     threadName = value != nullptr ? value : "";
   }
   static idThread* Find(int handleValue);
+  static idThread* GetCurrentThread();
+  static void SetCurrentThreadForTest(idThread* thread);
 
 private:
   idThreadHandle handle;
@@ -2994,6 +3241,8 @@ struct idAIAnimWebRuntimeState {
   idAnimWebIndex currentState{0};
   int lastPathResult{0};
   std::array<idAIAnimNodePlayback, 8> nodeAnimations{};
+  mutable int nodeAnimationLookupCount{0};
+  mutable int nodeTimeScaleLookupCount{0};
   const class idDeclAnimWeb* declaration{nullptr};
   idAnimWebIndex currentNode{-1};
   std::vector<std::string> validScriptedPaths;
@@ -3066,6 +3315,10 @@ public:
   float maxHealth{0.0F};
   float health{0.0F};
   std::vector<goreLevelInfo_t> goreLevelInfo;
+  float forwardRunIndex{0.0F};
+  float injuredIdleIndex{0.0F};
+  idMat3 lastHitAxis{};
+  int currentGoreLevel{GORELEVEL_NONE};
   float locationArmor{0.0F};
   idList<idStr, 5> hideMeshes;
   struct armorDestroyedMeshKit_t {
@@ -3272,6 +3525,8 @@ struct idAIRobotRuntimeState {
   float chargeTime{0.0F};
   float bossHealth{0.0F};
   idStr stageGroup{"battery"};
+  std::vector<idEntity*> stageTriggers;
+  const idDeclDamage* deathDamageDecl{nullptr};
   const idSoundShader* turnfastSound{nullptr};
   idVec3 lastBodyDir{1.0F, 0.0F, 0.0F};
   int turnfastSoundPlayCount{0};
@@ -3599,16 +3854,23 @@ struct idAITeslaTraceState {
 
 struct idAITeslaUpdateState {
   int resetTime{-1};
+  bool usesTesla{false};
   bool useTeslaWhileBlinded{false};
   float minimumRange{0.0F};
+  float chargeTime{0.0F};
   float explodeDelay{0.25F};
+  float coolDownTime{0.0F};
+  float meleeRange{0.0F};
+  float targetOffset{0.0F};
+  float maximumRangeDamageScale{1.0F};
+  bool spawnBombInFOV{false};
   const idDeclDamage* bombDamageDecl{nullptr};
   bool useBombGroundEffects{false};
   float inhibitFireTime{0.0F};
   float bombDangerZone{0.0F};
   const void* boltDecl{nullptr};
   float boltFlickerInterval{0.5F};
-  const void* bombFXDecl{nullptr};
+  const idDeclEntityDef* bombFXDecl{nullptr};
   bool bombFindPosition{false};
   int deferredEffect{0};
   idTreeAnimator::tagData_t teslaTag{};
@@ -3798,6 +4060,12 @@ public:
         }
       }
       const tagData_t& GetViewTagDataForTest() const { return viewTagData; }
+      void SetViewTagDataForTest(const idVec3& translation,
+                                 const idQuat& rotation,
+                                 unsigned short parentJointValue,
+                                 unsigned short paddingValue = 0) {
+        viewTagData = {translation, rotation, parentJointValue, paddingValue};
+      }
       int GetSyncedTargetSpawnIdForTest() const {
         return syncedAnim.targetSpawnId;
       }
@@ -3839,7 +4107,7 @@ public:
     struct idAIPhysics { ~idAIPhysics(); };
     struct idAIPain { ~idAIPain(); };
     struct idAIFSMInfo { ~idAIFSMInfo(); };
-    struct idAIFocusInfo { idAIFocusInfo(); };
+    struct idAIFocusInfo;
 
     idAIVolatile();
     ~idAIVolatile();
@@ -4383,6 +4651,10 @@ public:
       const;
   float GetAnimTimeScaleForAnimWebNode(const idAnimWebIndex* subWebIndex,
                                        const idAnimWebIndex* stateIndex);
+  float GetAnimTimeScaleForAnimWebNode(
+      const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>& subWebIndex,
+      const idIndex<short, idDeclAnimWeb::invalidStateIndex_t>& stateIndex)
+      const;
   const idAIAnimNodePlayback* GetAnimForAnimWebNodeIndex(
       const idAnimWebIndex* subWebIndex, const idAnimWebIndex* stateIndex,
       int index);
@@ -4664,7 +4936,10 @@ public:
   bool GetAnimationDeltaAndRot(const idAnimWebPath& animPath,
                                idVec3& outDelta, idAngles& outRotation,
                                bool verifyAWPath) const;
-  idRecoveredValue GetAnimationDuration(...);
+  bool GetAnimationDuration(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state, int& outMS,
+      float& outTimeScale, bool verifyAWPath) const;
   bool GetAnimationPathReachability(
       idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWeb,
       idIndex<short, idDeclAnimWeb::invalidStateIndex_t> state) const;
@@ -4683,7 +4958,10 @@ public:
   idComponentActionScript* GetComponentTimeLine();
   idPlayer* GetControllingPlayer() const;
   int GetCoverActionDuration(coverAction_t action, int currentTime);
-  idRecoveredValue GetCoverTransitionRadius(...);
+  float GetCoverTransitionRadius(const idAICover& cover,
+                                 bool desireScramble, bool desireMicro,
+                                 idStr& outAnimName, float& outYaw,
+                                 idVec3& outDelta, int& outFrames) const;
   const idCombatStage* GetCurrentCombatStage() const;
   float GetDefaultSpeedByCurrentWalkState() const;
   aiDirection_t GetDirectionTo(const idVec3& position,
@@ -4752,7 +5030,7 @@ public:
                        idStr& takedownName);
   usableState_t GetUsableState(const idEntity* activator,
                                const idFocusTrace* focusTrace);
-  idRecoveredValue GetViewTransform(...);
+  void GetViewTransform(idVec3& origin, idMat3& axis) const override;
   idAIVoiceController* GetVoiceController(voiceController_t controller);
   int GetWeaponSlot() const;
   const idBounds& GetWorldCollisionBounds() const;
@@ -4913,7 +5191,8 @@ public:
                             impactPoint, impactDirection, joint, blind);
   }
   bool PlayAdditivePainAnim(const aiAnimationHandle_t& painAlias);
-  idRecoveredValue PlayAnimWebPath(...);
+  const awPathResult_t PlayAnimWebPath(const idAnimWebPath& animPath,
+                                       bool forceTransition);
   void PlayAnimWebPathPerfect(const idAnimWebPath& animPath,
                               const idVec3& position,
                               const idMat3& axis,
@@ -5011,8 +5290,8 @@ public:
   void ShowFlareEffectForTest(bool show) { ShowFlareEffect(show); }
   idRecoveredValue Spawn(...);
   void SpawnCorpse(const idCorpseManager::corpseSave_t* corpse);
-  idRecoveredValue SpawnFlareEffect(...);
-  idRecoveredValue SpawnTeslaBomb(...);
+  void SpawnFlareEffect(bool show);
+  void SpawnTeslaBomb(int currentTime);
   void StartActionScript(int gameTime);
   void StartBodyDeathFade();
   void StartDisintigrateDeathFade();
@@ -5041,12 +5320,12 @@ public:
   }
   void StopFireRobot(int currentTime);
   void StopRagdoll() override;
-  idRecoveredValue StopTesla(...);
+  void StopTesla(bool fire, int currentTime);
   void Takedown(idEntity* activator, bool dualWield, bool reversedGrip,
                 takedownMode_t takeDownMode);
   bool TakedownWindoIsOpen(const idEntity* activator) const;
   void Teleport(const idVec3& origin, const idAngles& angles) override;
-  idRecoveredValue TeleportPush(...);
+  bool TeleportPush(idEntity* pusher);
   bool TeslaIsActive() const;
   bool TestFireWeapon(idWeapon* weapon, idFireParms& fireParms,
                       idTestFireResults& testFireResults,
@@ -5072,7 +5351,7 @@ public:
   void UpdateDrop();
   bool UpdateExtendedClipModel();
   idRecoveredValue UpdateFSMs(...);
-  idRecoveredValue UpdateGoreLevel(...);
+  bool UpdateGoreLevel(bool painTest);
   idRecoveredValue UpdateGrappleActivation(...);
   void UpdateGroupStatusConditions();
   idRecoveredValue UpdateLookFocus(...);
@@ -5267,6 +5546,7 @@ public:
     group.groupName = damageGroupName != nullptr ? damageGroupName : "";
     group.locationArmor = armor;
     staggerDamageGroups.push_back(group);
+    RebuildDamageGroupRegistryForTest();
     return staggerDamageGroups.back();
   }
   void SetSpawnAnimationStackForTest(const idAnimStack* value) {
@@ -5468,6 +5748,9 @@ public:
   const idAIVolatile::idAIAnimationInfo& GetAnimationInfoForTest() const {
     return *animationInfo;
   }
+  idAIVolatile::idAIAnimationInfo& GetAnimationInfoForTest() {
+    return *animationInfo;
+  }
   void SetMovementRestrictions(int flags,
                                bool stationaryModeValue) {
     movementModeRestrictionFlags = flags;
@@ -5497,7 +5780,32 @@ public:
   const idVec3& GetTeslaExplodePositionForTest() const {
     return teslaExplodePosition;
   }
+  void SetTeslaBombFXEntityForTest(idEntity* entity) {
+    teslaBombFXEntity = entity;
+  }
+  idEntity* GetTeslaBombFXEntityForTest() const {
+    return teslaBombFXEntity;
+  }
   void SetTeslaEvaluationTime(int time) { teslaEvaluationTime = time; }
+  void ConfigureStopTeslaForTest(bool usesTeslaValue, float chargeTimeValue,
+                                 float explodeDelayValue,
+                                 float coolDownTimeValue,
+                                 float meleeRangeValue,
+                                 float targetOffsetValue,
+                                 float maximumRangeDamageScaleValue,
+                                 bool spawnBombInFOVValue) {
+    teslaUpdateState.usesTesla = usesTeslaValue;
+    teslaUpdateState.chargeTime = chargeTimeValue;
+    teslaUpdateState.explodeDelay = explodeDelayValue;
+    teslaUpdateState.coolDownTime = coolDownTimeValue;
+    teslaUpdateState.meleeRange = meleeRangeValue;
+    teslaUpdateState.targetOffset = targetOffsetValue;
+    teslaUpdateState.maximumRangeDamageScale =
+        maximumRangeDamageScaleValue;
+    teslaUpdateState.spawnBombInFOV = spawnBombInFOVValue;
+  }
+  int GetTeslaDischargeTimeForTest() const { return teslaDischargeTime; }
+  int GetTeslaExplodeTimeForTest() const { return teslaExplodeTime; }
   idAITeslaUpdateState& GetTeslaUpdateStateForTest() {
     return teslaUpdateState;
   }
@@ -5543,6 +5851,7 @@ public:
   int GetGoreDeathsUpdateCountForTest() const;
   int GetAIClipMask() const { return aiClipMask; }
   idAIFireControl* GetFireControl() const { return fireControl.get(); }
+  void ClearFireControlForTest() { fireControl.reset(); }
   void ConfigureTestFireAimForTest(float compensationTime,
                                    bool predictMovement,
                                    float normalAimDot,
@@ -5672,6 +5981,15 @@ public:
     flareFadeStart = fadeStart;
     flareFadeEnd = fadeEnd;
   }
+  void ConfigureSpawnFlareEffectForTest(const idDeclFlare* declaration,
+                                        const char* tagName,
+                                        float quadSize) {
+    flareDeclaration = declaration;
+    flareTag = tagName != nullptr ? tagName : "";
+    flareQuadSize = quadSize;
+  }
+  int GetFlareHandleForTest() const { return flareHandle; }
+  const tagData_t& GetFlareTagDataForTest() const { return flareTagData; }
   void ConfigureEffectsTagForTest(idTreeAnimator* animator,
                                   const idTreeAnimator::tagData_t& tag) {
     effectsTreeAnimator = animator;
@@ -6202,6 +6520,14 @@ public:
   idTreeAnimator* GetAnimationControllerTreeForTest() const {
     return effectsTreeAnimator;
   }
+  void SetViewTreeAnimatorForTest(idTreeAnimator* animator) {
+    effectsTreeAnimator = animator;
+  }
+  void ConfigureEyeOffsetAnimationForTest(
+      idTreeAnimator* animator, const idTreeAnimator::tagData_t& eyeTag) {
+    effectsTreeAnimator = animator;
+    eyeTagData = eyeTag;
+  }
   int GetAnimationControllerIKEnableTimeForTest() const {
     return animationInfo->ikEnableTime;
   }
@@ -6252,6 +6578,9 @@ public:
     defaultPhysicsContents = value;
   }
   bool IsSolidForTest() const { return solidState; }
+  int GetRestoreSolidCollisionTimeForTest() const {
+    return restoreSolidCollisionTime;
+  }
   aiMovePushStatus_t GetMovePushStatusForTest() const {
     return movePushStatus;
   }
@@ -6519,6 +6848,7 @@ public:
                                                int goreLevelIndex);
   void ClearStaggerPainDamageGroupsForTest() {
     staggerDamageGroups.clear();
+    ClearDamageGroupsForActor();
   }
   void AddStaggerPainDamageGroupForTest(const char* groupName,
                                         bool enablePainAndDeath) {
@@ -6527,6 +6857,7 @@ public:
     group.goreLevelInfo.push_back(
         {0.0F, 0, false, enablePainAndDeath});
     staggerDamageGroups.push_back(group);
+    RebuildDamageGroupRegistryForTest();
   }
   void SetStaggerPainModelAxisForTest(const idMat3& value) {
     staggerPainModelAxis = value;
@@ -6555,6 +6886,30 @@ public:
                      static_cast<int>(animWebState.nodeAnimations.size());
     animWebState.nodeAnimations[static_cast<std::size_t>(slot)].animation =
         animation;
+  }
+  void SetAnimWebNodeTimeScaleForTest(short subWeb, short state,
+                                      float timeScale) {
+    if (subWeb < 0 || state < 0) return;
+    const int slot = (subWeb + state) %
+                     static_cast<int>(animWebState.nodeAnimations.size());
+    animWebState.nodeAnimations[static_cast<std::size_t>(slot)].timeScale =
+        timeScale;
+  }
+  void ResetAnimWebNodeLookupCountsForTest() const {
+    animWebState.nodeAnimationLookupCount = 0;
+    animWebState.nodeTimeScaleLookupCount = 0;
+  }
+  int GetAnimWebNodeAnimationLookupCountForTest() const {
+    return animWebState.nodeAnimationLookupCount;
+  }
+  int GetAnimWebNodeTimeScaleLookupCountForTest() const {
+    return animWebState.nodeTimeScaleLookupCount;
+  }
+  idAnimWebAI* GetBodyAnimWebAIForTest() const {
+    return bodyAnimWebAI.get();
+  }
+  idGoreComponent* GetGoreComponentForTest() const {
+    return goreComponent.get();
   }
   void ConfigureEmergencyCoverExitForTest(bool usesEmergencyExit,
                                           bool alreadyUsed,
@@ -6774,6 +7129,7 @@ private:
   void SetupRobotDead();
   bool FindClosestFocus();
   const idEntity* ResolveDeathAttackerForName(const idEntity* attacker);
+  void RebuildDamageGroupRegistryForTest();
 
   idAIScriptProxy scriptProxy;
   bool voiceOverPlaying{false};
@@ -6795,6 +7151,7 @@ private:
   std::unique_ptr<idComponentActionScript> componentTimeLine;
   std::unique_ptr<idFormationCoverMgr> dynamicCoverManager;
   std::unique_ptr<idGoreComponent> goreComponent;
+  std::unique_ptr<idAnimWebAI> bodyAnimWebAI;
   std::array<std::unique_ptr<idAnimator_AnimWeb>, 2> animWebAnimators;
   std::unique_ptr<idFaceMgr> faceManager;
   std::unique_ptr<idAIOrientation> bodyOrientation;
@@ -6940,10 +7297,14 @@ private:
   bool suppressBodyRotation{false};
   bool movementBehaviorRunsFacingForward{false};
   int flareHandle{-1};
+  const idDeclFlare* flareDeclaration{nullptr};
+  idStr flareTag;
+  float flareQuadSize{0.0F};
   float flareFadeStart{0.0F};
   float flareFadeEnd{0.0F};
   aiEffectUpdateType_t flareUpdateType{AIEFFECTUPDATETYPE_NONE};
   idTreeAnimator::tagData_t flareTagData{};
+  idTreeAnimator::tagData_t eyeTagData{};
   idTreeAnimator defaultEffectsTreeAnimator;
   idTreeAnimator* effectsTreeAnimator{nullptr};
   idMat3 animationModelAxis{};
@@ -7152,6 +7513,7 @@ private:
   std::unique_ptr<idFSMManager> fsmManager;
   std::uint32_t defaultPhysicsContents{0};
   bool solidState{false};
+  int restoreSolidCollisionTime{0};
   bool canSetCrouchedPhysics{false};
   idVec3 spawnPosition{};
   idAIInitPhysicsObservation initPhysicsObservation;
