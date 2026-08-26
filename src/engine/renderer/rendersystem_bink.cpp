@@ -172,8 +172,8 @@ int BinkVolumeFromDecibels(float decibels) {
   return std::clamp(volume, 0, 0x8000);
 }
 
-void ConfigureBinkAudio(BINK* movie, int languageOffset,
-                        std::int16_t speakerMask, int volume) {
+void ConfigureBinkAudio(BINK* movie, int languageOffset, int speakerMask,
+                        int volume) {
   std::uint32_t primaryTrack = static_cast<std::uint32_t>(languageOffset);
   std::uint32_t surroundTrack = static_cast<std::uint32_t>(languageOffset + 1);
   std::uint32_t lfeTrack = static_cast<std::uint32_t>(languageOffset + 2);
@@ -364,15 +364,23 @@ idBinkTimingWatcher* AllocateTimingWatcher() {
 }
 } // namespace
 
-void* binkMemAlloc(std::uint32_t bytes) {
+#if defined(WOLF_RENDERER_RENDERSYSTEM_BINK_TEST_ACCESS)
+#define WOLF_BINK_LOCAL
+#else
+#define WOLF_BINK_LOCAL static
+#endif
+
+WOLF_BINK_LOCAL void* binkMemAlloc(std::uint32_t bytes) {
   return idMem::Singleton()->AllocWithLocation(
       "w:\\build\\tech5\\engine\\renderer\\RenderSystem_bink.cpp(118) : TAG_BINK",
       bytes, TAG_BINK, false, ALIGN_16, HEAP_DEFAULTHEAP);
 }
 
-void binkMemFree(void* pointer) {
+WOLF_BINK_LOCAL void binkMemFree(void* pointer) {
   idMem::Singleton()->Free(pointer, ALIGN_16);
 }
+
+#undef WOLF_BINK_LOCAL
 
 void idBinkIOWrapper::SetInfo(BINKIO* binkIO, void*, std::uint32_t,
                               std::uint32_t fileSize, std::uint32_t) {
@@ -450,7 +458,6 @@ void idBinkIOWrapper::Close(BINKIO* binkIO) {
     }
   }
   delete context.file;
-  context.file = nullptr;
 }
 
 int idBinkIOWrapper::Open(BINKIO* binkIO, const char* name,
@@ -544,11 +551,12 @@ float idRenderSystemLocal::GetBinkTime() const {
           static_cast<float>(static_cast<int>(binkRealTime.FrameRateDiv)));
 }
 
-idScopeThreadAffinity::~idScopeThreadAffinity() {
+idScopeThreadAffinity::~idScopeThreadAffinity() noexcept(false) {
   Sys_SetCurrentThreadPlaformAffinity(oldAffinity);
 }
 
-idScopeThreadPriorityAndAffinity::~idScopeThreadPriorityAndAffinity() = default;
+idScopeThreadPriorityAndAffinity::~idScopeThreadPriorityAndAffinity()
+    noexcept(false) = default;
 
 bool idRenderSystemLocal::BinkVideoPlay() {
   if (bink == nullptr ||
@@ -719,22 +727,22 @@ void idRenderSystemLocal::UpdateBinkTextures() {
       stalledTime += static_cast<int>(frameTime - 34000);
     if (bink_debug.GetInteger() == 1 || doFrameTime > 10000 ||
         uploadTime > 30000 || frameTime > 100000) {
-      idStr frameSkip;
-      if (skipped != 0 || decodedFrames > 1)
-        frameSkip.Format(" frame_skip: %d", decodedFrames - 1);
+      const bool hasFrameSkip = skipped != 0 || decodedFrames > 1;
+      va frameSkip(" frame_skip: %d", decodedFrames - 1);
       const char* const slow = frameTime > 48000 ? " bink_slow" : "";
       idLib::Printf(
           "bink frame %5i: %5.2f ms doFrame, %5.3f ms service sound, %5.2f ms upload, %5.2f ms frametime%s%s\n",
-          bink->FrameNum, static_cast<double>(doFrameTime) * 0.001,
-          static_cast<double>(serviceEnd - doFrameEnd) * 0.001,
-          static_cast<double>(uploadTime) * 0.001,
-          static_cast<double>(frameTime) * 0.001, slow, frameSkip.data);
+          bink->FrameNum,
+          static_cast<double>(static_cast<int>(doFrameTime)) * 0.001,
+          static_cast<double>(
+              static_cast<int>(serviceEnd - doFrameEnd)) * 0.001,
+          static_cast<double>(static_cast<int>(uploadTime)) * 0.001,
+          static_cast<double>(static_cast<int>(frameTime)) * 0.001, slow,
+          hasFrameSkip ? frameSkip.buffer : "");
       lastFrameTime = Sys_Microseconds();
     }
-    if (watcherTread != nullptr) {
-      watcherTread->curFrame = static_cast<int>(bink->FrameNum);
-      watcherTread->frameEv.Raise();
-    }
+    if (watcherTread != nullptr)
+      watcherTread->StepFrame(static_cast<int>(bink->FrameNum));
   }
   if (bink->FrameNum < bink->Frames || videoFlags == VIDEO_LOOP)
     BinkNextFrame(bink);
@@ -776,6 +784,15 @@ void FillBinkBuffer(volatile bool& cancelToTerminate) {
 
 idBinkTimingWatcher::idBinkTimingWatcher() : frameEv(false) {}
 
+void idBinkTimingWatcher::operator delete(void* pointer) noexcept {
+  idMem::Singleton()->Free(pointer, ALIGN_16);
+}
+
+void idBinkTimingWatcher::operator delete(void* pointer,
+                                          std::size_t) noexcept {
+  idMem::Singleton()->Free(pointer, ALIGN_16);
+}
+
 int idBinkTimingWatcher::Run() {
   int lastFrameTimeMS = static_cast<int>(Sys_Milliseconds());
   while (!isTerminating) {
@@ -791,7 +808,7 @@ int idBinkTimingWatcher::Run() {
 
 void idRenderSystemLocal::BeginBinkVideo(
     void* hdc, const idVideoDesc* videoDesc, videoFlags_t requestedVideoFlags,
-    void* xAudioHardware, std::int16_t soundSystemSpeakerMask,
+    void* xAudioHardware, int soundSystemSpeakerMask,
     float binkVolumeDBFloat, idRenderVideoOverlay* overlay, bool force) {
   slowFrames = 0;
   stalledTime = 0;
@@ -836,7 +853,6 @@ void idRenderSystemLocal::BeginBinkVideo(
   }
   if (sourceFile->Length() == 0) {
     idLib::Warning("bink file %s zero sized", selectedName);
-    delete sourceFile;
     return;
   }
   idStr realPath(sourceFile->GetFullPath());

@@ -111,7 +111,7 @@ idResource::idResource()
       loadedResource(0), staticResource(0), insideRecursiveLoad(0), buildForceLoad(0),
       loadDeferred(0) {}
 
-idResource::~idResource() {
+idResource::~idResource() noexcept(false) {
   delete[] resourceError;
 }
 
@@ -200,7 +200,7 @@ idDecl::idDecl()
     : textSource(nullptr), textLength(0), md5Checksum(0), programaticallyDefined(false),
       declSource(nullptr) {}
 
-idDecl::~idDecl() {
+idDecl::~idDecl() noexcept(false) {
   delete[] textSource;
   textSource = nullptr;
 }

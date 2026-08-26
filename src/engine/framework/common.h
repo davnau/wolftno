@@ -3,6 +3,8 @@
 // NEEDS_WORK(engine/framework): ABI-only idCommon boundary. These helpers use
 // the retail vtable slots required by recovered clients; the owning framework
 // compiland must provide the full interface and implementations.
+class idRenderVideoOverlay;
+
 struct idCommon {
   const void* const* vtable;
 
@@ -37,6 +39,10 @@ struct idCommon {
   int GetFocusDeviceNum() const {
     using Fn = int (*)(const idCommon*);
     return reinterpret_cast<Fn>(vtable[57])(this);
+  }
+  idRenderVideoOverlay* VideoOverlay() {
+    using Fn = idRenderVideoOverlay* (*)(idCommon*);
+    return reinterpret_cast<Fn>(vtable[90])(this);
   }
 };
 

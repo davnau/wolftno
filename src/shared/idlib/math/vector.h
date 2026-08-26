@@ -6,7 +6,7 @@
 #include <limits>
 
 class idAngles;
-struct idQuat;
+class idQuat;
 class idMat3;
 struct idRotation;
 
@@ -148,7 +148,8 @@ struct idCQuat {
   float z;
 };
 
-struct idQuat {
+class idQuat {
+public:
   float x;
   float y;
   float z;
@@ -161,6 +162,7 @@ struct idQuat {
   idQuat operator+(const idQuat& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w}; }
   idQuat operator-(const idQuat& rhs) const { return {x - rhs.x, y - rhs.y, z - rhs.z, w - rhs.w}; }
   idQuat operator*(float scale) const { return {x * scale, y * scale, z * scale, w * scale}; }
+  idVec3 operator*(const idVec3& vector) const;
   idQuat& Normalize();
   idRotation ToRotation() const;
   idMat3 ToMat3() const;
@@ -224,9 +226,11 @@ struct idRotation {
 extern const idVec3 vec3_origin;
 extern const idVec3 vec3_infinity;
 extern const idVec6 vec6_infinity;
+extern idAngles ang_zero;
 extern const idMat3 mat3_identity;
 extern const idMat4 mat4_zero;
 extern const idMat4 mat4_identity;
+extern idQuat quat_identity;
 
 static_assert(sizeof(idVec2) == 8, "idVec2 ABI drift");
 static_assert(sizeof(idVec2i) == 8, "idVec2i ABI drift");

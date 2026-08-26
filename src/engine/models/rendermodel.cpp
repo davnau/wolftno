@@ -755,7 +755,7 @@ void idRenderModel::SerializeSnapshot(idSerializer* serializer,
   }
 }
 
-void idRenderModel::Save(idFile* file) {
+void idRenderModel::Save(idFile* file) const {
   if (file == nullptr)
     return;
   WriteBigVec3(file, deferredOrigin);
@@ -782,7 +782,7 @@ void idRenderModel::Save(idFile* file) {
   WriteBig32(file, static_cast<std::uint32_t>(g.castDimShadows));
   WriteBigFloat(file, g.dimShadowClipZ);
 
-  const std::pair<std::uint8_t*, std::uint8_t> flags[] = {
+  const std::pair<const std::uint8_t*, std::uint8_t> flags[] = {
       {&g.flags0, 0x01U}, {&g.flags0, 0x80U}, {&g.flags1, 0x04U},
       {&g.flags1, 0x08U}, {&g.flags1, 0x10U}, {&g.flags3, 0x01U},
       {&g.flags3, 0x02U}, {&g.flags3, 0x04U}, {&g.flags3, 0x08U},

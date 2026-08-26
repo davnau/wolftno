@@ -26,10 +26,10 @@
 #include "shared/idlib/sys/sys_time.h"
 
 #include <algorithm>
-#include <cstdarg>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <type_traits>
 
@@ -108,7 +108,7 @@ idCVar r_showDynamic("r_showDynamic", "0", 2,
                      "report stats on dynamic surface generation");
 idCVar r_showTrace("r_showTrace", "0", 2,
                    "show the intersection of an eye trace with the world",
-                   0.0F, 2.0F, nullptr,
+                   0.0F, 2.0F,
                    idCmdSystem::ArgCompletion_Integer<0, 2>);
 idCVar r_showIntensity(
     "r_showIntensity", "0", 1,
@@ -127,7 +127,7 @@ idCVar r_showQueries("r_showQueries", "0", 1,
 idCVar r_showLights(
     "r_showLights", "0", 2,
     "1 = just print volumes numbers, highlighting ones covering the view, 2 = also draw planes of each volume, 3 = also draw edges of each volume",
-    0.0F, 3.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 3>);
+    0.0F, 3.0F, idCmdSystem::ArgCompletion_Integer<0, 3>);
 idCVar r_showModels(
     "r_showModels", "0", 2,
     "1 = displays the bounding boxes of all view models, 2 = print index numbers");
@@ -160,11 +160,11 @@ idCVar r_showWorldAreas(
 idCVar r_showLightCount(
     "r_showLightCount", "0", 2,
     "1 = colors surfaces based on light count, 2 = also print overdraw",
-    0.0F, 3.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 2>);
+    0.0F, 3.0F, idCmdSystem::ArgCompletion_Integer<0, 2>);
 idCVar r_showTris(
     "r_showTris", "0", 2,
     "enables wireframe rendering of the world, 1 = only draw visible ones, 2 = draw all front facing, 3 = draw all, 4 = only visible ones with blended lines",
-    -4.0F, 4.0F, nullptr, idCmdSystem::ArgCompletion_Integer<-4, 4>);
+    -4.0F, 4.0F, idCmdSystem::ArgCompletion_Integer<-4, 4>);
 idCVar r_showDrawColor("r_showDrawColor", "1 1 1 0.4", 0x10000,
                        "specifies the draw color for r_showTris mode 4");
 idCVar r_showTwoSided("r_showTwoSided", "0", 2,
@@ -200,7 +200,7 @@ idCVar r_showTexturePolarity("r_showTexturePolarity", "0", 1,
 idCVar r_showTangentSpace(
     "r_showTangentSpace", "0", 2,
     "shade triangles by tangent space, 1 = use 1st tangent vector, 2 = use 2nd tangent vector, 3 = use normal vector",
-    0.0F, 3.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 3>);
+    0.0F, 3.0F, idCmdSystem::ArgCompletion_Integer<0, 3>);
 idCVar r_showTextureSpace("r_showTextureSpace", "0", 2,
                           "shade triangles by texture space");
 idCVar r_showTextureDistortion("r_showTextureDistortion", "0", 2,
@@ -208,15 +208,15 @@ idCVar r_showTextureDistortion("r_showTextureDistortion", "0", 2,
 idCVar r_showTriangleInfo(
     "r_showTriangleInfo", "0", 2,
     "show vertex numbers and tangents of the triangle the crosshair is over",
-    0.0F, 2.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 2>);
+    0.0F, 2.0F, idCmdSystem::ArgCompletion_Integer<0, 2>);
 idCVar r_showTransSortOverdraw(
     "r_showTransSortOverdraw", "0", 2,
     "show overdraw from transparency sorted surfaces, 1:heat pallet, 2; stagering red pallet",
-    0.0F, 2.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 2>);
+    0.0F, 2.0F, idCmdSystem::ArgCompletion_Integer<0, 2>);
 idCVar r_showBlendedSurfOverdraw(
     "r_showBlendedSurfOverdraw", "0", 2,
     "show overdraw from all blended surfaces: 1 = all, 2 = emissive pass, 3 = blended pass, 4 = background sort, 5 = emit sort, 6 = light sort, 7 = decal sort, 8 = trans sort, 9 = water sort",
-    0.0F, 9.0F, nullptr, idCmdSystem::ArgCompletion_Integer<0, 9>);
+    0.0F, 9.0F, idCmdSystem::ArgCompletion_Integer<0, 9>);
 idCVar r_testVMTR(
     "r_testVMTR", "0", 4,
     " if > 0 displays the vmtr specified by r_currentMaterial centered on the screen");
@@ -265,15 +265,6 @@ idCVar r_useFloatBuffers(
 idCodeResource<idDeclRenderParm> rpCBBlackLevel("cbBlackLevel");
 
 namespace {
-
-void AppendFormat(idStr& destination, const char* format, ...) {
-  char buffer[16384];
-  std::va_list arguments;
-  va_start(arguments, format);
-  std::vsnprintf(buffer, sizeof(buffer), format, arguments);
-  va_end(arguments);
-  destination.Append(buffer);
-}
 
 constexpr const char* renderModelTypeNames[RENDERMODEL_TYPE_MAX] = {
     "RENDERMODEL_DEFAULT",
@@ -331,6 +322,8 @@ bool idRenderSystemLocal::CheckOutOfMemory() { return GL_OutOfMemory(); }
 
 void idRenderSystemLocal::ClearOutOfMemory() { GL_ClearOutOfMemory(); }
 
+idRenderSystem::~idRenderSystem() = default;
+
 void idRenderSystemLocal::SetColorMappings(float gamma, float, float) {
   gammaForBrighness = gamma;
   reblendColorCorrection = true;
@@ -368,8 +361,8 @@ idRenderWorld* idRenderSystemLocal::AllocRenderWorld(const char* mapName,
                                                       bool comboMap,
                                                       bool toolMap) {
   idRenderWorld* world = idRenderWorld::Alloc();
+  std::unique_ptr<idRenderWorld> autoWorld(world);
   if (!world->InitFromMap(mapName, comboMap, toolMap)) {
-    delete world;
     return nullptr;
   }
   idMem* memory = idMem::Singleton();
@@ -381,7 +374,7 @@ idRenderWorld* idRenderSystemLocal::AllocRenderWorld(const char* mapName,
     throw;
   }
   memory->PopHeap();
-  return world;
+  return autoWorld.release();
 }
 
 void idRenderSystemLocal::RegenerateReferences() {
@@ -433,32 +426,44 @@ const char* idRenderStat<int>::GetValueString(bool showDelta,
     sum += value;
   }
   const int average = (sum + 8) / 16;
-  const char* color = average > maxValue ? "^1" : "^2";
+  valueString[0] = '\0';
+  idStr::Append(valueString, sizeof(valueString),
+                average > maxValue ? "^1" : "^2");
+  int used = idStr::Length(valueString);
   if (showThousands) {
-    std::snprintf(valueString, sizeof(valueString), "%s%4dk", color,
-                  average / 1000);
+    idStr::snPrintf(valueString + used,
+                    static_cast<int>(sizeof(valueString)) - used, "%4dk",
+                    average / 1000);
   } else {
-    std::snprintf(valueString, sizeof(valueString), "%s%5d", color,
-                  average);
+    idStr::snPrintf(valueString + used,
+                    static_cast<int>(sizeof(valueString)) - used, "%5d",
+                    average);
   }
   if (showDelta) {
-    const std::size_t used = std::strlen(valueString);
     const int delta = average - deltaFromValue;
+    idStr::Append(valueString, sizeof(valueString), "^3 (");
+    used = idStr::Length(valueString);
     if (showThousands) {
-      std::snprintf(valueString + used, sizeof(valueString) - used,
-                    "^3 (%4dk)", delta / 1000);
+      idStr::snPrintf(valueString + used,
+                      static_cast<int>(sizeof(valueString)) - used, "%4dk",
+                      delta / 1000);
     } else {
-      std::snprintf(valueString + used, sizeof(valueString) - used,
-                    "^3 (%5d)", delta);
+      idStr::snPrintf(valueString + used,
+                      static_cast<int>(sizeof(valueString)) - used, "%5d",
+                      delta);
     }
+    idStr::Append(valueString, sizeof(valueString), ")");
   }
-  const std::size_t used = std::strlen(valueString);
+  idStr::Append(valueString, sizeof(valueString), "^7 / ");
+  used = idStr::Length(valueString);
   if (showThousands) {
-    std::snprintf(valueString + used, sizeof(valueString) - used, "^7 / %4dk",
-                  maxValue / 1000);
+    idStr::snPrintf(valueString + used,
+                    static_cast<int>(sizeof(valueString)) - used, "%4dk",
+                    maxValue / 1000);
   } else {
-    std::snprintf(valueString + used, sizeof(valueString) - used, "^7 / %5d",
-                  maxValue);
+    idStr::snPrintf(valueString + used,
+                    static_cast<int>(sizeof(valueString)) - used, "%5d",
+                    maxValue);
   }
   return valueString;
 }
@@ -471,21 +476,31 @@ const char* idRenderStat<float>::GetValueString(bool showDelta, bool) {
   }
   const float average = sum * (1.0F / 16.0F);
   const float shownAverage = std::fabs(average) < 0.1F ? 0.0F : average;
-  std::snprintf(valueString, sizeof(valueString), "%s%5.1f",
-                average > maxValue ? "^1" : "^2", shownAverage);
+  valueString[0] = '\0';
+  idStr::Append(valueString, sizeof(valueString),
+                average > maxValue ? "^1" : "^2");
+  int used = idStr::Length(valueString);
+  idStr::snPrintf(valueString + used,
+                  static_cast<int>(sizeof(valueString)) - used, "%5.1f",
+                  shownAverage);
   if (showDelta) {
     float delta = average - deltaFromValue;
     if (std::fabs(delta) < 0.1F) {
       delta = 0.0F;
     }
-    const std::size_t used = std::strlen(valueString);
-    std::snprintf(valueString + used, sizeof(valueString) - used,
-                  "^3 (%5.1f)", delta);
+    idStr::Append(valueString, sizeof(valueString), "^3 (");
+    used = idStr::Length(valueString);
+    idStr::snPrintf(valueString + used,
+                    static_cast<int>(sizeof(valueString)) - used, "%5.1f",
+                    delta);
+    idStr::Append(valueString, sizeof(valueString), ")");
   }
   float shownMax = std::fabs(maxValue) < 0.1F ? 0.0F : maxValue;
-  const std::size_t used = std::strlen(valueString);
-  std::snprintf(valueString + used, sizeof(valueString) - used, "^7 / %5.1f",
-                shownMax);
+  idStr::Append(valueString, sizeof(valueString), "^7 / ");
+  used = idStr::Length(valueString);
+  idStr::snPrintf(valueString + used,
+                  static_cast<int>(sizeof(valueString)) - used, "%5.1f",
+                  shownMax);
   return valueString;
 }
 
@@ -493,22 +508,131 @@ idRenderSystemLocal::idRenderSystemLocal()
     : drawsMetric(idStr("draws"), idStr("draw calls in a frame")),
       trisMetric(idStr("triangles"), idStr("drawn triangles in the scene")),
       vertsMetric(idStr("vertices"), idStr("vertices count in the scene")) {
-  std::memset(reinterpret_cast<unsigned char*>(this) +
-                  offsetof(idRenderSystemLocal, insideEndFrame),
-              0, offsetof(idRenderSystemLocal, worlds) -
-                     offsetof(idRenderSystemLocal, insideEndFrame));
-  std::memset(reinterpret_cast<unsigned char*>(this) +
-                  offsetof(idRenderSystemLocal, primaryWorld),
-              0, offsetof(idRenderSystemLocal, drawsMetric) -
-                     offsetof(idRenderSystemLocal, primaryWorld));
-  std::memset(reinterpret_cast<unsigned char*>(this) +
-                  offsetof(idRenderSystemLocal, videoPlaying),
-              0, sizeof(*this) - offsetof(idRenderSystemLocal, videoPlaying));
+  blockColor = {-1.0F, -1.0F, -1.0F, -1.0F};
+  renderFlags = 0;
+  insideEndFrame = false;
+  automaticBackgroundSwapsEnabled = false;
+  renderingIsReadyForSwapbuffers = false;
   allowBackgroundSwaps = true;
   renderSynced = true;
-  blockColor = {-1.0F, -1.0F, -1.0F, -1.0F};
-  gammaForBrighness = 1.0F;
+  frameCount = 0;
+  inhibitRendering = 0;
+  primaryWorld = nullptr;
+  testImage = nullptr;
+  testCubeImage = nullptr;
+  testMaterial = nullptr;
+  videoPlaying = false;
+  videoOverlay = nullptr;
+  videoOverlayModel = nullptr;
+  performanceCounterLogWorld = nullptr;
+  performanceCounterLogWorldFrame = 0;
+  std::memset(&pc, 0, sizeof(pc));
   GL_ClearStats();
+
+  mtrDefault = nullptr;
+  mtrDefaultPointLight = nullptr;
+  mtrDefaultProjectedLight = nullptr;
+  mtrDefaultParallelLight = nullptr;
+  mtrDefaultPointBlendLight = nullptr;
+  mtrDefaultProjectedBlendLight = nullptr;
+  mtrDefaultParallelBlendLight = nullptr;
+  mtrDefaultPointSlowLight = nullptr;
+  mtrDefaultProjectedSlowLight = nullptr;
+  mtrDefaultParallelSlowLight = nullptr;
+  progGauss = nullptr;
+  progGlareScale = nullptr;
+  progOverlappedDownSample = nullptr;
+  progFeedbackDownSample = nullptr;
+  progPostProcess = nullptr;
+  progDepthOnly = nullptr;
+  progColorOnly = nullptr;
+  progColorParmOnly = nullptr;
+  progWireFrame = nullptr;
+  progTextureOnly = nullptr;
+  progCubeImageOnly = nullptr;
+  progTestImage = nullptr;
+  progBasicBlend = nullptr;
+  progEnvironmentBlend = nullptr;
+  progColorCorrectionBlend = nullptr;
+  progOccluderUnique = nullptr;
+  progLandUniqueBump = nullptr;
+  progLandUniqueDiffuseOnly = nullptr;
+  progBlendedLightDebugDraw = nullptr;
+  progVarianceShadowMap = nullptr;
+  progDimShadowDrawMidQuality = nullptr;
+  progCreateGodRayMask = nullptr;
+  progDrawGodRay = nullptr;
+  rpGlareMap = nullptr;
+  rpGlareStep = nullptr;
+  rpDistortionMap = nullptr;
+  rpDynamicEnvMap = nullptr;
+  rpPowerMip = nullptr;
+  rpFrameNumber = nullptr;
+  rpVirtualTextureFeedbackFloat = nullptr;
+  rpPageTableMap = nullptr;
+  rpVmtrPageTableMap = nullptr;
+  rpDepthOfField2 = nullptr;
+  rpGodRayQuadScaleBias = nullptr;
+  rpGodRaySourceScaleBias = nullptr;
+  rpGodRaysColor = nullptr;
+  rpGodRayViewPos = nullptr;
+  progBloomThreshold = nullptr;
+  progLuminosity = nullptr;
+  rpAdaptiveGlareMap = nullptr;
+  rpAdaptiveGlareMapAlt = nullptr;
+  rpLuminosityMap = nullptr;
+  rpLuminosityMapAlt = nullptr;
+  rpAdaptiveLuminance = nullptr;
+  rpAdaptiveGlareBlurMap = nullptr;
+  rpAdaptiveGlareBlurStep = nullptr;
+  rpAdaptiveGlareParms = nullptr;
+  rpAdaptiveGlareColor = nullptr;
+  rpFrameExposureMap = nullptr;
+  rpFrameExposureParms1 = nullptr;
+  rpFrameExposureParms2 = nullptr;
+  declHighlightTable = nullptr;
+  declHighlightExplodeTable = nullptr;
+  defaultCubeModel = nullptr;
+  unitCubeModel = nullptr;
+  zeroOneCubeModel = nullptr;
+  extrudeBoxModel = nullptr;
+  unitSquareModel = nullptr;
+  zeroOneSquareModel = nullptr;
+  unitSquareTris = nullptr;
+
+  for (int index = 0; index < 2; ++index) {
+    imgViewColor[index] = nullptr;
+    imgColorGradingLUT[index] = nullptr;
+    imgDistortion[index] = nullptr;
+    imgDynamicEnvironment[index] = nullptr;
+    imgDynamicColorCorrection[index] = nullptr;
+    renderDestViewColor[index] = nullptr;
+    renderDestDistortion[index] = nullptr;
+    renderDestDynamicEnv[index] = nullptr;
+    renderDestDynamicColorCorrection[index] = nullptr;
+  }
+  imgScreenMip3 = nullptr;
+  imgScreenMip3Alt = nullptr;
+  imgGui = nullptr;
+  renderDestViewDepth = nullptr;
+  renderDestMip1 = nullptr;
+  renderDestMip3 = nullptr;
+  renderDestMip3Alt = nullptr;
+  renderDestGui = nullptr;
+  renderDestShadow = nullptr;
+  imgLuminosity = nullptr;
+  imgLuminosityAlt = nullptr;
+  imgBloom = nullptr;
+  renderDestLuminosity = nullptr;
+  renderDestLuminosityAlt = nullptr;
+  renderDestBloom = nullptr;
+  std::memset(gammaTable, 0, sizeof(gammaTable));
+  blackLevel[0] = 0.0F;
+  blackLevel[1] = 0.0F;
+  updateGammaTable = false;
+  reblendColorCorrection = false;
+  gammaForBrighness = 1.0F;
+  blockColorFrameNum = 0;
 }
 
 idRenderSystemLocal::~idRenderSystemLocal() = default;
@@ -596,12 +720,11 @@ void idRenderSystemLocal::PrintStatistics() {
     static idOverlayHandle modelCommitOverlay{-1, 0};
     idStr text;
     for (int typeIndex = 0; typeIndex < RENDERMODEL_TYPE_MAX; ++typeIndex) {
-      AppendFormat(text, "%s%4d%s commits of type %s%30s\n", "^3",
-                   pc.c_modelTypeCommits[typeIndex], "^7", "^3",
-                   renderModelTypeNames[typeIndex]);
+      text += va("%s%4d%s commits of type %s%30s\n", "^3",
+                 pc.c_modelTypeCommits[typeIndex], "^7", "^3",
+                 renderModelTypeNames[typeIndex]);
     }
-    console->PrintOverlay(&modelCommitOverlay, 1, 1.0F, 1.0F, "%s",
-                          text.data);
+    console->PrintOverlay(&modelCommitOverlay, 1, 1.0F, 1.0F, text.data);
   }
 
   if (r_showStats.GetInteger() != 0) {
@@ -770,13 +893,12 @@ void idRenderSystemLocal::PrintStatistics() {
     }
 
     idStr text;
-    AppendFormat(text, "%40s CPU  GPU\n", "label");
+    text += va("%40s CPU  GPU\n", "label");
     for (int index = 0; index < 51; ++index) {
-      AppendFormat(text, "%-40s %4.1f %4.1f\n", "", cpuTimes[index + 1],
-                   gpuTimes[index + 1]);
+      text += va("%-40s %4.1f %4.1f\n", "", cpuTimes[index + 1],
+                 gpuTimes[index + 1]);
     }
-    console->PrintOverlay(&renderLogOverlay, 0, 1.0F, 1.0F, "%s",
-                          text.data);
+    console->PrintOverlay(&renderLogOverlay, 0, 1.0F, 1.0F, text.data);
   }
 }
 
@@ -788,15 +910,15 @@ idScreenViewCommitted::~idScreenViewCommitted() = default;
 
 idScreenViewCommitted& idScreenViewCommitted::operator=(
     const idScreenViewCommitted& other) {
-  if (this == &other) {
-    return *this;
-  }
   screenRect = other.screenRect;
   usePreviousRendering = other.usePreviousRendering;
   world = other.world;
   renderView = other.renderView;
   guiOriginOffset = other.guiOriginOffset;
   committedGuis = other.committedGuis;
+  for (int index = 0; index < 16; ++index) {
+    committedGuis.staticList[index] = other.committedGuis.staticList[index];
+  }
   return *this;
 }
 
@@ -814,9 +936,6 @@ void idRenderSystemLocal::ToolEndFrame(void* hdc, int windowWidth,
 
 template <typename T>
 T* idListArrayNew(int num, unsigned tag, bool zeroBuffer) {
-  if (num <= 0) {
-    return nullptr;
-  }
   idMem* memory = idMem::Singleton();
   void* allocation = memory->AllocWithLocation(
       zeroBuffer ? "w:\\build\\tech5\\shared\\idlib\\containers/List.h(27) : tag"
@@ -855,13 +974,16 @@ template <typename T> void idListArrayDelete(T* pointer, int num) {
 template <typename T>
 T* idListArrayResize(T* oldPointer, int oldNum, int newNum, unsigned tag,
                      bool zeroBuffer) {
-  T* replacement = idListArrayNew<T>(newNum, tag, zeroBuffer);
-  if (newNum > 0 && replacement == nullptr) {
-    return nullptr;
-  }
-  const int copyCount = (std::min)(oldNum, newNum);
-  for (int index = 0; index < copyCount; ++index) {
-    replacement[index] = oldPointer[index];
+  T* replacement = nullptr;
+  if (newNum > 0) {
+    replacement = idListArrayNew<T>(newNum, tag, zeroBuffer);
+    if (replacement == nullptr) {
+      return nullptr;
+    }
+    const int copyCount = (std::min)(oldNum, newNum);
+    for (int index = 0; index < copyCount; ++index) {
+      replacement[index] = oldPointer[index];
+    }
   }
   idListArrayDelete(oldPointer, oldNum);
   return replacement;
@@ -958,7 +1080,7 @@ void idRenderFrameInfo::Commit(idRenderFrameInfoCommitted& committed) const {
     destination.world = nullptr;
     destination.renderView = nullptr;
     destination.guiOriginOffset = source.guiOriginOffset;
-    destination.committedGuis.Clear();
+    destination.committedGuis.ClearFree();
 
     if (source.world != nullptr && !source.usePreviousRendering) {
       destination.world = source.world->GetCommittedWorld();

@@ -20,8 +20,12 @@
 #include "tungsten/game/ai/targetting/selectors/enemytargetselector.h"
 #include "tungsten/game/ai/targetting/selectors/friendlytargetselector.h"
 #include "tungsten/game/ai/targetting/selectors/neutraltargetselector.h"
+#include "tungsten/game/ai/cover/aicover.h"
 #include "tungsten/game/animation/facemgr.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
+#include "tungsten/game/clientgame/presentable/presentableai.h"
+#include "tungsten/game/entities/waterentity.h"
+#include "tungsten/game/entities/door_parametric.h"
 #include "engine/aas2file/aas2file.h"
 #include "engine/animation/md6.h"
 #include "engine/decls/animwebs/declanimweb.h"
@@ -470,6 +474,8 @@ extern idCVar takedownType;
 extern idCVar ai_droppedLootDistance;
 extern idCVar ai_enableScrambles;
 extern idCVar ai_scrambleTime;
+extern idCVar ai_debugmelee;
+extern idCVar ai_pushVelocityTolerance;
 
 const idEventDef EV_DisintigrateHide{};
 const idEventDef EV_Hide{};
@@ -484,6 +490,7 @@ const idEventDef EV_AnimWeb_BeginSyncedAnim{};
 const idEventDef FSMEvent_Pain{4, idEventDef::EVENT_FSMEVENT};
 const idEventDef FSMEvent_Killed{5, idEventDef::EVENT_FSMEVENT};
 const idEventDef FSMEvent_Reaction{6, idEventDef::EVENT_FSMEVENT};
+const idEventDef FSMEvent_MeleeBlocked{7, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_CrouchToStandEnter{1, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_StandToCrouchEnter{2, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_PlayOverrideAnimEnter{3,
@@ -535,12 +542,13 @@ idAI2::idAI2()
       bodyOrientation(std::make_unique<idAIOrientation>()),
       animationControllerDroneAnimator(
           std::make_unique<idAnimator_Drone>()),
-      moveState(std::make_unique<idAIMoveState>()),
-      actionFSM(std::make_unique<idLegsFSM>()),
+      meleeTrace(std::make_unique<idMeleeTrace>()),
+      moveState(std::make_unique<idAIMoveInterface>()),
       fsmManager(std::make_unique<idFSMManager>()),
       actionManager(std::make_unique<idAIActionManager>()),
       fsmCallback(std::make_unique<idAIFSMCallback>()),
-      painAnimator(std::make_unique<idAnimator_Channel>()),
+      painAnimator(std::make_unique<idAnimator_Pain>()),
+      turretAnimator(std::make_unique<idAnimator_Channel>()),
       memory(std::make_unique<idAIMemory>()),
       shootAnimator(std::make_unique<idAnimator_Channel>()) {
   scriptProxy.BindOwner(this);
@@ -577,8 +585,19 @@ void idAI2::SetCurrentEnemySuspectedPositionForTest(const idVec3& value,
 }
 
 void idAI2::SetActionScriptRunning(bool running) {
-  actionScriptRunning = running;
   componentTimeLine->SetRunningForTest(running);
+}
+
+void idAI2::SetActionScriptCount(int value) {
+  componentTimeLine->SetScriptActionCountForTest(value);
+}
+
+int idAI2::GetActionScriptCount() const {
+  return componentTimeLine->NumScriptActions(this);
+}
+
+bool idAI2::IsActionScriptRunning() const {
+  return componentTimeLine->IsRunningForTest();
 }
 
 int idAI2::GetActionScriptRunningQueryCountForTest() const {
@@ -735,33 +754,41 @@ bool idAI2::HasUsedEmergencyCoverExitForTest() const {
 // DIA: idArray<idAnimWebAI,1>::~idArray<idAnimWebAI,1>
 // DIA: idAnimator_TurretNxN<3>::~idAnimator_TurretNxN<3>
 // DIA: idAI2::ApplyDamage
-idRecoveredValue idAI2::ApplyDamage(...) { return RecordCoreCall("ApplyDamage"); }
+void idAI2::ApplyDamage(int physId, int bodyId,
+                        const idDeclDamage* damageDecl) {
+  (void)physId;
+  (void)bodyId;
+  if (damageDecl == nullptr) return;
+
+  constexpr idVec3 kUp{0.0F, 0.0F, 1.0F};
+  Damage(nullptr, nullptr, damageDecl, 1.0F, kUp, nullptr);
+}
 // DIA: idAI2::GetModifiedSkill
-int idAI2::GetModifiedSkill() { return coreState.modifiedSkill; }
+aiSkill_t idAI2::GetModifiedSkill() const { return coreState.modifiedSkill; }
 // DIA: idAI2::InitFireControl
 void idAI2::InitFireControl() {
   fireControl = std::make_unique<idAIFireControl_Human>();
 }
 // DIA: idAI2::PerceptionFlagIsSet
-bool idAI2::PerceptionFlagIsSet(int flags) {
+bool idAI2::PerceptionFlagIsSet(int flags) const {
   return (flags & coreState.perceptionFlags) != 0;
 }
 // DIA: idAI2::SaveFSM
-void idAI2::SaveFSM(idFile_String* file, const char* fsmName,
-                    const char* indent) {
+void idAI2::SaveFSM(idFile_String& file, const char* fsmName,
+                    const char* indent) const {
   const idFiniteStateMachine* fsm = fsmManager->FindFSM(fsmName);
   if (fsm != nullptr) {
-    fsm->Save(file, indent);
+    fsm->Save(&file, indent);
   } else {
     idLib::Printf("No FSM named '%s' was found.\n", fsmName);
   }
 }
 // DIA: idScriptFunction::~idScriptFunction
 // DIA: idAI2::GetEventResponseFlags
-unsigned int idAI2::GetEventResponseFlags() {
-  return ~static_cast<unsigned int>(aiEventState.overloadDisableFlags) &
-         static_cast<unsigned int>(coreState.aiEventResponseFlags |
-                                   aiEventState.overloadEnableFlags);
+int idAI2::GetEventResponseFlags() const {
+  return ~aiEventState.overloadDisableFlags &
+         (coreState.aiEventResponseFlags |
+          aiEventState.overloadEnableFlags);
 }
 // DIA: idAI2::RespondsToAIEvent
 bool idAI2::RespondsToAIEvent(const idAIEvent* event) const {
@@ -776,16 +803,19 @@ bool idAI2::RespondsToAIEvent(const idAIEvent* event) const {
 void idAI2::DeactivateExtendedClipModel() {
   extendedClipModelStatus = 0;
   extendedClipModelAuxiliaryStatus = 0;
-  if (extendedClipModelActive) extendedClipModelActive = false;
+  if (extendedClipModel != nullptr) {
+    ++extendedClipModelDeleteCount;
+    extendedClipModel = nullptr;
+  }
+  extendedClipModelStorage.reset();
   coreState.extendedClipModel = false;
 }
 // DIA: idStr::GetFileName
 // DIA: idAI2::SetMovePushStatus
-void idAI2::SetMovePushStatus(aiMovePushStatus_t newStatus,
-                              std::int64_t frameCount) {
+void idAI2::SetMovePushStatus(aiMovePushStatus_t newStatus, int frameCount) {
   movePushStatus = newStatus;
   movePushEndTime = newStatus != AIMOVEPUSHSTATUS_PUSH_NONE
-                        ? GetEndTimeByFrames(static_cast<int>(frameCount))
+                        ? GetEndTimeByFrames(frameCount)
                         : 0;
 
   idPhysics* physicsObject = GetPhysics();
@@ -814,8 +844,8 @@ void idAI2::SetWorldCollision(bool collideWithWorld) {
   }
 }
 // DIA: idAI2::GetWorldCollisionBounds
-const idBounds* idAI2::GetWorldCollisionBounds() {
-  return &GetPhysics()->GetAbsBounds();
+const idBounds& idAI2::GetWorldCollisionBounds() const {
+  return GetPhysics()->GetAbsBounds();
 }
 // DIA: idAI2::GetEnemyLookDot
 float idAI2::GetEnemyLookDot(const idEntity* enemy) const {
@@ -826,8 +856,8 @@ float idAI2::GetEnemyLookDot(const idEntity* enemy) const {
   idVec3 ourEyePosition;
   idVec3 enemyEyePosition;
   idMat3 enemyEyeAxis;
-  GetLastEyePos(&ourEyePosition);
-  enemyActor->GetLastEyePos(&enemyEyePosition);
+  GetEyePos(&ourEyePosition);
+  enemyActor->GetEyePos(&enemyEyePosition);
   enemyActor->GetEyeAxis(&enemyEyeAxis);
 
   const idVec3 toUs = ourEyePosition - enemyEyePosition;
@@ -841,13 +871,13 @@ float idAI2::GetEnemyLookDot(const idEntity* enemy) const {
          enemyEyeAxis[0].z * (toUs.z * inverseLength);
 }
 // DIA: idAI2::CalcTurnRadius
-float idAI2::CalcTurnRadius(float speed, float turnRate) {
+float idAI2::CalcTurnRadius(float speed, float turnRate) const {
   return ((360.0F / turnRate) * speed) / (3.1415927F * 2.0F);
 }
 // DIA: OkToFocus
-bool OkToFocus(const idVec3* to, const idVec3* from,
-               const idVec3* actualPosition) {
-  const idVec3 intendedDelta = *to - *from;
+bool OkToFocus(const idVec3& to, const idVec3& from,
+               const idVec3& actualPosition) {
+  const idVec3 intendedDelta = to - from;
   const float intendedLengthSquared = intendedDelta.LengthSqr();
   const float intendedInverseLength =
       1.0F / std::sqrt(std::max(intendedLengthSquared,
@@ -856,7 +886,7 @@ bool OkToFocus(const idVec3* to, const idVec3* from,
     return false;
   }
 
-  const idVec3 actualDelta = *actualPosition - *from;
+  const idVec3 actualDelta = actualPosition - from;
   const float actualInverseLength =
       1.0F / std::sqrt(std::max(actualDelta.LengthSqr(),
                                 std::numeric_limits<float>::min()));
@@ -865,7 +895,7 @@ bool OkToFocus(const idVec3* to, const idVec3* from,
          -0.00000011920929F;
 }
 // DIA: idAI2::GetFacialAnimationSet
-const idDeclFacialAnimationSet* idAI2::GetFacialAnimationSet() const {
+const idDeclFacialAnimationSet* idAI2::GetFacialAnimationSet() {
   return currentFacialAnimationSet != nullptr ? currentFacialAnimationSet
                                                : defaultFacialAnimationSet;
 }
@@ -875,25 +905,28 @@ bool idAI2::Draw(idPlayer* player) {
   return true;
 }
 // DIA: idAI2::AlertCycleToSubWeb
-int idAI2::AlertCycleToSubWeb(int alertCycle) {
+aiSubWeb_t idAI2::AlertCycleToSubWeb(alertCycle_t alertCycle) const {
   static const int alertCycleToSubWebMap[11] = {
       24, 0, 3, 1, 4, 8, 8, 24, 24, 24, 24};
-  return alertCycle < 11 ? alertCycleToSubWebMap[alertCycle] : 0;
+  return static_cast<aiSubWeb_t>(
+      alertCycle < ALERTCYCLE_MAX ? alertCycleToSubWebMap[alertCycle] : 0);
 }
 // DIA: idAI2::GetAlertCycleFSM
 idFiniteStateMachine* idAI2::GetAlertCycleFSM() {
   return fsmManager->FindAlertCycleFSM();
 }
 // DIA: idAI2::EnableAIEventResponse
-void idAI2::EnableAIEventResponse(int flags) {
-  coreState.aiEventResponseFlags |= flags;
+void idAI2::EnableAIEventResponse(idAIEvent::aiEventClass_t flags) {
+  coreState.aiEventResponseFlags |= static_cast<int>(flags);
 }
 // DIA: idAI2::DisableAIEventResponse
-void idAI2::DisableAIEventResponse(int flags) {
-  coreState.aiEventResponseFlags &= ~flags;
+void idAI2::DisableAIEventResponse(idAIEvent::aiEventClass_t flags) {
+  coreState.aiEventResponseFlags &= ~static_cast<int>(flags);
 }
 // DIA: idAI2::GetEnableHeadTracking
-bool idAI2::GetEnableHeadTracking() { return animEventState.headTracking; }
+bool idAI2::GetEnableHeadTracking() const {
+  return animEventState.headTracking;
+}
 // DIA: idAI2::SetCoverAction
 void idAI2::SetCoverAction(coverAction_t action, int currentTime) {
   coreState.coverAction = action;
@@ -906,13 +939,15 @@ int idAI2::GetCoverActionDuration(coverAction_t action, int currentTime) {
              : 0;
 }
 // DIA: idAI2::GetBodyOrientation
-idAIOrientation* idAI2::GetBodyOrientation() { return bodyOrientation.get(); }
+const idAIOrientation& idAI2::GetBodyOrientation() const {
+  return *bodyOrientation;
+}
 // DIA: idAI2::SetBodyOrientation
 void idAI2::SetBodyOrientation(const idMat3& axis) {
   bodyOrientation->Init(axis);
 }
 // DIA: idAI2::CheckForGoreByName
-bool idAI2::CheckForGoreByName(const idAtomicString* goreName) {
+bool idAI2::CheckForGoreByName(const idAtomicString& goreName) {
   return goreComponent->CheckForGoreByName(goreName);
 }
 // DIA: idAI2::PlayHurtSound
@@ -925,7 +960,7 @@ void idAI2::PlayHurtSound() {
 }
 // DIA: idAI2::GetRenderParam
 idCodeResource<idDeclRenderParm>* idAI2::GetRenderParam(
-    aiRenderParam_t parameter) {
+    aiRenderParam_t parameter) const {
   if (parameter == AIRENDERPARAM_ROBOTGLOW) {
     return &rp_aiRobotGlow;
   }
@@ -977,19 +1012,19 @@ bool idAI2::TeslaIsActive() const {
   return teslaDischargeTime >= 0 || teslaExplodeTime >= 0;
 }
 // DIA: idAI2::IsTeslaDangerous
-bool idAI2::IsTeslaDangerous(idVec3* position, float* radius) const {
+bool idAI2::IsTeslaDangerous(idVec3& position, float& radius) const {
   if (teslaDischargeTime >= 0 || teslaExplodeTime >= 0) {
     if (teslaHeavyGuardGun) {
       if (teslaExplodeTime >= 0 && teslaEvaluationTime < teslaExplodeTime &&
           teslaDamageDecl != nullptr) {
-        *position = teslaExplodePosition;
-        *radius = teslaDamageDecl->radius;
+        position = teslaExplodePosition;
+        radius = teslaDamageDecl->radius;
         return true;
       }
     } else if (teslaDischargeTime >= 0 &&
                teslaEvaluationTime < teslaDischargeTime) {
-      *position = GetPhysics()->GetOrigin();
-      *radius = teslaRange;
+      position = GetPhysics()->GetOrigin();
+      radius = teslaRange;
       return true;
     }
   }
@@ -1037,7 +1072,7 @@ bool idAI2::SetBlinded(bool state, bool forceForever,
   return true;
 }
 // DIA: idAI2::OkToLKWBlind
-bool idAI2::OkToLKWBlind() const {
+bool idAI2::OkToLKWBlind() {
   return !animEventState.dead && endBlindedTime == 0 && painAnimationDone;
 }
 // DIA: idAI2::IsIncapacitated
@@ -1056,7 +1091,32 @@ void idAI2::SetSleeping(bool sleep) {
   }
 }
 // DIA: idAI2::ApplyWaterEffects
-idRecoveredValue idAI2::ApplyWaterEffects(...) { return RecordCoreCall("ApplyWaterEffects"); }
+void idAI2::ApplyWaterEffects(int physId, int bodyId) {
+  if (gameLocal == nullptr) return;
+  idPhysics* waterPhysics = gameLocal->GetPhysicsForId(physId);
+  if (waterPhysics == nullptr) return;
+
+  idEntity* waterOwner =
+      gameLocal->GetEntityByNumber(waterPhysics->GetEntityNumber());
+  auto* water = dynamic_cast<idWaterEntity*>(waterOwner);
+  if (water == nullptr) return;
+
+  idActor::ApplyWaterEffects(physId, bodyId);
+  idVec3 rippleOrigin = GetPhysics()->GetOrigin();
+  rippleOrigin.z = waterPhysics->GetOrigin().z +
+                   waterPhysics->GetBounds(-1)[1].z;
+
+  auto* dynamicWater = dynamic_cast<idDynamicWaterEntity*>(water);
+  if (dynamicWater == nullptr) return;
+
+  const float rippleRadius = GetPhysics()->GetBounds(-1).GetRadius() * 0.5F;
+  const idVec3 velocity = GetPhysics()->GetLinearVelocity(0);
+  const float horizontalSpeed =
+      std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+  dynamicWater->AddRipple(rippleOrigin,
+                          std::max(1.0F, horizontalSpeed) * -0.02F,
+                          rippleRadius);
+}
 // DIA: idAI2::InitEncounterGroup
 void idAI2::InitEncounterGroup() {
   if (encounterGroupHandle != -1) return;
@@ -1100,13 +1160,15 @@ void idAI2::Dropped(idEntity* user,
 }
 // DIA: idAI2::IsModesAllowed
 bool idAI2::IsModesAllowed(aiModeRestricFlag_t flags) const {
-  return (!stationaryMode || (flags & 4) == 0) &&
-         (flags & movementModeRestrictionFlags) == 0;
+  const int flagBits = static_cast<int>(flags);
+  return (!stationaryMode || (flagBits & 4) == 0) &&
+         (flagBits & movementModeRestrictionFlags) == 0;
 }
 // DIA: idAI2::IsModesRestricted
 bool idAI2::IsModesRestricted(aiModeRestricFlag_t flags) const {
-  return (stationaryMode && (flags & 4) != 0) ||
-         (flags & movementModeRestrictionFlags) != 0;
+  const int flagBits = static_cast<int>(flags);
+  return (stationaryMode && (flagBits & 4) != 0) ||
+         (flagBits & movementModeRestrictionFlags) != 0;
 }
 // DIA: idAI2::SetWalkState
 void idAI2::SetWalkState(walkState_t state) {
@@ -1140,7 +1202,7 @@ void idAI2::InitScriptObjects() {
   }
 }
 // DIA: idAI2::SendGrappleActivationTest
-void idAI2::SendGrappleActivationTest(idEntity* target) {
+void idAI2::SendGrappleActivationTest(const idPlayer* target) {
   if (target == nullptr) return;
 
   idVec3 start = GetPhysics()->GetOrigin();
@@ -1162,7 +1224,9 @@ bool idAI2::IsWeaponEquipped() const {
   return GetEquippedWeapon(2) != nullptr || GetEquippedWeapon(1) != nullptr;
 }
 // DIA: idAI2::TurretFire
-void idAI2::TurretFire() { lastFireTime = aiEvaluationTime; }
+void idAI2::TurretFire() {
+  lastFireTime = gameLocal->GetGameTimeMs();
+}
 // DIA: idAI2::FindWeaponToDraw
 const idWeapon* idAI2::FindWeaponToDraw() const {
   for (int slot = 14; slot >= 0; --slot) {
@@ -1175,18 +1239,150 @@ const idWeapon* idAI2::FindWeaponToDraw() const {
   return nullptr;
 }
 // DIA: idAI2::GetEffectiveAccuracy
-int idAI2::GetEffectiveAccuracy() const {
+aiAccuracy_t idAI2::GetEffectiveAccuracy() const {
   if ((groupStatusCondition & 0x2000) != 0) {
-    return 6;
+    return ACCURACY_6;
   }
-  return editableAimAccuracy != 0 ? editableAimAccuracy : skillAimAccuracy;
+  return static_cast<aiAccuracy_t>(editableAimAccuracy != 0
+                                       ? editableAimAccuracy
+                                       : skillAimAccuracy);
 }
 // DIA: idAI2::InitHeadTracking
-idRecoveredValue idAI2::InitHeadTracking(...) { return RecordCoreCall("InitHeadTracking"); }
+void idAI2::InitHeadTracking() {
+  idFocusInfo* aimFocus = focusInfos[0].get();
+  idFocusInfo* lookFocus = focusInfos[1].get();
+  aimFocus->SetDeclTrackingParms(aimTrackingParms);
+  aimFocus->SetTrackingParmsIndex(static_cast<int>(GetEffectiveAccuracy()));
+  lookFocus->SetDeclTrackingParms(lookTrackingParms);
+  lookFocus->SetTrackingParmsIndex(lookTrackingRate);
+
+  const idRotationTrackerRange defaultLimits{80.0F, 80.0F, 80.0F,
+                                             80.0F};
+  aimFocus->SetConstraints(&defaultLimits);
+  lookFocus->SetConstraints(&defaultLimits);
+
+  idTreeAnimator* treeAnimator = effectsTreeAnimator;
+  if (treeAnimator != nullptr) {
+    auto applyLimits = [](idFocusInfo* focus,
+                          const idTreeAnimator::headTrackingLimits_t& source) {
+      const idRotationTrackerRange limits{
+          std::fabs(source.minYaw), std::fabs(source.maxYaw),
+          std::fabs(source.maxPitch), std::fabs(source.minPitch)};
+      focus->SetConstraints(&limits);
+    };
+    idTreeAnimator::headTrackingLimits_t limits;
+    if (treeAnimator->GetHeadTrackingLimitsForAI("lookLimits", limits))
+      applyLimits(lookFocus, limits);
+    if (treeAnimator->GetHeadTrackingLimitsForAI("aimLimits", limits))
+      applyLimits(aimFocus, limits);
+  }
+
+  const float yawOnlyOverride =
+      aiConstants->animation.focusTrackingYawOnlyOverride;
+  if (yawOnlyOverride > 0.0F) {
+    lookFocus->SetYawOnlyThreshold(yawOnlyOverride);
+    aimFocus->SetYawOnlyThreshold(yawOnlyOverride);
+  }
+
+  const int lookGroup = treeAnimator != nullptr
+                            ? treeAnimator->GetHeadTrackGroupIndexForAI("look")
+                            : -1;
+  lookFocus->SetDefaultHeadTrackGroupForAI(lookGroup);
+  lookFocus->SetCurHeadTrackGroup(
+      reinterpret_cast<idAnimatedEntity*>(this), lookGroup);
+  const int aimGroup = treeAnimator != nullptr
+                           ? treeAnimator->GetHeadTrackGroupIndexForAI("aim")
+                           : -1;
+  aimFocus->SetDefaultHeadTrackGroupForAI(aimGroup);
+  aimFocus->SetCurHeadTrackGroup(
+      reinterpret_cast<idAnimatedEntity*>(this), aimGroup);
+}
 // DIA: idAI2::SetModel
-idRecoveredValue idAI2::SetModel(...) { return RecordCoreCall("SetModel"); }
+void idAI2::SetModel(idRenderModel* model) {
+  idTreeAnimator* treeAnimator = effectsTreeAnimator;
+  if (presentable != nullptr) presentable->UpdateModelTransform();
+  faceManager->Shutdown(this);
+  idActor::SetModel(model);
+
+  if (treeAnimator == nullptr) return;
+  auto& animation = aiConstants->animation;
+  const unsigned int modelCaps = treeAnimator->GetModelCaps();
+  animation.useMoodsEnabled = animation.useMoods && (modelCaps & 4U) != 0;
+  animation.useLipsyncEnabled =
+      animation.useLipsync && (modelCaps & 1U) != 0;
+  animation.useGesturesEnabled =
+      animation.useGestures && (modelCaps & 8U) != 0;
+  animation.useFacialAnimsEnabled =
+      animation.useFacialAnims && (modelCaps & 2U) != 0;
+  animation.useFaceSetupEyeTrackingEnabled =
+      animation.useFaceSetupEyeTracking && (modelCaps & 2U) != 0;
+
+  if (animation.useFaceManager) {
+    faceManager->Init(this, treeAnimator);
+    faceManager->SetEnableMoodAnimation(this, animation.useMoodsEnabled);
+    faceManager->SetEnableLipSyncAnimation(this,
+                                           animation.useLipsyncEnabled);
+    faceManager->SetEnableGestureAnimation(this,
+                                           animation.useGesturesEnabled);
+    faceManager->SetEnableEyeTracking(this, animation.useEyeTracking);
+    faceManager->SetEnableFaceSetupEyeTrackingForAI(
+        this, animation.useFaceSetupEyeTrackingEnabled);
+    faceManager->SetEnableBlinking(this, animation.useBlinking);
+    faceManager->SetEnableLidDeformation(this,
+                                         animation.useLidDeformation);
+  }
+
+  const idRotationTrackerRange defaultLimits{80.0F, 80.0F, 80.0F,
+                                             80.0F};
+  focusInfos[0]->SetConstraints(&defaultLimits);
+  focusInfos[1]->SetConstraints(&defaultLimits);
+  auto applyLimits = [](idFocusInfo* focus,
+                        const idTreeAnimator::headTrackingLimits_t& source) {
+    const idRotationTrackerRange limits{
+        std::fabs(source.minYaw), std::fabs(source.maxYaw),
+        std::fabs(source.maxPitch), std::fabs(source.minPitch)};
+    focus->SetConstraints(&limits);
+  };
+  idTreeAnimator::headTrackingLimits_t limits;
+  if (treeAnimator->GetHeadTrackingLimitsForAI("lookLimits", limits))
+    applyLimits(focusInfos[1].get(), limits);
+  if (treeAnimator->GetHeadTrackingLimitsForAI("aimLimits", limits))
+    applyLimits(focusInfos[0].get(), limits);
+  treeAnimator->EnableJointTrackingForAI();
+}
 // DIA: idAI2::InitAAS
-idRecoveredValue idAI2::InitAAS(...) { return RecordCoreCall("InitAAS"); }
+void idAI2::InitAAS() {
+  aas = gameLocal != nullptr
+            ? gameLocal->GetAAS(aiConstants->movement.aasName.data, true)
+            : nullptr;
+  if (aas != nullptr) {
+    gameLocal->AddTrackAAS(aas);
+    const idAAS2Settings* settings = aas->GetSettings();
+    if (settings != nullptr) {
+      if (aasClipModelEnabled && GetPhysics() != nullptr &&
+          !settings->ValidForBounds(&GetPhysics()->GetBounds(0))) {
+        if (aas->IsDefault()) {
+          idLib::Warning(
+              "'%s' is too large for AAS '%s' - using anyway. (default aas was used)",
+              GetName(), aiConstants->movement.aasName.data);
+        } else {
+          idLib::Printf("'%s' is too large for AAS '%s' - using anyway.",
+                        GetName(), aiConstants->movement.aasName.data);
+        }
+      }
+      physicsMaxStepHeight = settings->maxStepHeight;
+    }
+    if (aas->IsDefault())
+      idLib::Printf("'%s' is using the default AAS.\n", GetName());
+    return;
+  }
+
+  if (gameLocal != nullptr && (gameLocal->GetGameFlags() & 2) != 0)
+    idLib::Warning("'%s' has no AAS file or was not loaded.", GetName());
+  else
+    idLib::Warning("'%s' has no AAS file.", GetName());
+  debugState.errorFlags |= 1;
+}
 // DIA: idAI2::InitMovement
 void idAI2::InitMovement() {
   moveState->Init(this);
@@ -1201,12 +1397,12 @@ void idAI2::InitMovement() {
 // DIA: idAI2::SetPerceptionFlags
 void idAI2::SetPerceptionFlags(int flags, bool setFlag) {
   if (setFlag) {
-    coreState.perceptionFlags |= static_cast<std::uint64_t>(flags);
+    coreState.perceptionFlags |= flags;
     if (fireControl != nullptr) {
       fireControl->SetFireMode(this, FIREMODE_HOLDFIRE);
     }
   } else {
-    coreState.perceptionFlags &= ~static_cast<std::uint64_t>(flags);
+    coreState.perceptionFlags &= ~flags;
   }
 }
 // DIA: idAI2::JobSync
@@ -1218,66 +1414,77 @@ void idAI2::JobSync() {
   }
 }
 // DIA: idAI2::ApplyImpulse
-void idAI2::ApplyImpulse(int physicsId, int bodyId, const idVec3* point,
-                         const idVec3* impulse) {
-  (void)physicsId;
-  if (!animEventState.dead ||
-      (articulatedFigureLoaded &&
-       (articulatedFigureActive || articulatedFigureClientActive))) {
-    GetPhysics()->ApplyImpulse(bodyId, *point, *impulse);
+void idAI2::ApplyImpulse(int physicsId, int bodyId, const idVec3& point,
+                         const idVec3& impulse) {
+  const idAnimator_AF* articulatedFigure = GetAF();
+  if (!IsDead() ||
+      (articulatedFigure != nullptr && articulatedFigure->IsLoaded() &&
+       (articulatedFigure->IsActive() ||
+        articulatedFigure->IsClientAuthoritativeActive()))) {
+    idEntity::ApplyImpulse(physicsId, bodyId, point, impulse);
   }
 }
 // DIA: idAI2::ApplyForce
-void idAI2::ApplyForce(int physicsId, int bodyId, const idVec3* point,
-                       const idVec3* force) {
-  (void)physicsId;
-  if (!animEventState.dead ||
-      (articulatedFigureLoaded &&
-       (articulatedFigureActive || articulatedFigureClientActive))) {
-    GetPhysics()->ApplyForce(bodyId, *point, *force);
+void idAI2::ApplyForce(int physicsId, int bodyId, const idVec3& point,
+                       const idVec3& force) {
+  const idAnimator_AF* articulatedFigure = GetAF();
+  if (!IsDead() ||
+      (articulatedFigure != nullptr && articulatedFigure->IsLoaded() &&
+       (articulatedFigure->IsActive() ||
+        articulatedFigure->IsClientAuthoritativeActive()))) {
+    idEntity::ApplyForce(physicsId, bodyId, point, force);
   }
 }
 // DIA: idAI2::GetModelTransform
-void idAI2::GetModelTransform(idVec3* modelOrigin,
-                              idMat3* modelAxis) const {
-  if (articulatedFigureActive || articulatedFigureClientActive) {
-    *modelOrigin = articulatedFigureOrigin;
-    *modelAxis = articulatedFigureAxis;
+void idAI2::GetModelTransform(idVec3& modelOrigin,
+                              idMat3& modelAxis) const {
+  const idAnimator_AF* articulatedFigure = GetAF();
+  if (articulatedFigure != nullptr &&
+      (articulatedFigure->IsActive() ||
+       articulatedFigure->IsClientAuthoritativeActive())) {
+    articulatedFigure->GetModelTransform(modelOrigin, modelAxis);
     return;
   }
-  *modelAxis = bodyOrientation->GetAxis() * GetPhysics()->GetAxis();
-  *modelOrigin = GetPhysics()->GetOrigin() + (*modelAxis * modelOffset);
+  modelAxis = bodyOrientation->GetAxis() * GetPhysics()->GetAxis();
+  modelOrigin = GetPhysics()->GetOrigin() + (modelAxis * modelOffset);
 }
 // DIA: idAI2::GetSoundTransform
-void idAI2::GetSoundTransform(idVec3* modelOrigin, idMat3* modelAxis) const {
+void idAI2::GetSoundTransform(idVec3& modelOrigin, idMat3& modelAxis) const {
   idEntity::GetSoundTransform(modelOrigin, modelAxis);
   if (usesDrone) {
-    *modelOrigin = dronePresentOrigin;
+    modelOrigin = dronePresentOrigin;
   }
 }
 // DIA: idAI2::ShouldLeaveDormancy
-bool idAI2::ShouldLeaveDormancy() const {
+bool idAI2::ShouldLeaveDormancy() {
   return ai_enableDormancy.GetInteger() == 0 ||
          idEntity::ShouldLeaveDormancy();
 }
 // DIA: idAI2::InternalCallEvent
-idEventArg* idAI2::InternalCallEvent(idEventArg* result,
-                                     const idEventDef* event,
-                                     idEventArg* arguments) {
-  if (event->type == idEventDef::EVENT_FSMEVENT) {
-    return GetAlertCycleFSM()->ProcessEventArgPtr(result, event, arguments);
+idEventArg idAI2::InternalCallEvent(const idEventDef& event,
+                                    const idEventArg* arguments) {
+  idEventArg result{};
+  if (event.type == idEventDef::EVENT_FSMEVENT) {
+    idFiniteStateMachine* controllingFSM = fsmManager->GetControllingFSM();
+    if (controllingFSM != nullptr) {
+      controllingFSM->ProcessEventArgPtr(
+          &result, &event, const_cast<idEventArg*>(arguments));
+    }
+    return result;
   }
   idLib::Warning(
       "idAI2::InternalCallEvent() doesn't handle event type %d.",
-      static_cast<int>(event->type));
-  result->type = 0;
-  result->value.s = nullptr;
+      static_cast<int>(event.type));
+  result.type = 0;
+  result.value.s = nullptr;
   return result;
 }
 // DIA: idAI2::InternalRespondsTo
-bool idAI2::InternalRespondsTo(const idEventDef* event) {
-  if (event->type != idEventDef::EVENT_FSMEVENT) return false;
-  return GetAlertCycleFSM()->RespondsTo(event);
+bool idAI2::InternalRespondsTo(const idEventDef& event) const {
+  if (event.type != idEventDef::EVENT_FSMEVENT) return false;
+  const idFiniteStateMachine* controllingFSM =
+      fsmManager->GetControllingFSM();
+  return controllingFSM != nullptr && controllingFSM->RespondsTo(&event);
 }
 // DIA: idAI2::CheckForOneShotKill
 bool idAI2::CheckForOneShotKill(idEntity* attacker) {
@@ -1294,24 +1501,24 @@ bool idAI2::CheckForOneShotKill(idEntity* attacker) {
   return nonPlayerOneShotChance > randomValue;
 }
 // DIA: idAI2::GetJointIndexFromTrace
-idJointIndex idAI2::GetJointIndexFromTrace(const trace_t* trace) const {
+idJointIndex idAI2::GetJointIndexFromTrace(trace_t trace) {
   idJointIndex result;
-  result.value = trace->contact.type == contactInfo_t::CONTACT_SPHERE
-                     ? static_cast<short>(trace->contact.trmFeature)
+  result.value = trace.contact.type == contactInfo_t::CONTACT_SPHERE
+                     ? static_cast<short>(trace.contact.trmFeature)
                      : static_cast<short>(-1);
   return result;
 }
 // DIA: idAI2::ApplyFakeDamageImpulse
-void idAI2::ApplyFakeDamageImpulse(const idVec3* impulse) {
+void idAI2::ApplyFakeDamageImpulse(const idVec3& impulse) {
   const idVec3 point = GetPhysics()->GetOrigin();
   damageInfo->Update(this, nullptr, nullptr, nullptr, 0.0F, 0.0F, 0.0F,
-                     0.0F, point, *impulse, idJointIndex{-1}, false, false,
+                     0.0F, point, impulse, idJointIndex{-1}, false, false,
                      false, false);
 }
 // DIA: idAI2::PlayAdditivePainAnim
-bool idAI2::PlayAdditivePainAnim(const aiAnimationHandle_t* painAlias) {
-  if (painAlias->value == 0xFFFFU) return false;
-  return painAnimator->PlayAnim(painAlias->value, gameLocal->GetGameTimeMs(),
+bool idAI2::PlayAdditivePainAnim(const aiAnimationHandle_t& painAlias) {
+  if (painAlias.value == 0xFFFFU) return false;
+  return painAnimator->PlayAnim(painAlias.value, gameLocal->GetGameTimeMs(),
                                 1.0F, 5, 5, 1.0F);
 }
 // DIA: idAI2::PlayAdditiveFireAnim
@@ -1345,20 +1552,67 @@ void idAI2::PlayAdditiveAlarmAnimation() {
                          1.0F, 46, 0, 1.0F);
 }
 // DIA: idAI2::CheckPain
-idRecoveredValue idAI2::CheckPain(...) { return RecordCoreCall("CheckPain"); }
+void idAI2::CheckPain(idEntity* inflictor, idEntity* attacker,
+                      const idDeclDamage* damageDecl, float damage,
+                      const idVec3& impactPoint, const idVec3& impactDir,
+                      idJointIndex jointIndex) {
+  (void)inflictor;
+  (void)damageDecl;
+  (void)damage;
+  (void)impactPoint;
+  (void)impactDir;
+  if (componentTimeLine->RunningActionScript(this)) return;
+
+  idTreeAnimator* treeAnimator = effectsTreeAnimator;
+  if (presentable != nullptr) presentable->UpdateModelTransform();
+  if (ai_debugPain.GetInteger() != 0) {
+    const char* jointName =
+        treeAnimator != nullptr
+            ? treeAnimator->GetJointNameForAI(jointIndex.value)
+            : "";
+    idLib::Printf("CheckPain - hit location %d, joint '%s'.\n",
+                  jointIndex.value, jointName);
+  }
+
+  if (attacker != nullptr) {
+    idAILogic logic(this);
+    const idSpawnId attackerId{attacker->GetEntityNumber()};
+    const idSpawnId sourceId{GetEntityNumber()};
+    worldState->AddEntityState(
+        gameLocal != nullptr ? gameLocal->GetAIGameState() : nullptr,
+        &logic, attackerId, AISTIM_GUNFIRE, 1.0F, sourceId);
+  }
+}
+
+void idAI2::CheckPainForTest(idEntity* inflictor, idEntity* attacker,
+                             const idDeclDamage* damageDecl, float damage,
+                             const idVec3& impactPoint,
+                             const idVec3& impactDir,
+                             idJointIndex jointIndex) {
+  CheckPain(inflictor, attacker, damageDecl, damage, impactPoint,
+            impactDir, jointIndex);
+}
+
+void idAI2::SetDeathImpulseIndex(int value) {
+  idDamageImpulse impulse;
+  damageInfo->ConfigureDeathInfoForTest(
+      damageInfo->GetAttackerEntity(), damageInfo->GetInflictorEntity(),
+      value >= 0 ? &impulse : nullptr);
+}
 // DIA: idAI2::DeathPending
 bool idAI2::DeathPending() const {
-  if (deathImpulseIndex >= 0) {
-    return true;
-  }
-  return animEventState.dead;
+  return damageInfo->GetDeathImpulse() != nullptr ||
+         healthComponent->IsDead_Impl();
 }
 // DIA: idAI2::KillAI
 void idAI2::KillAI() {
-  if (!animEventState.dead) {
-    animEventState.health = 0;
-    animEventState.dead = true;
+  if (!healthComponent->IsDead_Impl()) {
+    healthComponent->Kill_Impl();
+    healthComponent->SetDeadFlag();
   }
+  animEventState.health = 0;
+  animEventState.dead = true;
+  moveState->SetMovementModeForReal(AIMOVEMODE_ANIM);
   walkIKEnabled = false;
 }
 // DIA: idAI2::StartBodyDeathFade
@@ -1384,18 +1638,53 @@ void idAI2::StartDisintigrateDeathFade() {
 void idAI2::DisableAnimatorsOnDeath() {
   faceManager->SetEnableAnimation(this, false);
   faceManager->SetEnableEyeTracking(this, false);
+  painAnimator->SetEnabled(false);
+  shootAnimator->SetEnabled(false);
+  turretAnimator->SetEnabled(false);
+  animWebAnimators[AIANIMWEB_BODY]->SetEnabledForAI(false);
+  animationControllerDroneAnimator->SetEnabledForAI(false);
   deathAnimatorsEnabled = false;
   walkIKEnabled = false;
 }
 // DIA: idAI2::DoMeleeDamage
-idRecoveredValue idAI2::DoMeleeDamage(...) { return RecordCoreCall("DoMeleeDamage"); }
+bool idAI2::DoMeleeDamage(
+    const idVec3& position, const idVec3& direction, idEntity* target,
+    const idDeclDamage* damageDefinition,
+    const idDeclProjectileImpactEffect* impactEffect,
+    const idVec3& impactEffectDirection) {
+  if (target == this ||
+      (target->IsDead() && dynamic_cast<idActor*>(target) != nullptr)) {
+    return false;
+  }
+
+  if (ai_debugmelee.GetInteger() != 0) {
+    idLib::Printf("%s melee hit on %s\n", GetName(), target->GetName());
+  }
+
+  if (auto* door = dynamic_cast<idDoor_Parametric*>(target)) {
+    door->KickOpen(this);
+  } else {
+    if (impactEffect != nullptr) {
+      (void)impactEffect->GetImpactEffectForMaterial(3);
+      lastMeleeImpactPosition = position;
+      lastMeleeImpactDirection = impactEffectDirection;
+      ++meleeImpactEffectCount;
+    }
+    target->Damage(nullptr, this, damageDefinition, 1.0F, direction,
+                   nullptr);
+  }
+
+  if (instantHitExcludeFromTrace) meleeTrace->ExcludeEntity(target);
+  return true;
+}
 // DIA: idAI2::DoBlockedMeleeReaction
 void idAI2::DoBlockedMeleeReaction() {
-  actionFSM->ProcessMeleeBlocked(this);
+  fsmManager->GetControllingFSM()->ProcessEvent(&FSMEvent_MeleeBlocked,
+                                                this);
   stunnedByPlayerBlock = true;
 }
 // DIA: idAI2::GetMeleeInterval
-int idAI2::GetMeleeInterval(const aiMelee_t meleeType) {
+int idAI2::GetMeleeInterval(const aiMelee_t meleeType) const {
   int minimumInterval;
   int maximumInterval;
   if (meleeType == AIMELEE_MEDIUM) {
@@ -1437,8 +1726,8 @@ int idAI2::GetMeleeInterval(const aiMelee_t meleeType) {
          minimumInterval;
 }
 // DIA: idAI2::IsTargetInMeleeRange
-bool idAI2::IsTargetInMeleeRange(const idVec3* targetPosition,
-                                 const aiMelee_t meleeType) {
+bool idAI2::IsTargetInMeleeRange(const idVec3& targetPosition,
+                                 const aiMelee_t meleeType) const {
   const idDeclAIBehavior* declaration = behaviorDeclaration;
   float meleeDistance = declaration->closeMeleeDist;
   if (!declaration->meleeEnabled) return false;
@@ -1456,9 +1745,9 @@ bool idAI2::IsTargetInMeleeRange(const idVec3* targetPosition,
   meleeDistance = (std::max)(declaration->closeMeleeDist, meleeDistance);
 
   const idVec3& origin = GetPhysics()->GetOrigin();
-  const float deltaX = targetPosition->x - origin.x;
-  const float deltaY = targetPosition->y - origin.y;
-  const float verticalDistance = std::fabs(targetPosition->z - origin.z);
+  const float deltaX = targetPosition.x - origin.x;
+  const float deltaY = targetPosition.y - origin.y;
+  const float verticalDistance = std::fabs(targetPosition.z - origin.z);
   const float horizontalDistance = std::sqrt((std::max)(
       deltaX * deltaX + deltaY * deltaY,
       std::numeric_limits<float>::min()));
@@ -1475,7 +1764,7 @@ bool idAI2::IsTargetInMeleeRange(const idVec3* targetPosition,
   return true;
 }
 // DIA: idAI2::MeleeMaskForTarget
-unsigned int idAI2::MeleeMaskForTarget(const idEntity* target) {
+aiMelee_t idAI2::MeleeMaskForTarget(const idEntity* target) const {
   const auto* targetActor = dynamic_cast<const idActor*>(target);
   const bool armoredTarget = dynamic_cast<const idTurret*>(target) != nullptr ||
                              (targetActor != nullptr &&
@@ -1483,15 +1772,15 @@ unsigned int idAI2::MeleeMaskForTarget(const idEntity* target) {
   const unsigned int flags = IsCrouching() ? crouchMeleeAnimationFlags
                                            : meleeAnimationFlags;
   if (armoredTarget) {
-    return (flags & 0x20U) != 0 ? 0x20U : 1U;
+    return static_cast<aiMelee_t>((flags & 0x20U) != 0 ? 0x20U : 1U);
   }
-  return flags;
+  return static_cast<aiMelee_t>(flags);
 }
 // DIA: idAI2::GetDirectionTo
-aiDirection_t idAI2::GetDirectionTo(const idVec3* position,
-                                    bool fourDirectionLimit) {
+aiDirection_t idAI2::GetDirectionTo(const idVec3& position,
+                                    bool fourDirectionLimit) const {
   const idPhysics* physicsObject = GetPhysics();
-  const idVec3 delta = *position - physicsObject->GetOrigin();
+  const idVec3 delta = position - physicsObject->GetOrigin();
   const float horizontalLengthSqr =
       delta.x * delta.x + delta.y * delta.y;
   const float inverseHorizontalLength =
@@ -1504,7 +1793,7 @@ aiDirection_t idAI2::GetDirectionTo(const idVec3* position,
   if (ai_debugScenePoints.valueInteger >= 4) {
     constexpr idColor directionDebugOrange{1.0F, 0.5F, 0.0F, 1.0F};
     idVec3 arrowStart = physicsObject->GetOrigin();
-    idVec3 arrowEnd = *position;
+    idVec3 arrowEnd = position;
     arrowStart.z += 8.0F;
     arrowEnd.z += 8.0F;
     gameLocal->GetRenderWorld()->GetRenderDebug()->DebugArrow(
@@ -1543,9 +1832,10 @@ aiDirection_t idAI2::GetDirectionTo(const idVec3* position,
   return forwardDot <= 0.38268346F ? AIDIR_LEFT : AIDIR_FRONT_LEFT;
 }
 // DIA: idAI2::GetDirectionToForReactions
-aiDirection_t idAI2::GetDirectionToForReactions(const idVec3* position) {
+aiDirection_t idAI2::GetDirectionToForReactions(
+    const idVec3& position) const {
   const idPhysics* physicsObject = GetPhysics();
-  const idVec3 delta = *position - physicsObject->GetOrigin();
+  const idVec3 delta = position - physicsObject->GetOrigin();
   const float horizontalLengthSqr =
       delta.x * delta.x + delta.y * delta.y;
   const float inverseHorizontalLength =
@@ -1558,7 +1848,7 @@ aiDirection_t idAI2::GetDirectionToForReactions(const idVec3* position) {
   if (ai_debugScenePoints.valueInteger >= 4) {
     constexpr idColor directionDebugOrange{1.0F, 0.5F, 0.0F, 1.0F};
     idVec3 arrowStart = physicsObject->GetOrigin();
-    idVec3 arrowEnd = *position;
+    idVec3 arrowEnd = position;
     arrowStart.z += 8.0F;
     arrowEnd.z += 8.0F;
     gameLocal->GetRenderWorld()->GetRenderDebug()->DebugArrow(
@@ -1591,9 +1881,9 @@ aiDirection_t idAI2::GetDirectionToForReactions(const idVec3* position) {
   return leftDot >= -0.49999994F ? AIDIR_BEHIND : AIDIR_RIGHT;
 }
 // DIA: idAI2::GetTakedownName
-bool idAI2::GetTakedownName(const idList<idStr, 5>* takedownList,
-                            idStr* takedownName) {
-  const int count = takedownList->Num();
+bool idAI2::GetTakedownName(const idList<idStr, 5>& takedownList,
+                            idStr& takedownName) {
+  const int count = takedownList.Num();
   if (count <= 0) {
     idLib::Printf(" invalid takedown ID \n");
     return false;
@@ -1604,7 +1894,7 @@ bool idAI2::GetTakedownName(const idList<idStr, 5>* takedownList,
     const std::uint32_t seed =
         1664525U * gameLocal->GetRandomSeed() + 1013904223U;
     gameLocal->SetRandomSeed(seed);
-    *takedownName = (*takedownList)[
+    takedownName = takedownList[
         static_cast<int>(((seed >> 10U) & 0x7FFFU) %
                          static_cast<std::uint32_t>(count))];
     return true;
@@ -1612,7 +1902,7 @@ bool idAI2::GetTakedownName(const idList<idStr, 5>* takedownList,
 
   const int selectedId = (std::min)(requestedId, count - 1);
   const bool validId = requestedId < count;
-  *takedownName = (*takedownList)[selectedId];
+  takedownName = takedownList[selectedId];
   if (!validId) {
     idLib::Printf(" invalid takedown ID \n");
     return false;
@@ -1620,7 +1910,7 @@ bool idAI2::GetTakedownName(const idList<idStr, 5>* takedownList,
   return true;
 }
 // DIA: idAI2::TakedownWindoIsOpen
-bool idAI2::TakedownWindoIsOpen(idEntity* activator) {
+bool idAI2::TakedownWindoIsOpen(const idEntity* activator) const {
   if (!takedownRestrictedToBehind) return true;
   if (gameLocal->GetAIIncomingDamageScale() * 20.0F >= GetBaseHealth()) {
     return true;
@@ -1637,7 +1927,7 @@ bool idAI2::TakedownWindoIsOpen(idEntity* activator) {
 }
 // DIA: idAI2::IsCrosshairSubdued
 bool idAI2::IsCrosshairSubdued(const idEntity* activator,
-                               const idFocusTrace* focusTrace,
+                               const idFocusTrace& focusTrace,
                                usableState_t usable) const {
   (void)activator;
   (void)focusTrace;
@@ -1672,7 +1962,7 @@ void idAI2::HandleLoot(bool fullLoot, idEntity* item,
 void idAI2::SetDelayedVoice(voiceMsg_t message, float delay) {
   delayedVoiceType = static_cast<int>(message);
   delayedVoiceTime =
-      aiEvaluationTime - static_cast<int>(delay * -1000.0F);
+      gameLocal->GetGameTimeMs() - static_cast<int>(delay * -1000.0F);
 }
 // DIA: idAI2::CheckDelayedVoice
 bool idAI2::CheckDelayedVoice(int currentTime) {
@@ -1682,7 +1972,7 @@ bool idAI2::CheckDelayedVoice(int currentTime) {
   if (delayedVoiceTime <= 0 || currentTime < delayedVoiceTime) {
     return false;
   }
-  if (!animEventState.dead && !volumeDying) {
+  if (!IsDead() && !IsDying()) {
     localVoiceController->PlayVoice(
         this, static_cast<voiceMsg_t>(delayedVoiceType));
   }
@@ -1696,7 +1986,7 @@ bool idAI2::IsThrowingGrenade() const {
          static_cast<unsigned int>(grenadeOverrideAnimation - 27) <= 4U;
 }
 // DIA: idAI2::GetPlayerViewDataFitness
-float idAI2::GetPlayerViewDataFitness() const {
+float idAI2::GetPlayerViewDataFitness() {
   if (playerViewRange < 200.0F || playerViewRange > 1024.0F) {
     return 0.0F;
   }
@@ -1714,15 +2004,31 @@ bool idAI2::CanReceiveAIEvents(int currentTime) const {
   return !IsHidden() && currentTime >= nextAIEventTime;
 }
 // DIA: idAI2::OnAIEvent_VehicleSound
-idRecoveredValue idAI2::OnAIEvent_VehicleSound(...) { return RecordCoreCall("OnAIEvent_VehicleSound"); }
+void idAI2::OnAIEvent_VehicleSound(const idAIEventSound* event) {
+  (void)gameLocal->GetGameMsPerFrame();
+  const float stimulusAmount =
+      event->IsSoundType()
+          ? event->GetIntensity(this) * perceptionHearingStimulus
+          : 0.0F;
+
+  const idEntity* relevant = event->GetInstigator();
+  aiLatchedEvent_t latchedEvent;
+  latchedEvent.eventId = event->GetHandle();
+  latchedEvent.relevantId = idSpawnId{
+      relevant != nullptr ? relevant->GetEntityNumber() : 0x1fff};
+  idAILogic logic(this);
+  worldState->AddEntityStateFromEvent(
+      gameLocal->GetAIGameState(), &logic, &latchedEvent,
+      AISTIM_HEARING, stimulusAmount, idSpawnId{GetEntityNumber()});
+}
 // DIA: idAI2::OnAIEvent_Body
-void idAI2::OnAIEvent_Body(idAIEventSphere* event) {
+void idAI2::OnAIEvent_Body(const idAIEventSphere* event) {
   GetAlertCycleFSM()->PostEvent(
       static_cast<int>(event->GetEventClass()), event,
       static_cast<unsigned int>(gameLocal->GetGameTimeMs()));
 }
 // DIA: idAI2::OnAIEvent_PlayerInteraction
-void idAI2::OnAIEvent_PlayerInteraction(idAIEventSphere* event) {
+void idAI2::OnAIEvent_PlayerInteraction(const idAIEventSphere* event) {
   if (gameLocal->GetFrameNum() <= 10) return;
   if (!mutantActorClass) {
     if (speakingMoodCapability) {
@@ -1752,7 +2058,7 @@ void idAI2::OnAIEvent_PlayerInteraction(idAIEventSphere* event) {
 }
 // DIA: idAI2::SetSubWeb
 bool idAI2::SetSubWeb(aiSubWeb_t subWeb) {
-  constexpr aiModeRestricFlag_t subWebRestriction = 0x10;
+  constexpr int subWebRestriction = 0x10;
   if ((movementModeRestrictionFlags & subWebRestriction) != 0) return false;
   if (forceRelaxedSubWeb) {
     animWebState.subWeb = aiSubWeb_t::relaxed;
@@ -1768,10 +2074,56 @@ bool idAI2::SetSubWeb(aiSubWeb_t subWeb) {
   return true;
 }
 // DIA: idAI2::UpdateAttachments
-idRecoveredValue idAI2::UpdateAttachments(...) { return RecordCoreCall("UpdateAttachments"); }
+void idAI2::UpdateAttachments() {
+  idActor::UpdateAttachments();
+  idWeapon* weapon = GetEquippedWeapon();
+
+  if (gameLocal->IsMultiplayer()) {
+    GetWeaponPrefix(weapon, &replicatedWeaponPrefix);
+  }
+
+  if (weapon != nullptr && weapon->HasLaserSightForAI()) {
+    idVec3 laserPosition;
+    idMat3 laserAxis;
+    if (GetLaserSightTransform(weapon, &laserPosition, &laserAxis)) {
+      const idVec3 focusPoint =
+          laserPosition + laserAxis[0] * weapon->GetLaserSightLengthForAI();
+      weapon->UpdateLaserSight(laserPosition, focusPoint,
+                               GetEntityNumber(), this);
+    }
+  }
+
+  if ((thinkFlags & 2) == 0) idActor::UpdateEntityAttachmentPos();
+}
 // DIA: `idAI2::UpdateAttachments'::`1'::dtor$0
 // DIA: idAI2::ActivateExtendedClipModel
-idRecoveredValue idAI2::ActivateExtendedClipModel(...) { return RecordCoreCall("ActivateExtendedClipModel"); }
+idClipModel* idAI2::ActivateExtendedClipModel(
+    aiExtendedClipModelStatus_t status, int frameCount) {
+  if (status == AIEXTENDEDCLIPMODELSTATUS_NONE) {
+    DeactivateExtendedClipModel();
+    return nullptr;
+  }
+
+  if (extendedClipModelStatus != static_cast<int>(status) ||
+      status == AIEXTENDEDCLIPMODELSTATUS_DEATHJOINTS) {
+    DeactivateExtendedClipModel();
+  }
+
+  if (extendedClipModel == nullptr) {
+    if (status == AIEXTENDEDCLIPMODELSTATUS_DEATHJOINTS &&
+        !deathJointExtendedClipAvailable) {
+      return nullptr;
+    }
+    extendedClipModelStorage = std::make_unique<unsigned char>(0);
+    extendedClipModel =
+        reinterpret_cast<idClipModel*>(extendedClipModelStorage.get());
+  }
+
+  extendedClipModelAuxiliaryStatus = GetEndTimeByFrames(frameCount);
+  extendedClipModelStatus = static_cast<int>(status);
+  coreState.extendedClipModel = true;
+  return extendedClipModel;
+}
 // DIA: `idAI2::ActivateExtendedClipModel'::`1'::dtor$0
 // DIA: `idAI2::ActivateExtendedClipModel'::`1'::dtor$1
 // DIA: idAI2::AimDebug
@@ -1781,10 +2133,18 @@ void idAI2::AimDebug(const char* text, int level) const {
   }
   lastAimDebugText = text != nullptr ? text : "";
   lastAimDebugLevel = level;
-  lastAimDebugPosition =
-      GetPhysics() != nullptr ? GetPhysics()->GetOrigin() + aimDebugEyeOffset
-                              : aimDebugEyeOffset;
+  lastAimDebugPosition = GetPhysics()->GetOrigin() + GetEyeOffset();
   ++aimDebugCount;
+
+  idRenderWorld* renderWorld =
+      gameLocal != nullptr ? gameLocal->GetRenderWorld() : nullptr;
+  idRenderDebug* renderDebug =
+      renderWorld != nullptr ? renderWorld->GetRenderDebug() : nullptr;
+  if (renderDebug != nullptr) {
+    constexpr idVec4 colorOrange{1.0F, 0.5F, 0.0F, 1.0F};
+    renderDebug->DebugText(text, lastAimDebugPosition, 0.25F, colorOrange, 1,
+                           1, false, false);
+  }
 }
 // DIA: idAI2::LookDebug
 void idAI2::LookDebug(const char* text, int level, int duration) const {
@@ -1800,13 +2160,64 @@ void idAI2::LookDebug(const char* text, int level, int duration) const {
       GetPhysics()->GetOrigin() + GetEyeOffset();
   ++lookDebugCount;
 
+  idRenderWorld* renderWorld =
+      gameLocal != nullptr ? gameLocal->GetRenderWorld() : nullptr;
+  idRenderDebug* renderDebug =
+      renderWorld != nullptr ? renderWorld->GetRenderDebug() : nullptr;
+  if (renderDebug != nullptr) {
+    constexpr idVec4 colorMagenta{1.0F, 0.0F, 1.0F, 1.0F};
+    renderDebug->DebugText(text, lastLookDebugPosition, 0.25F, colorMagenta,
+                           1, duration, false, false);
+  }
+
   if (ai_debugLook.valueInteger > level) {
     idLib::Printf("[%d] %d %s\n", gameLocal->GetGameTimeMs(),
                   GetEntityNumber(), text != nullptr ? text : "");
   }
 }
 // DIA: idAI2::Debug_ScenePoints
-idRecoveredValue idAI2::Debug_ScenePoints(...) { return RecordCoreCall("Debug_ScenePoints"); }
+void idAI2::Debug_ScenePoints() {
+  const idVec3 aiOrigin = GetPhysics()->GetOrigin();
+  idScenePoint* currentScenePoint = memory->GetCurScenePointForTest();
+  if (currentScenePoint != nullptr &&
+      (currentScenePoint->GetFlagsForTest() & 0x10U) != 0U) {
+    currentScenePoint->DebugDrawScenepoint(aiOrigin, 0.0F, true, true);
+  }
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  const auto isActiveDebugPoint = [currentTime](const idScenePoint* point) {
+    return point != nullptr && (point->GetFlagsForTest() & 0x10U) != 0U &&
+           point->GetCurrentUser() != nullptr &&
+           (point->GetRequestTime() >= currentTime ||
+            point->GetRequestTime() < 0);
+  };
+
+  idScenePoint* currentLookScenePoint =
+      memory->GetCurLookScenePointForTest();
+  if (isActiveDebugPoint(currentLookScenePoint)) {
+    currentLookScenePoint->DebugDrawScenepoint(aiOrigin, 0.0F, true, true);
+  }
+
+  idScenePoint* overrideScenePoint = memory->GetOverrideScenePoint();
+  if (!isActiveDebugPoint(overrideScenePoint)) return;
+
+  idRenderWorld* renderWorld = gameLocal->GetRenderWorld();
+  idRenderDebug* renderDebug =
+      renderWorld != nullptr ? renderWorld->GetRenderDebug() : nullptr;
+  if (renderDebug == nullptr || overrideScenePoint->GetPhysics() == nullptr) {
+    return;
+  }
+
+  idVec3 start = aiOrigin;
+  start.z += 10.0F;
+  idVec3 stop = overrideScenePoint->GetPhysics()->GetOrigin();
+  stop.z += 10.0F;
+  renderDebug->DebugArrow3(idColor::colorYellow, start, stop, 3.0F, 0,
+                           false);
+  const idVec3 verticalStop = stop + idVec3{0.0F, 0.0F, 80.0F};
+  renderDebug->DebugArrow3(idColor::colorYellow, stop, verticalStop, 3.0F, 0,
+                           false);
+}
 // DIA: idAI2::idVisibilityObscurity::GetDestination
 idVec3 idAI2::idVisibilityObscurity::GetDestination(
     const idAI2* ai, obscurityTest_t obscurityTest) const {
@@ -1848,14 +2259,16 @@ idVec3 idAI2::idVisibilityObscurity::GetDestination(
   }
 }
 // DIA: idAI2::CanTaunt
-bool idAI2::CanTaunt() const {
+bool idAI2::CanTaunt() {
   return (tauntDodgeFlags & 0x200) != 0 &&
-         aiEvaluationTime > nextAITauntTime;
+         gameLocal->GetGameTimeMs() > gameLocal->GetNextAITauntTime();
 }
 // DIA: idAI2::GetTauntInterval
 int idAI2::GetTauntInterval() {
   const float intervalRange = tauntMaximumInterval - tauntMinimumInterval;
-  sharedAIRandomSeed = 1664525U * sharedAIRandomSeed + 1013904223U;
+  const unsigned int sharedAIRandomSeed =
+      1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+  gameLocal->SetRandomSeed(sharedAIRandomSeed);
   const float randomFraction =
       static_cast<float>((sharedAIRandomSeed >> 10U) & 0x7FFFU) *
       0.000030518509F;
@@ -1863,8 +2276,13 @@ int idAI2::GetTauntInterval() {
                           tauntMinimumInterval * 1000.0F);
 }
 // DIA: idAI2::GetEncounterGroup
-idEncounterGroup* idAI2::GetEncounterGroup() const {
-  return aiEventEncounterGroup;
+idEncounterGroup* idAI2::GetEncounterGroup() {
+  if (encounterGroupHandle == -1) return nullptr;
+  idEncounterGroupManager* manager = gameLocal->GetEncounterGroupManager();
+  return manager != nullptr
+             ? manager->GroupForHandle(
+                   encounterGroupHandle_t{encounterGroupHandle})
+             : nullptr;
 }
 // DIA: idAI2::GetWalkState
 walkState_t idAI2::GetWalkState() const {
@@ -1909,7 +2327,10 @@ void idAI2::SetAimFocusEntity(const idEntity* entity, bool keepFocusInView,
 }
 // DIA: idAI2::SetAimFocusAimPoint
 void idAI2::SetAimFocusAimPoint(aimPoint_t point) {
-  aimFocusAimPoint = point;
+  focusInfos[0]->SetAimPointSelection(point);
+}
+aimPoint_t idAI2::GetAimFocusAimPoint() const {
+  return focusInfos[0]->GetAimPointSelection();
 }
 // DIA: idAI2::GetMissTimeAimPosition
 idVec3 idAI2::GetMissTimeAimPosition(
@@ -2022,45 +2443,49 @@ void idAI2::ReloadWeapon(idWeapon* weapon) {
   }
 }
 // DIA: idAI2::GetRepullTriggerInterval
-void idAI2::GetRepullTriggerInterval(const idWeapon* weapon, int* minimum,
-                                     int* maximum) const {
+void idAI2::GetRepullTriggerInterval(const idWeapon* weapon, int& minimum,
+                                     int& maximum) const {
   if (usesConfiguredFireTiming) {
-    *minimum = static_cast<int>(configuredMinBurstPause * 1000.0F);
-    *maximum = static_cast<int>(configuredMaxBurstPause * 1000.0F);
+    minimum = static_cast<int>(configuredMinBurstPause * 1000.0F);
+    maximum = static_cast<int>(configuredMaxBurstPause * 1000.0F);
   } else {
-    *minimum = weapon->repullMin;
-    *maximum = weapon->repullMax;
+    minimum = weapon->repullMin;
+    maximum = weapon->repullMax;
   }
 }
 // DIA: idAI2::GetBurstDuration
-void idAI2::GetBurstDuration(const idWeapon* weapon, int* minimum,
-                             int* maximum) const {
+void idAI2::GetBurstDuration(const idWeapon* weapon, int& minimum,
+                             int& maximum) const {
   if (usesConfiguredFireTiming) {
-    *minimum = static_cast<int>(configuredMinBurstDuration * 1000.0F);
-    *maximum = static_cast<int>(configuredMaxBurstDuration * 1000.0F);
+    minimum = static_cast<int>(configuredMinBurstDuration * 1000.0F);
+    maximum = static_cast<int>(configuredMaxBurstDuration * 1000.0F);
   } else {
-    *minimum = weapon->burstMin;
-    *maximum = weapon->burstMax;
+    minimum = weapon->burstMin;
+    maximum = weapon->burstMax;
   }
 }
 // DIA: idAI2::IsInsideTrailUpdateRange
-bool idAI2::IsInsideTrailUpdateRange(
-    const idVec3* suspiciousPosition) const {
+bool idAI2::IsInsideTrailUpdateRange(idVec3 suspiciousPosition) {
   float range = 96.0F;
   if (usesCloseCover) {
     range = std::max(96.0F, closeMinRange);
   }
-  return range >= GetPhysics()->GetOrigin().DistanceFast(*suspiciousPosition);
+  return range >= GetPhysics()->GetOrigin().DistanceFast(suspiciousPosition);
 }
 // DIA: idAI2::IsRecentlySpawned
 bool idAI2::IsRecentlySpawned(float seconds) const {
-  return aiEvaluationTime - firstThinkTimestamp <=
+  return gameLocal->GetGameTimeMs() - firstThinkTimestamp <=
          static_cast<int>(seconds * 1000.0F);
 }
 // DIA: idAI2::IsRecentlyGroupSpotted
 bool idAI2::IsRecentlyGroupSpotted(const idEntity* enemy, float time) const {
-  return aiEventEncounterGroup != nullptr &&
-         aiEventEncounterGroup->IsRecentlyGroupSpotted(enemy, time);
+  if (encounterGroupHandle == -1) return false;
+  idEncounterGroupManager* manager = gameLocal->GetEncounterGroupManager();
+  idEncounterGroup* group =
+      manager != nullptr
+          ? manager->GroupForHandle(encounterGroupHandle_t{encounterGroupHandle})
+          : nullptr;
+  return group != nullptr && group->IsRecentlyGroupSpotted(enemy, time);
 }
 // DIA: idAI2::GetSpottedDuration
 int idAI2::GetSpottedDuration(const idEntity* enemy, int currentTime) const {
@@ -2072,16 +2497,16 @@ int idAI2::GetSpottedDuration(const idEntity* enemy, int currentTime) const {
   return entityState->spotDuration >= 0 ? entityState->spotDuration : -1;
 }
 // DIA: idAI2::Event_DetectPlayer
-eventVoid* idAI2::Event_DetectPlayer(eventVoid* result) {
+eventVoid idAI2::Event_DetectPlayer() {
   idPlayer* player = gameLocal->GetPlayer(0);
   if (player != nullptr) {
     eventVoid ignoredResult;
     Action_SetEnemy(&ignoredResult, player);
   }
-  return result;
+  return {};
 }
 // DIA: idAI2::GetEnemyInsideMaxFireRange
-bool idAI2::GetEnemyInsideMaxFireRange(const idEntity* enemy) const {
+bool idAI2::GetEnemyInsideMaxFireRange(const idEntity* enemy) {
   if (enemy == nullptr || maxFireRange <= 0.0F) {
     return false;
   }
@@ -2091,13 +2516,14 @@ bool idAI2::GetEnemyInsideMaxFireRange(const idEntity* enemy) const {
   return maxFireRange * maxFireRange >= delta.LengthSqr();
 }
 // DIA: idAI2::GetEnemyInsideGoNutsRange
-bool idAI2::GetEnemyInsideGoNutsRange() const {
+bool idAI2::GetEnemyInsideGoNutsRange() {
   return currentEnemyRange > 0.0F && goNutsRange >= currentEnemyRange;
 }
 // DIA: idAI2::SetFOV
-void idAI2::SetFOV(const float* fieldOfView) {
-  aiEventState.fieldOfView = *fieldOfView;
-  float halfFOVRadians = (*fieldOfView * 0.5F) * 0.017453292F;
+void idAI2::SetFOV(idTypesafeNumber<float, DegreesUnique_t> fieldOfView) {
+  const float fov = fieldOfView.GetValue();
+  aiEventState.fieldOfView = fov;
+  float halfFOVRadians = (fov * 0.5F) * 0.017453292F;
   if (halfFOVRadians < 0.0F || halfFOVRadians >= 6.2831855F) {
     halfFOVRadians -=
         std::floor(halfFOVRadians * 0.15915494F) * 6.2831855F;
@@ -2105,9 +2531,9 @@ void idAI2::SetFOV(const float* fieldOfView) {
   fieldOfViewDot = std::cos(halfFOVRadians);
 }
 // DIA: idAI2::Teleport
-void idAI2::Teleport(const idVec3* origin, idAngles* angles) {
+void idAI2::Teleport(const idVec3& origin, const idAngles& angles) {
   idActor::Teleport(origin, angles);
-  bodyOrientation->SetAxis(angles->ToMat3());
+  bodyOrientation->SetAxis(angles.ToMat3());
   idActor::GetAASPosition(GetAAS());
 }
 // DIA: idAI2::SetEnableAutoFocus
@@ -2115,12 +2541,33 @@ void idAI2::SetEnableAutoFocus(bool enable) {
   if (!enable || autoFocusEnabled) {
     autoFocusEnabled = enable;
   } else {
-    lookFocusTimeout = aiEvaluationTime;
+    focusInfos[1]->SetFocusTimeout(gameLocal->GetGameTimeMs());
     autoFocusEnabled = enable;
   }
 }
+int idAI2::GetLookFocusTimeout() const {
+  return focusInfos[1]->GetFocusTimeout();
+}
 // DIA: idAI2::ShowFlareEffect
-idRecoveredValue idAI2::ShowFlareEffect(...) { return RecordCoreCall("ShowFlareEffect"); }
+void idAI2::ShowFlareEffect(bool show) {
+  if (flareHandle == -1) return;
+  if (!show) {
+    gameLocal->StopGlobalLensFlare(flareHandle);
+    return;
+  }
+
+  idVec4 color;
+  GetColor(color);
+  idVec3 origin;
+  idMat3 axis;
+  idTreeAnimator* animator = effectsTreeAnimator != nullptr
+                                 ? effectsTreeAnimator
+                                 : &defaultEffectsTreeAnimator;
+  if (animator->GetWorldSpaceTagTransformForAI(flareTagData, origin, axis)) {
+    gameLocal->StartGlobalLensFlare(flareHandle, origin, axis, color,
+                                    flareFadeStart, flareFadeEnd);
+  }
+}
 // DIA: idAI2::StartWeaponFX
 int idAI2::StartWeaponFX(fxCondition_t condition) {
   idWeapon* weapon = GetEquippedWeapon();
@@ -2288,19 +2735,17 @@ void idAI2::SetSpeakingVO() {
   }
 }
 // DIA: idAI2::SetActionScript
-void idAI2::SetActionScript(const idList<idScriptAction, 5>* actions,
+void idAI2::SetActionScript(const idList<idScriptAction, 5>& actions,
                             idEntity* source, idEntity* activator) {
   if (!IsDead()) {
-    componentTimeLine->SetActionScript(this, actions, source, activator,
+    componentTimeLine->SetActionScript(this, &actions, source, activator,
                                        false);
   }
 }
 // DIA: idAI2::EndActionScript
 void idAI2::EndActionScript() {
-  if (actionScriptCount <= 0) {
-    actionScriptRunning = false;
-    actionScriptFlags = 0;
-    componentTimeLine->SetRunningForTest(false);
+  if (componentTimeLine->NumScriptActions(this) <= 0) {
+    componentTimeLine->ClearActionScript(this);
   }
 }
 // DIA: idAI2::OnActionScriptFinished
@@ -2319,24 +2764,75 @@ void idAI2::SetActionScriptFlag(int flags, bool setFlag) {
 }
 // DIA: idAI2::ActionScriptFlagIsSet
 bool idAI2::ActionScriptFlagIsSet(int flags) const {
-  return actionScriptRunning && (flags & actionScriptFlags) != 0;
+  return componentTimeLine->RunningActionScript(this) &&
+         (flags & actionScriptFlags) != 0;
 }
 // DIA: idAI2::GetActionFSM
-idLegsFSM* idAI2::GetActionFSM() { return actionFSM.get(); }
+idAIActionFSM* idAI2::GetActionFSM() { return actionManager->GetActionFSM(); }
 // DIA: idAI2::GetActionStatus
-int idAI2::GetActionStatus() const { return actionFSM->GetStatus(); }
+idFiniteStateMachine::fsmStatus_t idAI2::GetActionStatus() const {
+  return actionManager->GetActionFSM()->GetStatus();
+}
 // DIA: idSpawnFocusWithRequirement::RequirementFilled
 bool idSpawnFocusWithRequirement::RequirementFilled(
-    const idInventoryCollection* inventory) const {
-  return giveEnt != nullptr &&
-         (requirements.Num() == 0 || inventory != nullptr);
+    const idInventoryCollection* inventory) {
+  if (giveEnt == nullptr) return false;
+  if (requirements.Num() == 0) return true;
+  if (inventory == nullptr) return false;
+  for (int requirementIndex = 0;
+       requirementIndex < requirements.Num(); ++requirementIndex) {
+    for (int inventoryIndex = 0;
+         inventoryIndex < inventory->GetNumDeclarations(); ++inventoryIndex) {
+      if (std::strcmp(requirements[requirementIndex].str,
+                      inventory->GetDeclarationName(inventoryIndex)) == 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 // DIA: idAIFSMCallback::OnTransition
-idRecoveredValue idAIFSMCallback::OnTransition(...) { return {}; }
+void idAIFSMCallback::OnTransition(
+    const idFiniteStateMachine* fsm, const idTypeInfo* fromStateType,
+    const idTypeInfo* toStateType, const idTypeInfo* transitionType,
+    int transitionCode) {
+  idFSMLogEntry* entry = log.Alloc();
+  entry->type = idFSMLogEntry::LOGENTRY_TRANSITION;
+  entry->fsm = fsm;
+  entry->transitionType = transitionType;
+  entry->curStateType = fromStateType;
+  entry->nextStateType = toStateType;
+  entry->transCode = transitionCode;
+  entry->time = gameLocal->GetGameTimeMs();
+}
 // DIA: idAIFSMCallback::OnRestart
-idRecoveredValue idAIFSMCallback::OnRestart(...) { return {}; }
+void idAIFSMCallback::OnRestart(const idFiniteStateMachine* fsm,
+                                const idTypeInfo* currentStateType) {
+  (void)currentStateType;
+  idFSMLogEntry* entry = log.Alloc();
+  entry->type = idFSMLogEntry::LOGENTRY_RESTART;
+  entry->fsm = fsm;
+  entry->time = gameLocal->GetGameTimeMs();
+  entry->curStateType = nullptr;
+  entry->nextStateType = nullptr;
+  entry->transitionType = nullptr;
+  entry->transCode = 0;
+}
 // DIA: idAIFSMCallback::OnError
-idRecoveredValue idAIFSMCallback::OnError(...) { return {}; }
+void idAIFSMCallback::OnError(const idFiniteStateMachine* fsm,
+                              const idTypeInfo* currentStateType,
+                              const idTypeInfo* transitionType,
+                              int transitionCode) {
+  (void)currentStateType;
+  idFSMLogEntry* entry = log.Alloc();
+  entry->type = idFSMLogEntry::LOGENTRY_ERROR;
+  entry->fsm = fsm;
+  entry->time = gameLocal->GetGameTimeMs();
+  entry->transitionType = transitionType;
+  entry->curStateType = nullptr;
+  entry->nextStateType = nullptr;
+  entry->transCode = transitionCode;
+}
 // DIA: idAI2::HideMeshNoAutoRestore
 bool idAI2::HideMeshNoAutoRestore(const char* meshName) {
   if (presentable == nullptr ||
@@ -2374,7 +2870,7 @@ void idAI2::PerformCrouchAction() {
   fsm->ProcessEvent(&ACTION_StandToCrouchEnter, this);
 }
 // DIA: idAI2::PerformOverrideAnimAction
-void idAI2::PerformOverrideAnimAction(const int overrideAnim,
+void idAI2::PerformOverrideAnimAction(const overrideAnim_t overrideAnim,
                                       const bool holdFireUntilDone) {
   if (componentTimeLine->NumScriptActions(this) <= 0) {
     componentTimeLine->ClearActionScript(this);
@@ -2388,7 +2884,7 @@ void idAI2::PerformOverrideAnimAction(const int overrideAnim,
   ownerArgument.value.pointer = this;
   idEventArg overrideArgument{};
   overrideArgument.type = static_cast<unsigned char>('i');
-  overrideArgument.value.i = overrideAnim;
+  overrideArgument.value.i = static_cast<int>(overrideAnim);
   idEventArg holdFireArgument{};
   holdFireArgument.type = static_cast<unsigned char>('i');
   holdFireArgument.value.i = holdFireUntilDone;
@@ -2401,24 +2897,31 @@ void idAI2::PerformOverrideAnimAction(const int overrideAnim,
 // DIA: idAI2::SetIdealAimFocusPoint
 void idAI2::SetIdealAimFocusPoint(const idVec3& point, int timeout,
                                   aiFocus_t focusType) {
-  focusInfos[0]->SetExplicitFocusPoint(nullptr, point, false, timeout,
-                                       focusType);
+  focusInfos[0]->SetExplicitFocusPoint(
+      reinterpret_cast<idAnimatedEntity*>(this), point, false, timeout,
+      focusType);
 }
 // DIA: idAI2::SetIdealLookFocusPoint
 void idAI2::SetIdealLookFocusPoint(const idVec3& point, int timeout,
                                    aiFocus_t focusType) {
-  focusInfos[1]->SetExplicitFocusPoint(nullptr, point, false, timeout,
-                                       focusType);
+  focusInfos[1]->SetExplicitFocusPoint(
+      reinterpret_cast<idAnimatedEntity*>(this), point, false, timeout,
+      focusType);
 }
 // DIA: idAI2::ClearAimFocus
-void idAI2::ClearAimFocus() { focusInfos[0]->Clear(nullptr); }
+void idAI2::ClearAimFocus() {
+  focusInfos[0]->Clear(reinterpret_cast<idAnimatedEntity*>(this));
+}
 // DIA: idAI2::ClearLookFocus
-void idAI2::ClearLookFocus() { focusInfos[1]->Clear(nullptr); }
+void idAI2::ClearLookFocus() {
+  focusInfos[1]->Clear(reinterpret_cast<idAnimatedEntity*>(this));
+}
 // DIA: idAI2::SetEnableHeadTracking
 void idAI2::SetEnableHeadTracking(bool enable) {
   animEventState.headTracking = enable;
   for (const auto& focus : focusInfos) {
-    focus->SetEnableTracking(nullptr, enable);
+    focus->SetEnableTracking(reinterpret_cast<idAnimatedEntity*>(this),
+                             enable);
   }
 }
 // DIA: idAI2::SetLockHeadTracking
@@ -2426,7 +2929,10 @@ void idAI2::SetLockHeadTracking(bool lock) {
   for (const auto& focus : focusInfos) {
     focus->SetLockTracking(lock);
   }
-  headTrackingLocked = lock;
+}
+bool idAI2::IsHeadTrackingLocked() const {
+  return focusInfos[0]->IsTrackingLocked() &&
+         focusInfos[1]->IsTrackingLocked();
 }
 // DIA: idAI2::IsInCover
 bool idAI2::IsInCover() const {
@@ -2535,7 +3041,27 @@ int idAI2::GetIdleIndexForType(runIndexType_t type) const {
   }
 }
 // DIA: idAI2::PlayAnimWebPathPerfect
-idRecoveredValue idAI2::PlayAnimWebPathPerfect(...) { return RecordCoreCall("PlayAnimWebPathPerfect"); }
+void idAI2::PlayAnimWebPathPerfect(const idAnimWebPath& animPath,
+                                   const idVec3& position,
+                                   const idMat3& axis,
+                                   bool forcedTransition,
+                                   bool perfectDestination,
+                                   bool returnToIdle) {
+  idStr subWebName;
+  idStr stateName;
+  GetSubWebAndStateFromAnimWebPath(animPath.data, subWebName, stateName);
+  scriptProxy.blocking = false;
+  scriptProxy.ProcessEvent(
+      "ACTION_PerfectMovementEnter",
+      {idAIScriptEventArg::Entity(this),
+       idAIScriptEventArg::Vector(position),
+       idAIScriptEventArg::Quaternion(axis.ToQuat()),
+       idAIScriptEventArg::String(subWebName.data),
+       idAIScriptEventArg::String(stateName.data),
+       idAIScriptEventArg::Integer(forcedTransition),
+       idAIScriptEventArg::Integer(perfectDestination),
+       idAIScriptEventArg::Integer(returnToIdle)});
+}
 // DIA: `idAI2::PlayAnimWebPathPerfect'::`1'::dtor$0
 // DIA: `idAI2::PlayAnimWebPathPerfect'::`1'::dtor$1
 // DIA: `idAI2::PlayAnimWebPathPerfect'::`1'::dtor$2
@@ -2546,27 +3072,106 @@ idRecoveredValue idAI2::PlayAnimWebPathPerfect(...) { return RecordCoreCall("Pla
 // DIA: `idAI2::PlayAnimWebPathPerfect'::`1'::dtor$7
 // DIA: `idAI2::PlayAnimWebPathPerfect'::`1'::dtor$8
 // DIA: GetCoverTransionAnimName
-idRecoveredValue GetCoverTransionAnimName(...) { return {}; }
+static idStr GetCoverTransionAnimName(
+    const idAICover& cover, idAI2::coverApproach_t approach,
+    bool desireScramble, bool desireMicro) {
+  idStr subWeb("$weapontransition");
+  idStr node("runforward");
+  if (!desireMicro && desireScramble) {
+    idCoverActions actions;
+    cover.GetCoverActions(&actions);
+    node += "_scramble";
+  }
+
+  switch (approach) {
+    case idAI2::COVERAPPROACH_FORWARD:
+      node += "_to_fcover";
+      break;
+    case idAI2::COVERAPPROACH_TURN_LEFT:
+      node += "_turn_left_to_fcover";
+      break;
+    case idAI2::COVERAPPROACH_TURN_RIGHT:
+      node += "_turn_right_to_fcover";
+      break;
+    case idAI2::COVERAPPROACH_TURN_BACK_LEFT:
+    case idAI2::COVERAPPROACH_BACK_LEFT:
+      node += "_turn_back_left_to_fcover";
+      break;
+    case idAI2::COVERAPPROACH_TURN_BACK_RIGHT:
+    case idAI2::COVERAPPROACH_BACK_RIGHT:
+      node += "_turn_back_right_to_fcover";
+      break;
+    default:
+      break;
+  }
+
+  if (cover.GetCoverPosture() == 2) node += "_crouch";
+  if (desireMicro) node += "_micro";
+  subWeb += ":";
+  subWeb += node;
+  return subWeb;
+}
+
+idStr idAI2::GetCoverTransionAnimNameForTest(
+    const idAICover& cover, coverApproach_t approach,
+    bool desireScramble, bool desireMicro) {
+  return GetCoverTransionAnimName(cover, approach, desireScramble,
+                                  desireMicro);
+}
 // DIA: `GetCoverTransionAnimName'::`1'::dtor$0
 // DIA: `GetCoverTransionAnimName'::`1'::dtor$1
 // DIA: `GetCoverTransionAnimName'::`1'::dtor$2
 // DIA: `GetCoverTransionAnimName'::`1'::dtor$3
 // DIA: `GetCoverTransionAnimName'::`1'::dtor$4
 // DIA: idAI2::AllocPresentable
-idRecoveredValue idAI2::AllocPresentable(...) { return RecordCoreCall("AllocPresentable"); }
+idPresentable* idAI2::AllocPresentable(idRenderModel* renderModel) {
+  return new idPresentableAI(
+      this, renderModel, GetAnimStack(), painAnimator.get(),
+      &aiConstants->movement.influence, GetEntityNumber(), GetFXDecl(), true);
+}
 // DIA: idAI2::DisableInfluenceTrail
 void idAI2::DisableInfluenceTrail() {
   if (presentable != nullptr && ai_enableInfluenceTrails.valueInteger != 0) {
+    if (influenceTrailManager != nullptr) {
+      influenceTrailManager->FreeInfluenceTrail(presentable);
+    }
     influenceTrailAllocated = false;
   }
 }
 // DIA: idAI2::IsOnElevator
-idRecoveredValue idAI2::IsOnElevator(...) { return RecordCoreCall("IsOnElevator"); }
+bool idAI2::IsOnElevator() {
+  if (componentTimeLine->RunningActionScript(this) || GetPhysics() == nullptr ||
+      GetPhysics()->GetPhysicsType() != 3 || behaviorDeclaration == nullptr ||
+      !behaviorDeclaration->movementBehaviors.allowElevators) {
+    return false;
+  }
+
+  idPhysics* physics = GetPhysics();
+  for (int index = 0; index < physics->GetNumContacts(); ++index) {
+    idPhysics::contact_t contact;
+    if (!physics->GetContact(index, contact) || contact.entityNumber <= 0 ||
+        contact.entityNumber >= 0x2000) {
+      continue;
+    }
+    auto* mover = dynamic_cast<idMover*>(
+        gameLocal->GetEntityByNumber(contact.entityNumber));
+    if (mover == nullptr || !physics->IsGroundNormal(contact.normal)) {
+      continue;
+    }
+    const idVec3 pushedVelocity = physics->GetPushedLinearVelocity(0);
+    const float tolerance = ai_pushVelocityTolerance.GetFloat();
+    if (mover->IsPusher(contact.bodyId) &&
+        pushedVelocity.LengthSqr() > tolerance * tolerance) {
+      return true;
+    }
+  }
+  return false;
+}
 // DIA: idAI2::StartRagdoll
 idAnimator_AF::testSolidResult_t idAI2::StartRagdoll(
-    const idRagdollInfo* info, const char* ragdollReason) {
+    const idRagdollInfo& info, const char* ragdollReason) {
   reasonForRagdoll = ragdollReason != nullptr ? ragdollReason : "";
-  return StartRagdoll(info);
+  return StartRagdoll(&info);
 }
 // DIA: idAI2::StopRagdoll
 void idAI2::StopRagdoll() {
@@ -2595,16 +3200,15 @@ void idAI2::EndSync() {
   }
 }
 // DIA: idAI2::GetMoveOrientation
-idAIOrientation* idAI2::GetMoveOrientation() {
-  return moveState->GetMoveOrientation();
+idAIOrientation& idAI2::GetMoveOrientation() {
+  return *moveState->GetMoveOrientation();
 }
 // DIA: idAI2::IsMoveDone
-bool idAI2::IsMoveDone(std::int64_t checkAlignment) const {
-  (void)checkAlignment;
-  return moveState->GetMoveStatus() == MOVE_STATUS_DONE;
+bool idAI2::IsMoveDone(bool checkAlignment) {
+  return moveState->GetMoveStatus(checkAlignment) == MOVE_STATUS_DONE;
 }
 // DIA: idAI2::GetMoveInterface
-idAIMoveState* idAI2::GetMoveInterface() { return moveState.get(); }
+idAIMoveInterface& idAI2::GetMoveInterface() { return *moveState; }
 // DIA: idAI2::PlayDeathSound
 void idAI2::PlayDeathSound() {
   if (!deathSoundPlayed && deathSound != nullptr) {
@@ -2645,7 +3249,8 @@ idRecoveredValue idAIScriptProxy::PauseThreadTillActionCompletes(...) {
 // DIA: idAIEditable::idAIActionSettings::Init
 // DIA: idAI2::GetCurrentCombatStage
 const idCombatStage* idAI2::GetCurrentCombatStage() const {
-  const idEncounterGroup* group = GetEncounterGroup();
+  const idEncounterGroup* group =
+      const_cast<idAI2*>(this)->GetEncounterGroup();
   return group != nullptr ? group->GetCurrentCombatStage() : nullptr;
 }
 // DIA: idHealthT<enum aiHealthComponent_t,2,0>::SetDeadFlag
@@ -2692,7 +3297,7 @@ void idAI2::SetRobotChargingDone() {
   }
   robotState.cooldownEffectActive = false;
   robotState.cooldownEffectStopTime = gameLocal->GetGameTimeMs();
-  if (!robotState.autoRecharge) coreState.perceptionFlags &= ~1ULL;
+  if (!robotState.autoRecharge) coreState.perceptionFlags &= ~1;
   robotState.usesLookScenePoints = true;
   robotState.currentStageHealth = robotState.stageHealth;
   robotState.chargeStartTime = -1;
@@ -2795,7 +3400,7 @@ void idAI2::InitPerception(alertCycle_t cycle) {
     radius = actorSearchPerceptionRadius;
   }
   worldState->SetRadius(radius);
-  SetFOV(&configuredFieldOfView);
+  SetFOV(idTypesafeNumber<float, DegreesUnique_t>(configuredFieldOfView));
   maxFireRange = (std::max)(actorPerceptionRadius, maxFireRange);
 }
 // DIA: idAI2::OnHide
@@ -2813,7 +3418,18 @@ idRecoveredValue idAI2::PushFromCollision(...) { return RecordCoreCall("PushFrom
 // DIA: idAI2::CheckDeathCollision
 idRecoveredValue idAI2::CheckDeathCollision(...) { return RecordCoreCall("CheckDeathCollision"); }
 // DIA: idAI2::DoMeleeDamage
-idRecoveredValue idAI2::DoMeleeDamage(idRecoveredOverloadTag<1>) { return RecordCoreCall("DoMeleeDamage"); }
+bool idAI2::DoMeleeDamage(idIndex<short, invalidJointIndex_t> jointIndex,
+                          const idBounds& bounds,
+                          const idDeclDamage* damageDefinition,
+                          const impact* impactInfo,
+                          const idVec3& impactEffectDirection) {
+  (void)jointIndex;
+  (void)bounds;
+  (void)damageDefinition;
+  (void)impactInfo;
+  (void)impactEffectDirection;
+  return false;
+}
 // DIA: idAI2::GetMeleeDirection
 idRecoveredValue idAI2::GetMeleeDirection(...) { return RecordCoreCall("GetMeleeDirection"); }
 // DIA: idAI2::IsFacingMe
@@ -3183,7 +3799,7 @@ int idCheckSurroundingsState::UpdateDirectionDistanceExponent(
 }
 // DIA: idAI2::UpdateActions
 void idAI2::UpdateActions(int curTime) {
-  actionFSM->Update(true, curTime, nullptr);
+  actionManager->GetActionFSM()->Update(true, curTime, nullptr);
   componentTimeLine->Update();
 }
 // DIA: idAI2::SetAlertCycle
@@ -3214,7 +3830,7 @@ void idAI2::SetAlertCycle(alertCycle_t alertCycle) {
   const aiSubWeb_t subWeb =
       effectiveCycle < ALERTCYCLE_MAX
           ? static_cast<aiSubWeb_t>(
-                AlertCycleToSubWeb(static_cast<int>(effectiveCycle)))
+                AlertCycleToSubWeb(effectiveCycle))
           : aiSubWeb_t::relaxed;
   SetSubWeb(subWeb);
 }
@@ -4106,13 +4722,13 @@ void idAI2::UpdateAimFocus() {
     aiSenseState_t* sight = entityState->senses[AISENSE_SIGHT];
     if (sight->lastUnconfirmedStimTime >= 0 &&
         sight->lastConfirmedStimTime >= 0) {
-      if (OkToFocus(&sight->GetConfirmedPhysicalSafe()->eyePos, &aiOrigin,
-                    &sense->GetConfirmedPhysicalSafe()->origin)) {
+      if (OkToFocus(sight->GetConfirmedPhysicalSafe()->eyePos, aiOrigin,
+                    sense->GetConfirmedPhysicalSafe()->origin)) {
         focus->SetTempFocusPoint(
             focusOwner, sight->GetConfirmedPhysicalSafe()->eyePos,
             AIFOCUS_LAST_SEEN_POS);
-      } else if (OkToFocus(&sight->aiOrigin, &aiOrigin,
-                           &sense->GetConfirmedPhysicalSafe()->origin)) {
+      } else if (OkToFocus(sight->aiOrigin, aiOrigin,
+                           sense->GetConfirmedPhysicalSafe()->origin)) {
         idVec3 focusPoint = sight->aiOrigin;
         focusPoint.z += GetEyeOffset().z;
         focus->SetTempFocusPoint(focusOwner, focusPoint,
@@ -4122,15 +4738,15 @@ void idAI2::UpdateAimFocus() {
 
     if (focus->GetFocusType() == AIFOCUS_ENTITY) {
       const aiPhysicalState_t* confirmed = sense->GetConfirmedPhysicalSafe();
-      if (OkToFocus(&confirmed->origin, &aiOrigin, &confirmed->origin)) {
+      if (OkToFocus(confirmed->origin, aiOrigin, confirmed->origin)) {
         idVec3 focusPoint = confirmed->eyePos;
         if (focus->GetAimPointSelection() == AIMPOINT_EYELEVEL) {
           focusPoint.z = aiOrigin.z + GetEyeOffset().z;
         }
         focus->SetTempFocusPoint(focusOwner, focusPoint,
                                  AIFOCUS_LAST_SENSED_POS);
-      } else if (OkToFocus(&sense->aiOrigin, &aiOrigin,
-                           &confirmed->origin)) {
+      } else if (OkToFocus(sense->aiOrigin, aiOrigin,
+                           confirmed->origin)) {
         const idVec3 focusPoint = sense->aiOrigin + GetEyeOffset();
         focus->SetTempFocusPoint(focusOwner, focusPoint,
                                  AIFOCUS_POS_WHEN_LAST_SENSED);
@@ -4502,7 +5118,7 @@ void idAI2::UpdateGroupStatusConditions() {
       gameLocal != nullptr ? gameLocal->GetGameTimeMs() : 0;
   const bool recentlyFiredAt = currentTime - groupLastFiredAtTime < 2000;
   setCondition(2, closeToCover && recentlyFiredAt);
-  setCondition(1, actionScriptRunning);
+  setCondition(1, componentTimeLine->RunningActionScript(this));
 
   bool enemyMoved = false;
   const aiSenseState_t* enemySense = GetEnemySenseState(AISENSE_MAX);
@@ -6004,20 +6620,20 @@ void idAI2::Takedown(idEntity* activator, bool dualWield,
         right.Normalize();
         if (right * toPlayer <= 0.0F) {
           aiAxis.RotateSelf(aiAxis[2], -idMath::PI * 0.5F);
-          nameSelected = GetTakedownName(&takedownTypes.groundRight,
-                                         &takedownName);
+          nameSelected = GetTakedownName(takedownTypes.groundRight,
+                                         takedownName);
         } else {
           aiAxis.RotateSelf(aiAxis[2], idMath::PI * 0.5F);
-          nameSelected = GetTakedownName(&takedownTypes.groundLeft,
-                                         &takedownName);
+          nameSelected = GetTakedownName(takedownTypes.groundLeft,
+                                         takedownName);
         }
       } else if (forwardDot <= 0.0F) {
-        nameSelected = GetTakedownName(&takedownTypes.groundRear,
-                                       &takedownName);
+        nameSelected = GetTakedownName(takedownTypes.groundRear,
+                                       takedownName);
       } else {
         aiAxis.RotateSelf(aiAxis[2], idMath::PI);
-        nameSelected = GetTakedownName(&takedownTypes.groundFront,
-                                       &takedownName);
+        nameSelected = GetTakedownName(takedownTypes.groundFront,
+                                       takedownName);
       }
       break;
     }
@@ -6029,7 +6645,7 @@ void idAI2::Takedown(idEntity* activator, bool dualWield,
   }
 
   if (selectedTakedowns != nullptr) {
-    nameSelected = GetTakedownName(selectedTakedowns, &takedownName);
+    nameSelected = GetTakedownName(*selectedTakedowns, takedownName);
   }
   takedownObservation.selectedDualWield = selectedDualWield;
   takedownObservation.selectedName = nameSelected;
@@ -8298,7 +8914,7 @@ void idAI2::SpawnCorpse(const idCorpseManager::corpseSave_t* corpse) {
   fsmManager->SetFSMStack(stack);
 
   idAngles corpseAngles = corpse->orientation.ToAngles();
-  Teleport(&corpse->position, &corpseAngles);
+  Teleport(corpse->position, corpseAngles);
   ++spawnCorpseObservation.updateVisualsCount;
 
   healthComponent->Kill_Impl();
@@ -9815,7 +10431,7 @@ void idAI2::UpdateWorldState() {
               memory->ClearAllTrailPositions(currentTime);
             } else if ((enemySense->senseFlags & 4U) != 0U ||
                        IsInsideTrailUpdateRange(
-                           &enemySense->GetConfirmedPhysicalSafe()->origin)) {
+                           enemySense->GetConfirmedPhysicalSafe()->origin)) {
               CheckForSuspectedToTrailUpdate(currentTime, false);
             }
           } else {
@@ -10183,7 +10799,18 @@ idRecoveredValue idAI2::OnShow(...) { return RecordCoreCall("OnShow"); }
 // DIA: idAI2::Think_AIControl
 idRecoveredValue idAI2::Think_AIControl(...) { return RecordCoreCall("Think_AIControl"); }
 // DIA: idAI2::Damage
-idRecoveredValue idAI2::Damage(...) { return RecordCoreCall("Damage"); }
+float idAI2::Damage(idEntity* inflictor, idEntity* attacker,
+                    const idDeclDamage* damageDecl, float damageScale,
+                    const idVec3& direction, trace_t* trace) {
+  (void)inflictor;
+  (void)attacker;
+  (void)damageDecl;
+  (void)damageScale;
+  (void)direction;
+  (void)trace;
+  RecordCoreCall("Damage");
+  return 0.0F;
+}
 // DIA: `idAI2::Damage'::`1'::dtor$0
 // DIA: `idAI2::Damage'::`1'::dtor$1
 // DIA: `idAI2::Damage'::`1'::dtor$6

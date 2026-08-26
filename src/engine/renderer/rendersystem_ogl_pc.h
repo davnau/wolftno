@@ -13,46 +13,48 @@ struct idAutoComplete;
 class idCVar;
 
 struct vidMode_t {
-  int monitorNum{};
-  int x{};
-  int y{};
-  int width{1};
-  int height{1};
-  float pixelAspect{1.0F};
-  bool fullscreen{true};
+  int monitorNum;
+  int x;
+  int y;
+  int width;
+  int height;
+  float pixelAspect;
+  bool fullscreen;
 };
 
 struct monitor_t {
-  HMONITOR hMonitor{};
-  int width{};
-  int height{};
+  HMONITOR hMonitor;
+  int width;
+  int height;
   idList<unsigned int, 62> supportedModes;
 };
 
 struct idThreadGraphicsContext {
-  HWND contextWindow{};
-  HGLRC glContext{};
+  HWND contextWindow;
+  HGLRC glContext;
 };
+
+template <> monitor_t* idList<monitor_t, 62>::Alloc();
 
 struct sys3D_t {
   sys3D_t();
 
-  std::uint16_t oldHardwareGamma[3][256]{};
-  HDC win32DC{};
-  bool currentFullscreen{};
-  int currentMonitor{-1};
-  int numSamples{1};
-  bool useFloatBuffers{};
+  std::uint16_t oldHardwareGamma[3][256];
+  HDC win32DC;
+  bool currentFullscreen;
+  int currentMonitor;
+  int numSamples;
+  bool useFloatBuffers;
   vidMode_t vidMode;
   idList<monitor_t, 62> monitors;
-  HDC lastDC{};
-  HGLRC mainThreadContext{};
-  int pixelFormat{};
-  PIXELFORMATDESCRIPTOR pfd{};
-  idThreadGraphicsContext* relayContext{};
-  idThreadGraphicsContext* renderThreadContext{};
-  bool ignoreSizeMessages{true};
-  int curentSwapInterval{-1};
+  HDC lastDC;
+  HGLRC mainThreadContext;
+  int pixelFormat;
+  PIXELFORMATDESCRIPTOR pfd;
+  idThreadGraphicsContext* relayContext;
+  idThreadGraphicsContext* renderThreadContext;
+  bool ignoreSizeMessages;
+  int curentSwapInterval;
 };
 
 using glTexMultiSubImage2DAMDProc_t = void (*)(
@@ -139,3 +141,22 @@ static_assert(sizeof(vidMode_t) == 28, "video-mode ABI drift");
 static_assert(sizeof(monitor_t) == 40, "monitor ABI drift");
 static_assert(sizeof(idThreadGraphicsContext) == 16,
               "thread graphics-context ABI drift");
+static_assert(offsetof(sys3D_t, win32DC) == 0x600,
+              "sys3D DC offset drift");
+static_assert(offsetof(sys3D_t, vidMode) == 0x618,
+              "sys3D video-mode offset drift");
+static_assert(offsetof(sys3D_t, monitors) == 0x638,
+              "sys3D monitor-list offset drift");
+static_assert(offsetof(sys3D_t, lastDC) == 0x650,
+              "sys3D last-DC offset drift");
+static_assert(offsetof(sys3D_t, mainThreadContext) == 0x658,
+              "sys3D main-context offset drift");
+static_assert(offsetof(sys3D_t, pixelFormat) == 0x660,
+              "sys3D pixel-format offset drift");
+static_assert(offsetof(sys3D_t, relayContext) == 0x690,
+              "sys3D relay-context offset drift");
+static_assert(offsetof(sys3D_t, renderThreadContext) == 0x698,
+              "sys3D render-context offset drift");
+static_assert(offsetof(sys3D_t, curentSwapInterval) == 0x6A4,
+              "sys3D swap-interval offset drift");
+static_assert(sizeof(sys3D_t) == 0x6A8, "sys3D ABI drift");

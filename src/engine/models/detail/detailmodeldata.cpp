@@ -27,7 +27,6 @@ float WrapTextureCoordinate(float value) {
 
 } // namespace
 
-idStaticModelManager* staticModelManager = nullptr;
 
 idTypedResourceList<idDetailModelData>
     idDetailModelData::resourceList("detailModelData");

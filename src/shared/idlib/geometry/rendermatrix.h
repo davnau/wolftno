@@ -70,4 +70,6 @@ struct idRenderMatrix {
   static int CullFrustumCornersToPlane(const frustumCorners_t& corners, const idPlane& plane);
 };
 
+extern const idRenderMatrix renderMatrix_identity;
+
 static_assert(sizeof(idRenderMatrix) == 64, "idRenderMatrix ABI drift");

@@ -8,6 +8,10 @@
 #include <type_traits>
 #include <utility>
 
+class idMD6MorphSet;
+
+template <typename T> struct idListAllocReturnsReference : std::false_type {};
+
 template <typename T, int DefaultTag = 5> class idList {
 public:
   T* list;
@@ -95,11 +99,14 @@ public:
     --num;
     return true;
   }
-  using AllocResult = std::conditional_t<DefaultTag == 85, T&, T*>;
+  using AllocResult = std::conditional_t<
+      DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
+          idListAllocReturnsReference<T>::value,
+      T&, T*>;
   AllocResult Alloc() {
     EnsureCapacity(num + 1);
     const int index = num >= size ? size - 1 : num++;
-    if constexpr (DefaultTag == 85)
+    if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet>)
       return list[index];
     else
       return index >= 0 ? &list[index] : nullptr;

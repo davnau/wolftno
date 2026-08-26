@@ -36,10 +36,15 @@ against both recovered Hex-Rays output and recovered assembly.
 2. `ai/aaspositionmgr.cpp` — parity verified (6/6 functions)
 3. `ai/aasviscache.cpp` — parity verified (9/9 functions)
 4. `ai/ai2_actions.cpp` — parity verified (129/129 records)
-5. `ai/ai2.cpp` — active verification (344/485 explicit source records re-ported;
-   file is not complete)
+5. `ai/ai2.cpp` — active verification (the prior 344/485 progress claim was
+   invalidated; record 345, `idAI2::UpdateWorldState`, is independently parity
+   verified, but a retrospective body audit found 63 placeholder records among
+   records 1-344; the sequential audit has restarted at record 1; file is not
+   complete)
    - AI2's recovered export has 1,127 total DIA records: 517 compiler-primary,
-     124 header-emitted, and 486 line records. One line record belongs to
-     `AnimatedEntity.obj`, leaving 485 records sourced by `AI2.cpp`.
+   124 header-emitted, and 486 line records. One line record belongs to
+   `AnimatedEntity.obj`, leaving 485 records sourced by `AI2.cpp`.
+   - Sequential parity pass: record 1, `idAI2::ApplyDamage`, is verified.
+     Record 345, `idAI2::UpdateWorldState`, remains independently verified.
 
 All remaining `.cpp` files are unverified for 1:1 parity.

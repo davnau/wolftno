@@ -35,6 +35,7 @@ public:
                            bool skipStaleCheck = false) const;
   idResource* Index(int index) const;
   void GetLoadedResources(idList<idResource*, 99>& resources) const;
+  bool ReloadStaleResources();
   void Add(idResource* resource);
   void Remove(idResource* resource);
   const idResource* ReadResourceFromMsg(idBitMsg* message) const;
@@ -49,7 +50,7 @@ public:
 class idResource {
 public:
   idResource();
-  virtual ~idResource();
+  virtual ~idResource() noexcept(false);
   virtual void LoadResource();
   virtual bool ReloadIfStale();
   virtual void WriteResourceFile();
@@ -206,7 +207,7 @@ public:
 class idDecl : public idResource {
 public:
   idDecl();
-  ~idDecl() override;
+  ~idDecl() noexcept(false) override;
 
   void LoadResource() override;
   bool ReloadIfStale() override;

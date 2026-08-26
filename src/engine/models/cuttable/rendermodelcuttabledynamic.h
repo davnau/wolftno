@@ -16,16 +16,18 @@ public:
   idRenderModelCuttableDynamic();
   ~idRenderModelCuttableDynamic() override;
 
-  void UploadRenderGeometry(const idMaterial* material,
-                            const idList<idDrawVert>& vertices,
-                            const idList<std::uint16_t>& indices);
-  void UploadDepthGeometry(const idMaterial* material,
-                           const idList<idVec2>& st);
   bool IsValid() const;
   void Upload(const idMaterial* renderMaterial,
               const idMaterial* depthMaterial,
               const idList<idDrawVert>& vertices, const idList<idVec2>& st,
               const idList<std::uint16_t>& indices);
+
+private:
+  void UploadRenderGeometry(const idMaterial* material,
+                            const idList<idDrawVert>& vertices,
+                            const idList<std::uint16_t>& indices);
+  void UploadDepthGeometry(const idMaterial* material,
+                           const idList<idVec2>& st);
 };
 
 static_assert(sizeof(idRenderModelCuttableDynamic) == 2176,

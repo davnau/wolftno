@@ -39,21 +39,7 @@ T* AllocateDetail(std::size_t count, const char* location) {
       HEAP_DEFAULTHEAP));
 }
 
-void SetupDetailDataPointers(dm_subTreeDataPtrs_t& pointers,
-                             const dm_subTreeData_t* data) {
-  auto* base = reinterpret_cast<std::uint8_t*>(
-      const_cast<dm_subTreeData_t*>(data));
-  pointers.detail = reinterpret_cast<dm_detail_t*>(base + data->detailOffset);
-  pointers.attributes =
-      reinterpret_cast<dm_attribute_t*>(base + data->attributeOffset);
-}
-
 } // namespace
-
-idParallelJobRegistration register_DetailGatherJob(
-    reinterpret_cast<jobRun_t>(DetailGatherJob), "DetailGatherJob");
-idParallelJobRegistration register_DetailGenJob(
-    reinterpret_cast<jobRun_t>(DetailGenJob), "DetailGenJob");
 
 idRenderModelDetail::~idRenderModelDetail() {
   if (deferredVerts != nullptr)
@@ -73,12 +59,12 @@ idRenderModelDetail::~idRenderModelDetail() {
   memory->Free(totalsUsed, ALIGN_16);
 }
 
-void DetailGatherJob(const deferredDetailGatherParms_t* parms) {
+static void DetailGatherJob(const deferredDetailGatherParms_t* parms) {
   int numDetailIndices = 0;
   GatherDetailIndicesForSubTree(parms, numDetailIndices);
 }
 
-void DetailGenJob(const deferredDetailGenParms_t* parms) {
+static void DetailGenJob(const deferredDetailGenParms_t* parms) {
   if (parms->totalsUsed != nullptr)
     GetDetailTotalCount(parms->detailCountsList, parms->totalsUsed);
 
@@ -97,6 +83,11 @@ void DetailGenJob(const deferredDetailGenParms_t* parms) {
                         vertOffset, stats);
   }
 }
+
+static idParallelJobRegistration register_DetailGatherJob(
+    reinterpret_cast<jobRun_t>(DetailGatherJob), "DetailGatherJob");
+static idParallelJobRegistration register_DetailGenJob(
+    reinterpret_cast<jobRun_t>(DetailGenJob), "DetailGenJob");
 
 idRenderModelDetail::idRenderModelDetail()
     : detailBSP(nullptr),
@@ -236,7 +227,7 @@ bool idRenderModelDetail::UpdateInView(
       int numDetailIndices = 0;
       GatherDetailIndicesForSubTree(&parms, numDetailIndices);
       dm_subTreeDataPtrs_t pointers{};
-      SetupDetailDataPointers(pointers, subTree.data);
+      SetupSubTreePtrsFromData(pointers, subTree.data);
       for (int detailIndex = 0; detailIndex < numDetailIndices;
            ++detailIndex) {
         const dm_detail_t& detail =

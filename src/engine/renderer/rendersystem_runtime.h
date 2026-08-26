@@ -52,9 +52,11 @@ struct idScreenViewCommitted {
 
 struct idRenderFrameInfoCommitted {
   idStaticList<idScreenViewCommitted, 3> committedViews;
-  int renderTime{};
-  bool captureFrame{};
-  std::uint8_t alignmentTail[3]{};
+  int renderTime;
+  bool captureFrame;
+  std::uint8_t alignmentTail[3];
+
+  ~idRenderFrameInfoCommitted();
 };
 
 struct alignas(16) idRenderFrameInfo {
@@ -107,6 +109,9 @@ template <typename T> void idListArrayDelete(T* pointer, int num);
 template <typename T>
 T* idListArrayResize(T* oldPointer, int oldNum, int newNum, unsigned tag,
                      bool zeroBuffer);
+
+template <>
+bool idList<idScreenViewCommitted, 5>::Resize(int newSize);
 
 static_assert(sizeof(usercmd_t) == 76, "user command ABI drift");
 static_assert(offsetof(idScreenView, g) == 32,

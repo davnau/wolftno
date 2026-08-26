@@ -20,22 +20,30 @@ void WriteBigInt(idFile* file, int value) {
   file->Write(&big, sizeof(big));
 }
 
-void WriteBigFloat(idFile* file, float value) {
+void SwapFloat(float& value) {
   std::uint32_t bits;
   std::memcpy(&bits, &value, sizeof(bits));
   bits = ByteSwap32(bits);
-  file->Write(&bits, sizeof(bits));
+  std::memcpy(&value, &bits, sizeof(value));
+}
+
+void SwapVec3(idVec3& value) {
+  SwapFloat(value.x);
+  SwapFloat(value.y);
+  SwapFloat(value.z);
 }
 
 void WriteBigVec3(idFile* file, const idVec3& value) {
-  WriteBigFloat(file, value.x);
-  WriteBigFloat(file, value.y);
-  WriteBigFloat(file, value.z);
+  idVec3 big = value;
+  SwapVec3(big);
+  file->Write(&big, sizeof(big));
 }
 
 void WriteBigMat3(idFile* file, const idMat3& value) {
-  for (const idVec3& row : value.mat)
-    WriteBigVec3(file, row);
+  idMat3 big = value;
+  for (idVec3& row : big.mat)
+    SwapVec3(row);
+  file->Write(&big, sizeof(big));
 }
 
 int ReadBigInt(idFile* file) {
@@ -44,24 +52,15 @@ int ReadBigInt(idFile* file) {
   return static_cast<int>(ByteSwap32(value));
 }
 
-float ReadBigFloat(idFile* file) {
-  std::uint32_t bits = 0;
-  file->Read(&bits, sizeof(bits));
-  bits = ByteSwap32(bits);
-  float value;
-  std::memcpy(&value, &bits, sizeof(value));
-  return value;
-}
-
 void ReadBigVec3(idFile* file, idVec3& value) {
-  value.x = ReadBigFloat(file);
-  value.y = ReadBigFloat(file);
-  value.z = ReadBigFloat(file);
+  file->Read(&value, sizeof(value));
+  SwapVec3(value);
 }
 
 void ReadBigMat3(idFile* file, idMat3& value) {
+  file->Read(&value, sizeof(value));
   for (idVec3& row : value.mat)
-    ReadBigVec3(file, row);
+    SwapVec3(row);
 }
 
 template <typename T, int Tag>
@@ -73,7 +72,7 @@ void SetSerializedCount(idList<T, Tag>& list, int count) {
 
 } // namespace
 
-void idMD6Morph::Write_Binary(idFile* file) {
+void idMD6Morph::Write_Binary(idFile* file) const {
   WriteBigInt(file, sets.num);
   for (int setIndex = 0; setIndex < sets.num; ++setIndex) {
     const idMD6MorphSet& set = sets.list[setIndex];
@@ -122,6 +121,6 @@ void idMD6Morph::Load_Binary(idFile* file, unsigned int magic) {
   }
 }
 
-idMD6MorphSet* idMD6Morph::AllocSet() {
+idMD6MorphSet& idMD6Morph::AllocSet() {
   return sets.Alloc();
 }

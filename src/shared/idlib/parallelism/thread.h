@@ -110,7 +110,7 @@ public:
     Sys_SetCurrentThreadPlaformPriority(
         Sys_CalculatePlatformPriority(priority));
   }
-  ~idScopeThreadPriority() {
+  ~idScopeThreadPriority() noexcept(false) {
     Sys_SetCurrentThreadPlaformPriority(oldPrio);
   }
 
@@ -124,7 +124,7 @@ public:
     Sys_SetCurrentThreadPlaformAffinity(
         static_cast<std::uint64_t>(Sys_CalculatePlatformAffinity(affinity)));
   }
-  ~idScopeThreadAffinity();
+  ~idScopeThreadAffinity() noexcept(false);
 
   std::uint64_t oldAffinity;
 };
@@ -133,7 +133,7 @@ class idScopeThreadPriorityAndAffinity {
 public:
   idScopeThreadPriorityAndAffinity(core_t affinity, xthreadPriority priority)
       : affinty(affinity), prio(priority) {}
-  ~idScopeThreadPriorityAndAffinity();
+  ~idScopeThreadPriorityAndAffinity() noexcept(false);
 
   idScopeThreadAffinity affinty;
   idScopeThreadPriority prio;

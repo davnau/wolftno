@@ -660,7 +660,7 @@ void idRenderModelFlareOcclusionQuad::SerializeSnapshot(
     isSunFlare = serializer->msg->ReadBits(1) == 1;
 }
 
-void idRenderModelFlare::Save(idFile* file) {
+void idRenderModelFlare::Save(idFile* file) const {
   idRenderModel::Save(file);
   file->WriteString(flareDecl != nullptr ? flareDecl->GetName() : "");
   file->Write(&isSunFlare, 1);
@@ -680,7 +680,7 @@ bool idRenderModelFlare::Load(idFile* file) {
   return file->Read(&isSunFlare, 1) != 0;
 }
 
-void idRenderModelFlareOcclusionQuad::Save(idFile* file) {
+void idRenderModelFlareOcclusionQuad::Save(idFile* file) const {
   idRenderModel::Save(file);
   file->Write(&isSunFlare, 1);
   file->WriteBigArray(&currentIdx, 1);

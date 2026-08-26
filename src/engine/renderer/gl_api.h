@@ -107,7 +107,7 @@ using glDrawElementsBaseVertexProc_t = void (*)(unsigned int mode, int count,
                                                 const void* indices,
                                                 int baseVertex);
 using glGetMultiQueryObjectuivAMDProc_t = void (*)(unsigned int* ids,
-                                                   int count,
+                                                   unsigned int count,
                                                    unsigned int parameter,
                                                    unsigned int* values);
 using glCreateShaderProc_t = unsigned int (*)(unsigned int type);
@@ -309,7 +309,7 @@ extern glDebugMessageControlProc_t _glewDebugMessageControlARB;
 extern unsigned char _GLEW_ATI_meminfo;
 extern unsigned char _GLEW_NVX_gpu_memory_info;
 
-void qglGetMultiQueryObjectuivAMD(unsigned int* ids, int count,
+void qglGetMultiQueryObjectuivAMD(unsigned int* ids, unsigned int count,
                                   unsigned int parameter,
                                   unsigned int* values);
 unsigned int GL_GetError();

@@ -37,9 +37,14 @@ public:
     cvarCallback_t* next;
   };
   idCVar();
-  idCVar(const char* name, const char* value, int flags, const char* description,
-         float minimum = 0.0f, float maximum = 0.0f, const char** values = nullptr,
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, argCompletion_t completion = nullptr);
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, float minimum, float maximum,
          argCompletion_t completion = nullptr);
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, const char** values,
+         argCompletion_t completion);
   void Init(const char* name, const char* value, int flags, const char* description,
             float minimum = 0.0f, float maximum = 0.0f, const char** values = nullptr,
             argCompletion_t completion = nullptr);
@@ -69,6 +74,39 @@ public:
   cvarCallback_t* onChange{};
   idCVar* next{};
 };
+
+class idScopeCVar {
+public:
+  idScopeCVar(idCVar* cvar, const char* newValue);
+  idScopeCVar(idCVar* cvar, bool newValue);
+  idScopeCVar(idCVar* cvar, int newValue);
+  idScopeCVar(idCVar* cvar, float newValue);
+  ~idScopeCVar();
+
+  idScopeCVar(const idScopeCVar&) = delete;
+  idScopeCVar& operator=(const idScopeCVar&) = delete;
+
+  idCVar* cvar{};
+  int cvarType{};
+  int oldInt{};
+  float oldFloat{};
+  bool oldBool{};
+  idStr oldStr;
+};
+
+static_assert(sizeof(idScopeCVar) == 0x40, "idScopeCVar ABI drift");
+static_assert(offsetof(idScopeCVar, cvar) == 0x00,
+              "idScopeCVar::cvar ABI drift");
+static_assert(offsetof(idScopeCVar, cvarType) == 0x08,
+              "idScopeCVar::cvarType ABI drift");
+static_assert(offsetof(idScopeCVar, oldInt) == 0x0C,
+              "idScopeCVar::oldInt ABI drift");
+static_assert(offsetof(idScopeCVar, oldFloat) == 0x10,
+              "idScopeCVar::oldFloat ABI drift");
+static_assert(offsetof(idScopeCVar, oldBool) == 0x14,
+              "idScopeCVar::oldBool ABI drift");
+static_assert(offsetof(idScopeCVar, oldStr) == 0x18,
+              "idScopeCVar::oldStr ABI drift");
 
 class idCVarSystem {
 public:

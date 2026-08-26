@@ -42,7 +42,8 @@ public:
   idStr strVal;
 };
 
-struct idScriptAction {
+class idScriptAction {
+public:
   idStr name;
   idList<idAIActionParm, 5> parameters;
 };

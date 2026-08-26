@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
-#include <vector>
 
 idTypedResourceList<idMorphVertices> idMorphVertices::resourceList(
     "morphVertices");
@@ -21,7 +20,6 @@ namespace {
 
 constexpr std::uint32_t kMorphFileMagic = 1297106952u;
 constexpr std::uint32_t kMorphFileMagicBig = 138956877u;
-constexpr float kSkinMeshThreshold = 0.5f;
 
 idMorphResourceLookup resourceLookup = nullptr;
 idMorphJointResolver jointResolver = nullptr;
@@ -70,27 +68,6 @@ void WriteBigVec3(idFile& file, const idVec3& value) {
   WriteBigFloat(file, value.x);
   WriteBigFloat(file, value.y);
   WriteBigFloat(file, value.z);
-}
-
-std::size_t ReadString(idFile& file, idStr& value) {
-  int length = 0;
-  std::size_t total = file.Read(&length, sizeof(length));
-  if (length <= 0) {
-    value.Empty();
-    return total;
-  }
-  std::vector<char> buffer(static_cast<std::size_t>(length) + 1, '\0');
-  total += file.Read(buffer.data(), static_cast<std::size_t>(length));
-  value = buffer.data();
-  return total;
-}
-
-std::size_t WriteString(idFile& file, const char* value) {
-  const int length = value != nullptr ? static_cast<int>(std::strlen(value)) : 0;
-  std::size_t total = file.Write(&length, sizeof(length));
-  if (length != 0)
-    total += file.Write(value, static_cast<std::size_t>(length));
-  return total;
 }
 
 idStr BinaryName(const char* modelName) {
@@ -146,29 +123,33 @@ void SetMorphForceGeneration(bool value) { forceGeneration = value; }
 
 template <>
 std::size_t idFile::ReadBig<idMat3>(idMat3& value) {
-  const std::size_t start = static_cast<std::size_t>(Tell());
-  for (idVec3& row : value.mat)
-    ReadBigVec3(*this, row);
-  return static_cast<std::size_t>(Tell()) - start;
+  const std::size_t result = Read(&value, sizeof(value));
+  auto* words = reinterpret_cast<std::uint32_t*>(&value);
+  for (std::size_t index = 0; index != sizeof(value) / sizeof(*words); ++index)
+    words[index] = ByteSwap32(words[index]);
+  return result;
 }
 
 template <>
 std::size_t idFile::WriteBig<idMat3>(const idMat3& value) {
-  const std::size_t start = static_cast<std::size_t>(Tell());
-  for (const idVec3& row : value.mat)
-    WriteBigVec3(*this, row);
-  return static_cast<std::size_t>(Tell()) - start;
+  idMat3 swapped = value;
+  auto* words = reinterpret_cast<std::uint32_t*>(&swapped);
+  for (std::size_t index = 0; index != sizeof(swapped) / sizeof(*words);
+       ++index)
+    words[index] = ByteSwap32(words[index]);
+  return Write(&swapped, sizeof(swapped));
 }
 
 bool morphShape_t::SkinMeshMorphPoint(const idVec3& inPoint,
                                       idVec3& outPoint) {
+  static float thresh = 0.5f;
   outPoint = {};
   float nearestDistance = 1.0e30f;
   int nearest = -1;
   for (int index = 0; index != points.num; ++index) {
     const idVec3 delta = points.list[index] - inPoint;
     const float distance = delta.LengthSqr();
-    if (distance < kSkinMeshThreshold && distance < nearestDistance) {
+    if (distance < thresh && distance < nearestDistance) {
       nearestDistance = distance;
       nearest = index;
     }
@@ -244,9 +225,7 @@ bool morphShape_t::MakeEllipsoid(idTriangles* morphTris,
       nearestVector.LengthSqr(), idMath::FLT_SMALLEST_NON_DENORMAL));
 
   float yRadius = -1.0f;
-  const idDrawVert* radiusVertices = morphTris->verts != nullptr
-                                         ? morphTris->verts
-                                         : morphTriVerts;
+  const idDrawVert* radiusVertices = morphTris->verts;
   for (int index = 0; index != morphTris->numVerts; ++index)
     yRadius = std::max(yRadius, yAxis * (radiusVertices[index].xyz - center));
   yAxis *= 1.0f / yRadius;
@@ -266,19 +245,16 @@ morphShape_t::morphShape_t(idTriangles* morphTris,
                            const idDrawVert* morphTriVerts,
                            const char* materialName, const idDecl* decl) {
   points.ClearFree();
-  if (materialName != nullptr && std::strstr(materialName, "skinmesh") != nullptr) {
+  if (std::strstr(materialName, "skinmesh") != nullptr) {
     if (MakeSkinMesh(morphTris, morphTriVerts, decl))
       type = SKIN_MESH;
-  } else if (materialName != nullptr &&
-             std::strstr(materialName, "clipsphere") != nullptr) {
+  } else if (std::strstr(materialName, "clipsphere") != nullptr) {
     if (MakeSphere(morphTris, morphTriVerts, decl))
       type = CLIP_SPHERE;
-  } else if (materialName != nullptr &&
-             std::strstr(materialName, "skinsphere") != nullptr) {
+  } else if (std::strstr(materialName, "skinsphere") != nullptr) {
     if (MakeSphere(morphTris, morphTriVerts, decl))
       type = SKIN_SPHERE;
-  } else if (materialName != nullptr &&
-             std::strstr(materialName, "clipellipsoid") != nullptr &&
+  } else if (std::strstr(materialName, "clipellipsoid") != nullptr &&
              MakeEllipsoid(morphTris, morphTriVerts, decl)) {
     type = CLIP_ELLIPSOID;
   }
@@ -286,8 +262,7 @@ morphShape_t::morphShape_t(idTriangles* morphTris,
 
 morphShape_t::~morphShape_t() = default;
 
-idMorphVertices::idMorphVertices()
-    : timestampDecl(0xffffffffu), timestampModel(0xffffffffu) {}
+idMorphVertices::idMorphVertices() = default;
 
 idMorphVertices::~idMorphVertices() = default;
 
@@ -309,88 +284,6 @@ int idTypedResourceList<idMorphVertices>::AllocSize() const {
   return 80;
 }
 
-bool idMorphVertices::ReadBinaryStream(idFile& file, idStr* outputMD6Name,
-                                       idStr* outputMD6FileName) {
-  std::uint32_t magic = 0;
-  if (file.Read(&magic, sizeof(magic)) != sizeof(magic) ||
-      ByteSwap32(magic) != kMorphFileMagicBig)
-    return false;
-  ReadBig32(file, timestampDecl);
-  ReadBig32(file, timestampModel);
-  idStr md6Name;
-  idStr md6FileName;
-  ReadString(file, md6Name);
-  ReadString(file, md6FileName);
-  if (outputMD6Name != nullptr)
-    *outputMD6Name = md6Name;
-  if (outputMD6FileName != nullptr)
-    *outputMD6FileName = md6FileName;
-  std::uint32_t setCount = 0;
-  ReadBig32(file, setCount);
-  morphVertSet.SetNum(static_cast<int>(setCount));
-  for (int setIndex = 0; setIndex != morphVertSet.num; ++setIndex) {
-    idMD6MorphSet& set = morphVertSet[setIndex];
-    std::uint32_t value = 0;
-    ReadBig32(file, value);
-    set.meshIndex = static_cast<int>(value);
-    ReadBig32(file, value);
-    set.groupIndex = static_cast<int>(value);
-    ReadBig32(file, value);
-    set.type = static_cast<morphDataType_t>(value);
-    ReadBigVec3(file, set.pos);
-    ReadBigVec3(file, set.size);
-    file.ReadBig(set.axis);
-    ReadBig32(file, value);
-    set.indices.SetNum(static_cast<int>(value));
-    for (int index = 0; index != set.indices.num; ++index) {
-      std::uint16_t item = 0;
-      file.Read(&item, sizeof(item));
-      set.indices[index] = ByteSwap16(item);
-    }
-    ReadBig32(file, value);
-    set.direction.SetNum(static_cast<int>(value));
-    if (set.direction.num != 0)
-      file.Read(set.direction.list,
-                static_cast<std::size_t>(set.direction.num));
-  }
-  file.Read(&magic, sizeof(magic));
-  return true;
-}
-
-bool idMorphVertices::WriteBinaryStream(idFile& file, const char* md6Name,
-                                        const char* md6FileName) const {
-  file.Write(&kMorphFileMagic, sizeof(kMorphFileMagic));
-  WriteBig32(file, timestampDecl);
-  WriteBig32(file, timestampModel);
-  WriteString(file, md6Name != nullptr ? md6Name
-                                      : (name.str != nullptr ? name.str : ""));
-  WriteString(file,
-              md6FileName != nullptr
-                  ? md6FileName
-                  : (name.str != nullptr ? name.str : ""));
-  WriteBig32(file, static_cast<std::uint32_t>(morphVertSet.num));
-  for (int setIndex = 0; setIndex != morphVertSet.num; ++setIndex) {
-    const idMD6MorphSet& set = morphVertSet[setIndex];
-    WriteBig32(file, static_cast<std::uint32_t>(set.meshIndex));
-    WriteBig32(file, static_cast<std::uint32_t>(set.groupIndex));
-    WriteBig32(file, static_cast<std::uint32_t>(set.type));
-    WriteBigVec3(file, set.pos);
-    WriteBigVec3(file, set.size);
-    file.WriteBig(set.axis);
-    WriteBig32(file, static_cast<std::uint32_t>(set.indices.num));
-    for (int index = 0; index != set.indices.num; ++index) {
-      const std::uint16_t item = ByteSwap16(set.indices[index]);
-      file.Write(&item, sizeof(item));
-    }
-    WriteBig32(file, static_cast<std::uint32_t>(set.direction.num));
-    if (set.direction.num != 0)
-      file.Write(set.direction.list,
-                 static_cast<std::size_t>(set.direction.num));
-  }
-  file.Write(&kMorphFileMagic, sizeof(kMorphFileMagic));
-  return true;
-}
-
 bool idMorphVertices::Load_Binary() {
   idMorphResourceContext context;
   if (!LookupContext(*this, context)) {
@@ -409,10 +302,16 @@ bool idMorphVertices::Load_Binary() {
   idFileLocal file(fileSystem->OpenFileRead(path.data));
   if (file.file == nullptr || file->Length() <= 0)
     return false;
+  std::uint32_t magic = 0;
+  if (file->Read(&magic, sizeof(magic)) != sizeof(magic) ||
+      ByteSwap32(magic) != kMorphFileMagicBig)
+    return false;
+  ReadBig32(*file.file, timestampDecl);
+  ReadBig32(*file.file, timestampModel);
   idStr storedName;
   idStr storedFileName;
-  if (!ReadBinaryStream(*file.file, &storedName, &storedFileName))
-    return false;
+  file->ReadString(storedName);
+  file->ReadString(storedFileName);
   const char* expectedFileName =
       context.declFileName != nullptr ? context.declFileName : "";
   if (storedName.Icmp(context.decl->name.str) != 0 ||
@@ -422,6 +321,35 @@ bool idMorphVertices::Load_Binary() {
         "file '%s' onto md6Def '%s'",
         name.str, storedName.data, storedFileName.data, expectedFileName);
   }
+  std::uint32_t setCount = 0;
+  ReadBig32(*file.file, setCount);
+  morphVertSet.SetNum(static_cast<int>(setCount));
+  for (int setIndex = 0; setIndex != morphVertSet.num; ++setIndex) {
+    idMD6MorphSet& set = morphVertSet[setIndex];
+    std::uint32_t value = 0;
+    ReadBig32(*file.file, value);
+    set.meshIndex = static_cast<int>(value);
+    ReadBig32(*file.file, value);
+    set.groupIndex = static_cast<int>(value);
+    ReadBig32(*file.file, value);
+    set.type = static_cast<morphDataType_t>(value);
+    ReadBigVec3(*file.file, set.pos);
+    ReadBigVec3(*file.file, set.size);
+    file->ReadBig(set.axis);
+    ReadBig32(*file.file, value);
+    set.indices.SetNum(static_cast<int>(value));
+    for (int index = 0; index != set.indices.num; ++index) {
+      std::uint16_t item = 0;
+      file->Read(&item, sizeof(item));
+      set.indices[index] = ByteSwap16(item);
+    }
+    ReadBig32(*file.file, value);
+    set.direction.SetNum(static_cast<int>(value));
+    if (set.direction.num != 0)
+      file->Read(set.direction.list,
+                 static_cast<std::size_t>(set.direction.num));
+  }
+  file->Read(&magic, sizeof(magic));
   return true;
 }
 
@@ -455,9 +383,33 @@ bool idMorphVertices::Write_Binary() {
   if (context.morphDefs != nullptr)
     idMorphVertGen::GenerateMorphVerts(context.decl, *context.morphDefs,
                                        *this);
-  return WriteBinaryStream(
-      *file.file, context.decl->name.str,
-      context.declFileName != nullptr ? context.declFileName : "");
+  file->Write(&kMorphFileMagic, sizeof(kMorphFileMagic));
+  WriteBig32(*file.file, timestampDecl);
+  WriteBig32(*file.file, timestampModel);
+  file->WriteString(context.decl->name.str);
+  file->WriteString(context.declFileName != nullptr ? context.declFileName
+                                                    : "");
+  WriteBig32(*file.file, static_cast<std::uint32_t>(morphVertSet.num));
+  for (int setIndex = 0; setIndex != morphVertSet.num; ++setIndex) {
+    const idMD6MorphSet& set = morphVertSet[setIndex];
+    WriteBig32(*file.file, static_cast<std::uint32_t>(set.meshIndex));
+    WriteBig32(*file.file, static_cast<std::uint32_t>(set.groupIndex));
+    WriteBig32(*file.file, static_cast<std::uint32_t>(set.type));
+    WriteBigVec3(*file.file, set.pos);
+    WriteBigVec3(*file.file, set.size);
+    file->WriteBig(set.axis);
+    WriteBig32(*file.file, static_cast<std::uint32_t>(set.indices.num));
+    for (int index = 0; index != set.indices.num; ++index) {
+      const std::uint16_t item = ByteSwap16(set.indices[index]);
+      file->Write(&item, sizeof(item));
+    }
+    WriteBig32(*file.file, static_cast<std::uint32_t>(set.direction.num));
+    if (set.direction.num != 0)
+      file->Write(set.direction.list,
+                  static_cast<std::size_t>(set.direction.num));
+  }
+  file->Write(&kMorphFileMagic, sizeof(kMorphFileMagic));
+  return true;
 }
 
 bool idMorphVertices::ReloadIfStale() {
@@ -570,35 +522,39 @@ void idMorphVertGen::ProcessModel(const idMD6Model& model,
 
 void idMorphVertGen::OptimizeVertices(idMorphVertices& outputVertices,
                                       idMorphVertices& inputVertices) {
-  std::vector<bool> processed(static_cast<std::size_t>(inputVertices.morphVertSet.num));
-  std::vector<bool> included(65536);
+  idList<bool, 5> included;
+  included.SetNum(65536);
+  idList<bool, 5> processed;
+  processed.SetNum(inputVertices.morphVertSet.num);
+  if (processed.num != 0)
+    std::memset(processed.list, 0,
+                static_cast<std::size_t>(processed.num));
   for (int first = 0; first != inputVertices.morphVertSet.num; ++first) {
-    if (processed[static_cast<std::size_t>(first)])
+    if (processed[first])
       continue;
     const idMD6MorphSet& source = inputVertices.morphVertSet[first];
-    std::fill(included.begin(), included.end(), false);
+    std::memset(included.list, 0, 65536);
     for (int candidate = first; candidate != inputVertices.morphVertSet.num;
          ++candidate) {
       const idMD6MorphSet& other = inputVertices.morphVertSet[candidate];
       if (other.meshIndex != source.meshIndex ||
           other.groupIndex != source.groupIndex)
         continue;
-      processed[static_cast<std::size_t>(candidate)] = true;
+      processed[candidate] = true;
       for (int index = 0; index != other.indices.num; ++index)
         included[other.indices[index]] = true;
     }
-    idMD6MorphSet merged;
-    merged.meshIndex = source.meshIndex;
-    merged.groupIndex = source.groupIndex;
-    merged.type = source.type;
-    merged.pos = source.pos;
-    merged.size = source.size;
-    merged.axis = source.axis;
+    idMD6MorphSet* merged = &outputVertices.morphVertSet.Alloc();
+    merged->meshIndex = source.meshIndex;
+    merged->groupIndex = source.groupIndex;
+    merged->type = source.type;
+    merged->pos = source.pos;
+    merged->size = source.size;
+    merged->axis = source.axis;
     for (std::uint32_t index = 0; index != 65536; ++index) {
-      if (included[index])
-        merged.indices.Append(static_cast<std::uint16_t>(index));
+      if (included[static_cast<int>(index)])
+        merged->indices.Append(static_cast<std::uint16_t>(index));
     }
-    outputVertices.morphVertSet.Append(merged);
   }
 }
 
@@ -665,7 +621,7 @@ void idMorphVertGen::GenerateMorphVertsFromFile(
     morphShape_t shape(const_cast<idTriangles*>(&projection), projectionVertices,
                        surface.material->name.str, nullptr);
     if (shape.type == morphShape_t::CLIP_SPHERE) {
-      idMD6MorphSet* set = vertices.morphVertSet.Alloc();
+      idMD6MorphSet* set = &vertices.morphVertSet.Alloc();
       set->type = MORPHDATA_CLIPSPHERE;
       set->groupIndex = surface.materialNum;
       set->meshIndex = -1;
@@ -675,7 +631,7 @@ void idMorphVertGen::GenerateMorphVertsFromFile(
       continue;
     }
     if (shape.type == morphShape_t::CLIP_ELLIPSOID) {
-      idMD6MorphSet* set = vertices.morphVertSet.Alloc();
+      idMD6MorphSet* set = &vertices.morphVertSet.Alloc();
       set->type = MORPHDATA_CLIPELLIPSOID;
       set->groupIndex = surface.materialNum;
       set->meshIndex = -1;
@@ -716,11 +672,14 @@ void idMorphVertGen::GenerateMorphVertsFromFile(
       for (int vertex = 0; vertex != target.numVerts; ++vertex) {
         idVec3 direction{};
         bool selected = false;
-        if (shape.type == morphShape_t::SKIN_MESH)
-          selected = shape.SkinMeshMorphPoint(targetVertices[vertex].xyz, direction);
-        else if (shape.type == morphShape_t::SKIN_SPHERE)
+        if (shape.type == morphShape_t::SKIN_MESH) {
+          selected =
+              shape.SkinMeshMorphPoint(targetVertices[vertex].xyz, direction);
+        } else if (shape.type == morphShape_t::SKIN_SPHERE) {
+          direction = {};
           selected = (targetVertices[vertex].xyz - shape.center).LengthSqr() <=
                      shape.radiusSqr;
+        }
         if (!selected)
           continue;
         if (direction.LengthSqr() != 0.0f) {

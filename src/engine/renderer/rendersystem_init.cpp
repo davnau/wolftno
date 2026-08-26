@@ -17,10 +17,12 @@
 #include "engine/renderer/triangles.h"
 #include "engine/renderer/virtualtexture.h"
 #include "engine/sys/sys_public.h"
+#include "shared/idlib/containers/heaparray.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 #include "shared/idlib/lib.h"
 #include "shared/idlib/parallelism/thread.h"
 #include "shared/idlib/sys/sys_alloc.h"
+#include "shared/idlib/text/str.h"
 
 #include <algorithm>
 #include <array>
@@ -38,21 +40,29 @@ extern idCVar r_brightness;
 idCVar r_mip3Border("r_mip3Border", "1", 65537,
                     "use clampToBorder for the mip3 buffers");
 
+__forceinline void* operator new(std::size_t size, memTag_t tag) noexcept {
+  return idMem::Singleton()->AllocWithLocation(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(95) : tag", size, tag,
+      false, ALIGN_16, HEAP_DEFAULTHEAP);
+}
+
+__forceinline void operator delete(void* pointer, memTag_t) noexcept {
+  idMem::Singleton()->Free(pointer, ALIGN_16);
+}
+
 namespace {
 
 #if defined(WOLF_RENDERER_RENDERSYSTEM_INIT_TEST_ACCESS)
 RenderSystemInitTestHooks testHooks{};
 #endif
 
-template <typename T> T* AllocateRendererObject() {
-  void* const storage = idMem::Singleton()->AllocWithLocation(
-      "w:\\build\\tech5\\shared\\idlib\\Heap.h(95) : tag", sizeof(T),
-      TAG_RENDERER, false, ALIGN_16, HEAP_DEFAULTHEAP);
-  return storage != nullptr ? new (storage) T() : nullptr;
+template <typename T> __forceinline T* AllocateRendererObject() {
+  return new (TAG_RENDERER) T();
 }
 
-idRenderDestination* DestinationForImages(idImage* color, idImage* depth,
-                                          idImage* stencil = nullptr) {
+__forceinline idRenderDestination*
+DestinationForImages(idImage* color, idImage* depth,
+                     idImage* stencil = nullptr) {
   idRenderDestination* const destination =
       AllocateRendererObject<idRenderDestination>();
   if (destination != nullptr)
@@ -60,12 +70,12 @@ idRenderDestination* DestinationForImages(idImage* color, idImage* depth,
   return destination;
 }
 
-std::uint8_t EncodeDirection(float value) {
+__forceinline std::uint8_t EncodeDirection(float value) {
   const int encoded = static_cast<int>((value + 1.0F) * 127.5F + 0.5F);
   return static_cast<std::uint8_t>(std::clamp(encoded, 0, 255));
 }
 
-void SetSquareGeometry(idTriangles* triangles, bool guiSquare) {
+__forceinline void SetSquareGeometry(idTriangles* triangles, bool guiSquare) {
   triangles->numVerts = 4;
   triangles->numIndexes = 6;
   idTriangles::AllocStaticTriSurfVerts(triangles, triangles->numVerts);
@@ -214,7 +224,8 @@ constexpr DefaultRenderParm defaultRenderParms[]{
 };
 
 template <typename T>
-T* FindDecl(const char* name, bool makeDefault = true, bool remap = true) {
+__forceinline T* FindDecl(const char* name, bool makeDefault = true,
+                          bool remap = true) {
 #if defined(WOLF_RENDERER_RENDERSYSTEM_INIT_TEST_ACCESS)
   renderSystemInitDeclType_t type = RSID_TABLE;
   if constexpr (std::is_same_v<T, idDeclRenderParm>) {
@@ -378,7 +389,8 @@ static_assert(std::size(materialBindings) == 10);
 static_assert(std::size(earlyProgramBindings) == 32);
 static_assert(std::size(lateProgramBindings) == 16);
 
-idImageOpts BaseTargetOptions(textureFormat_t format, int width, int height) {
+__forceinline idImageOpts BaseTargetOptions(textureFormat_t format, int width,
+                                             int height) {
   idImageOpts opts{};
   opts.textureType = TT_2D;
   opts.format = format;
@@ -404,7 +416,7 @@ void RenderSystemInitTestAccess::SetHooks(
 }
 #endif
 
-void idRenderSystemLocal::InitShadowMapTextures() {
+__declspec(noinline) void idRenderSystemLocal::InitShadowMapTextures() {
   if (renderDestShadow != nullptr)
     return;
 
@@ -428,7 +440,7 @@ void idRenderSystemLocal::InitShadowMapTextures() {
   renderDestShadow = DestinationForImages(nullptr, image);
 }
 
-void idRenderSystemLocal::InitInGameGuiRenderTexture() {
+__declspec(noinline) void idRenderSystemLocal::InitInGameGuiRenderTexture() {
   idImageOpts opts{};
   opts.textureType = TT_2D;
   opts.format = FMT_RGBA8;
@@ -439,7 +451,7 @@ void idRenderSystemLocal::InitInGameGuiRenderTexture() {
   opts.packedTail = true;
   opts.textureBindType = TB_RENDER_TARGET;
   opts.textureUsage = TU_DEFAULT;
-  opts.textureOptions = TO_NONE;
+  opts.textureOptions = TO_GENERATE_MIPS;
   opts.sampler.filter = TF_DEFAULT;
   opts.sampler.repeat = TR_CLAMP;
   opts.sampler.lodBias = -1.0F;
@@ -448,14 +460,14 @@ void idRenderSystemLocal::InitInGameGuiRenderTexture() {
   renderDestGui = DestinationForImages(imgGui, nullptr);
 }
 
-void idRenderSystemLocal::InitUnitSquare() {
+__declspec(noinline) void idRenderSystemLocal::InitUnitSquare() {
   unitSquareTris = AllocateRendererObject<idTriangles>();
   SetSquareGeometry(unitSquareTris, false);
   unitSquareGuiTris = AllocateRendererObject<idTriangles>();
   SetSquareGeometry(unitSquareGuiTris, true);
 }
 
-void idRenderSystemLocal::Shutdown() {
+__declspec(noinline) void idRenderSystemLocal::Shutdown() {
   common->SetRefreshOnPrint(false);
   idLib::Printf("idRenderSystem::Shutdown()\n");
   idRenderModelGui::Shutdown();
@@ -480,7 +492,7 @@ void idRenderSystemLocal::Shutdown() {
   ShutdownSystem();
 }
 
-void idRenderSystemLocal::Init2() {
+__declspec(noinline) void idRenderSystemLocal::Init2() {
   idLib::Printf("------- Initializing renderSystem media --------\n");
   InitCommands();
 
@@ -538,7 +550,7 @@ void idRenderSystemLocal::Init2() {
   idLib::Printf("--------------------------------------\n");
 }
 
-void idRenderSystemLocal::InitRenderTextures() {
+__declspec(noinline) void idRenderSystemLocal::InitRenderTextures() {
   idImageOpts opts{};
   opts.textureType = TT_CUBIC;
   opts.format = FMT_RGBA8;
@@ -621,9 +633,8 @@ void idRenderSystemLocal::InitRenderTextures() {
     opts.sampler.filter = TF_TRILINEAR;
     opts.sampler.repeat = TR_CLAMP;
     opts.sampler.lodMaxClamp = 9.0F;
-    idStr name;
-    name.Format("_viewColor%d", index);
-    imgViewColor[index] = globalImages->ScratchImage(name.data, opts);
+    va name("_viewColor%d", index);
+    imgViewColor[index] = globalImages->ScratchImage(name.buffer, opts);
     renderDestViewColor[index] =
         DestinationForImages(imgViewColor[index], nullptr);
   }
@@ -699,30 +710,25 @@ void idRenderSystemLocal::InitRenderTextures() {
   opts.sampler.repeat = TR_CLAMP;
   opts.sampler.lodMaxClamp = 0.0F;
   for (int index = 0; index < 2; ++index) {
-    idStr name;
-    name.Format("_hazeFlare%d", index);
-    imgHazeFlare[index] = globalImages->ScratchImage(name.data, opts);
+    va name("_hazeFlare%d", index);
+    imgHazeFlare[index] = globalImages->ScratchImage(name.buffer, opts);
     renderDestHazeFlare[index] =
         DestinationForImages(imgHazeFlare[index], nullptr);
   }
 
   for (idImage* image : imgViewColor) {
-    const std::size_t byteCount = static_cast<std::size_t>(image->opts.width) *
-                                  image->opts.height *
-                                  image->BitsForInternalFormat() / 8;
-    auto* const black = static_cast<std::uint8_t*>(
-        idMem::Singleton()->AllocWithLocation(
-            "w:\\build\\tech5\\shared\\idlib\\containers/Array.h(105) : TAG_TEMP",
-            byteCount, TAG_TEMP, false, ALIGN_16, HEAP_DEFAULTHEAP));
-    std::memset(black, 0, byteCount);
+    const unsigned int byteCount = static_cast<unsigned int>(
+        image->opts.width * image->opts.height *
+        image->BitsForInternalFormat() / 8);
+    idHeapArray<std::uint8_t> black;
+    black.Alloc(byteCount);
+    std::memset(black.buffer, 0, byteCount);
     image->SubImageUpload(0, 0, 0, 0, image->opts.width,
-                          image->opts.height, black, 0);
-    if (black != nullptr)
-      idMem::Singleton()->Free(black, ALIGN_16);
+                          image->opts.height, black.buffer, 0);
   }
 }
 
-void idRenderSystemLocal::Init() {
+__declspec(noinline) void idRenderSystemLocal::Init() {
   idLib::Printf("------- Initializing renderSystem --------\n");
   renderFlags = RENDERFLAG_BLOCKLOADINGICON;
   if (!idLib::headless) {

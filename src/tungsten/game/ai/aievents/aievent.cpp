@@ -9,15 +9,6 @@ int idAIEvent::numEvents = 0;
 // DIA: idTrajectory::~idTrajectory
 idTrajectory::~idTrajectory() = default;
 
-// DIA: idDynamicCover::AppendUsableCover
-bool idDynamicCover::AppendUsableCover(int coverIndex) {
-  if (coverIndex < 0) return false;
-  for (int i = 0; i < usableCover.Num(); ++i)
-    if (usableCover[i] == coverIndex) return false;
-  usableCover.Append(coverIndex);
-  return true;
-}
-
 // DIA: idAIEvent::GetIntensity
 float idAIEvent::GetIntensity(const idEntity* entity) const {
   return InternalGetIntensity(entity);
@@ -50,8 +41,10 @@ int idAIEvent::GetInstigatorStimulus() const {
 }
 
 // DIA: idAIEvent::GetEventClass
-int idAIEvent::GetEventClass() const {
-  return eventDecl != nullptr ? eventDecl->eventClass : 0;
+idAIEvent::aiEventClass_t idAIEvent::GetEventClass() const {
+  return static_cast<aiEventClass_t>(eventDecl != nullptr
+                                         ? eventDecl->eventClass
+                                         : 0);
 }
 
 // DIA: idAIEvent::UpdateAttached

@@ -299,7 +299,8 @@ eventVoid* idAI2::Event_SetTeslaCooldown(eventVoid* result, float duration) {
 
 // DIA: idAI2::Event_SetFOV
 eventVoid* idAI2::Event_SetFOV(eventVoid* result, float fov) {
-  aiEventState.fieldOfView = std::clamp(fov, 0.0F, 360.0F);
+  SetFOV(idTypesafeNumber<float, DegreesUnique_t>(
+      std::clamp(fov, 0.0F, 360.0F)));
   return RecordGameEvent("Event_SetFOV", result);
 }
 

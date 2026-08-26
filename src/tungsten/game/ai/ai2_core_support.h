@@ -6,6 +6,7 @@
 #include "tungsten/game/ai/aimemory.h"
 #include "tungsten/game/ai/aimovestate.h"
 #include "tungsten/game/ai/rotationtracker.h"
+#include "tungsten/game/ai/fsm/fsmlog.h"
 #include "tungsten/game/clientgame/presentable/presentable.h"
 #include "engine/decls/animwebs/blendparms.h"
 #include "shared/idlib/lib.h"
@@ -25,6 +26,8 @@ struct idHandle {
 
 class idAnimator_Channel {
 public:
+  void SetEnabled(bool value) { enabled = value; }
+  bool IsEnabledForTest() const { return enabled; }
   void InitializeForAI(const char* channelName, int weightGroupValue,
                        int filterGroupValue, float alphaValue,
                        unsigned int flagsValue) {
@@ -72,6 +75,7 @@ public:
   }
 
 private:
+  bool enabled{true};
   idStr initializedName;
   int initializeCount{0};
   int initializedWeightGroup{0};
@@ -88,6 +92,8 @@ private:
   float lastWeight{0.0F};
 };
 
+class idAnimator_Pain : public idAnimator_Channel {};
+
 class idAction_MoveToPoint {
 public:
   ~idAction_MoveToPoint();
@@ -95,6 +101,7 @@ public:
 
 class idAIActionManager {
 public:
+  idAIActionManager();
   ~idAIActionManager();
   void Init(idAI2* value) {
     owner = value;
@@ -102,10 +109,13 @@ public:
   }
   idAI2* GetOwnerForTest() const { return owner; }
   int GetInitCountForTest() const { return initCount; }
+  idAIActionFSM* GetActionFSM();
+  const idAIActionFSM* GetActionFSM() const;
 
 private:
   idAI2* owner{nullptr};
   int initCount{0};
+  std::unique_ptr<idAIActionFSM> actionFSM;
 };
 
 class idAIDeathInfo {
@@ -168,9 +178,9 @@ public:
     ++checkForGoreQueryCount;
     return checkForGoreResult;
   }
-  bool CheckForGoreByName(const idAtomicString* goreName) const {
-    if (goreName == nullptr || goreName->str == nullptr) return false;
-    return std::find(goreNames.begin(), goreNames.end(), goreName->str) !=
+  bool CheckForGoreByName(const idAtomicString& goreName) const {
+    if (goreName.str == nullptr) return false;
+    return std::find(goreNames.begin(), goreNames.end(), goreName.str) !=
            goreNames.end();
   }
   void SetGoreAvailable(const char* goreName, bool available) {
@@ -211,57 +221,6 @@ private:
   int updateGoreDeathsCount{0};
 };
 
-class idAIHealth {
-public:
-  void ClearDeadFlag() {
-    dead = false;
-    ++clearDeadFlagCount;
-  }
-  void SetCurBaseHealth_Impl(float health) {
-    currentBaseHealth = health;
-    ++setCurBaseHealthCount;
-  }
-  float GetBaseHealthRatio_Impl() const {
-    return maximumBaseHealth > 0.0F
-               ? currentBaseHealth / maximumBaseHealth
-               : 0.0F;
-  }
-  float GetMaximumBaseHealthForTest() const { return maximumBaseHealth; }
-  void SetMaximumBaseHealthForTest(float health) {
-    maximumBaseHealth = health;
-  }
-  void Kill_Impl(float killingBlowDamage = 0.0F) {
-    currentBaseHealth = 0.0F;
-    lastKillingBlowDamage = killingBlowDamage;
-  }
-  void SetDeadFlag() { dead = true; }
-
-  float GetTotalCurHealth_Impl() const { return currentBaseHealth; }
-  float GetTotalMaxHealth_Impl() const { return maximumBaseHealth; }
-
-  bool IsDead_Impl() const { return dead; }
-  float GetCurBaseHealthForTest() const { return currentBaseHealth; }
-  float GetLastKillingBlowDamageForTest() const {
-    return lastKillingBlowDamage;
-  }
-  int GetClearDeadFlagCountForTest() const { return clearDeadFlagCount; }
-  int GetSetCurBaseHealthCountForTest() const {
-    return setCurBaseHealthCount;
-  }
-  void ResetCallCountsForTest() {
-    clearDeadFlagCount = 0;
-    setCurBaseHealthCount = 0;
-  }
-
-private:
-  float currentBaseHealth{0.0F};
-  float maximumBaseHealth{100.0F};
-  float lastKillingBlowDamage{0.0F};
-  bool dead{false};
-  int clearDeadFlagCount{0};
-  int setCurBaseHealthCount{0};
-};
-
 class idComponentActionScript {
 public:
   void Update() { ++updateCount; }
@@ -276,6 +235,7 @@ public:
     return running;
   }
   void SetRunningForTest(bool value) { running = value; }
+  bool IsRunningForTest() const { return running; }
   int GetRunningQueryCountForTest() const { return runningQueryCount; }
   const idEntity* GetLastRunningQueryOwnerForTest() const {
     return lastRunningQueryOwner;
@@ -350,6 +310,7 @@ struct idAnimWebRoute {
 
 class idAnimator_AnimWeb {
 public:
+  void SetEnabledForAI(bool value) { enabled = value; }
   void InitializeForAI(idAI2* ownerValue, const char* animatorName,
                        const idDeclAnimWeb* declarationValue,
                        const char* initialSubWeb, const char* initialState,
@@ -735,7 +696,7 @@ class idDeclVoiceOver;
 class idSpawnFocusWithRequirement {
 public:
   idSpawnFocusWithRequirement();
-  bool RequirementFilled(const idInventoryCollection* inventory) const;
+  bool RequirementFilled(const idInventoryCollection* inventory);
   void ConfigureForTest(const idDeclEntityDef* definition,
                         std::initializer_list<const char*> requirementNames) {
     giveEnt = definition;
@@ -1145,34 +1106,6 @@ static_assert(offsetof(idAIEditable::idAIDeath, canOnlyBeKilledDamageGroups) ==
 static_assert(offsetof(idAIEditable::idAIDeath, focusOverride) == 0xA0);
 static_assert(offsetof(idAIEditable::idAIDeath, deathSpawnEntityDef) == 0xC0);
 
-class idAIEvent {
-public:
-  explicit idAIEvent(unsigned int eventClassValue = 0)
-      : eventClass(eventClassValue) {}
-  unsigned int GetEventClass() const { return eventClass; }
-  void SetEventClass(unsigned int value) { eventClass = value; }
-  const idEntity* GetOriginator() const { return originator; }
-  const idEntity* GetInstigator() const { return instigator; }
-  const idVec3& GetOrigin() const { return origin; }
-  int GetHandle() const { return handle; }
-  void ConfigureEventForTest(const idEntity* eventOriginator,
-                             const idEntity* eventInstigator,
-                             const idVec3& eventOrigin) {
-    originator = eventOriginator;
-    instigator = eventInstigator;
-    origin = eventOrigin;
-  }
-  void SetHandleForTest(int value) { handle = value; }
-  idRecoveredValue GetOriginator(...);
-
-private:
-  unsigned int eventClass{0};
-  const idEntity* originator{nullptr};
-  const idEntity* instigator{nullptr};
-  idVec3 origin{};
-  int handle{-1};
-};
-
 class idAIEventSphere : public idAIEvent {
 public:
   using idAIEvent::idAIEvent;
@@ -1267,12 +1200,29 @@ private:
   idEntity* driver{nullptr};
 };
 
-class idAIFSMCallback {
+class idFSMCallback {
 public:
-  virtual ~idAIFSMCallback();
-  idRecoveredValue OnError(...);
-  idRecoveredValue OnRestart(...);
-  idRecoveredValue OnTransition(...);
+  virtual ~idFSMCallback();
+};
+
+class idAIFSMCallback : public idFSMCallback {
+public:
+  idAIFSMCallback();
+  ~idAIFSMCallback() override;
+  virtual void OnError(const idFiniteStateMachine* fsm,
+                       const idTypeInfo* currentStateType,
+                       const idTypeInfo* transitionType, int transitionCode);
+  virtual void OnRestart(const idFiniteStateMachine* fsm,
+                         const idTypeInfo* currentStateType);
+  virtual void OnTransition(const idFiniteStateMachine* fsm,
+                            const idTypeInfo* fromStateType,
+                            const idTypeInfo* toStateType,
+                            const idTypeInfo* transitionType,
+                            int transitionCode);
+  const idFSMLog& GetLogForTest() const { return log; }
+
+private:
+  idFSMLog log;
 };
 
 class idAnimatedEntity : public idEntity {
@@ -1297,6 +1247,8 @@ private:
 class idAnimator_Drone {
 public:
   ~idAnimator_Drone();
+  void SetEnabledForAI(bool value) { enabled = value; }
+  bool IsEnabledForTest() const { return enabled; }
   bool ShouldHoldFire(idAI2* ai, const idEntity* enemy,
                       aiHoldFireReason_t* holdFireReason) {
     ++holdFireQueryCount;
@@ -1381,6 +1333,7 @@ public:
   int GetNextFireWindupTickForTest() const { return nextFireWindupTick; }
 
 private:
+  bool enabled{true};
   idAI2* lastAI{nullptr};
   idMat3 lastAxis{};
   idVec3 lastVelocity{};
@@ -1394,6 +1347,25 @@ private:
   int nextFireWindupTick{0};
   bool noFireMoving{false};
   float goalRange{0.0F};
+};
+
+class idMeleeTrace {
+public:
+  void ExcludeEntity(idEntity* entity) {
+    if (entity != nullptr) excludedEntities.Append(entity);
+  }
+  int GetExcludedEntityCountForTest() const {
+    return excludedEntities.Num();
+  }
+  idEntity* GetExcludedEntityForTest(int index) const {
+    return index >= 0 && index < excludedEntities.Num()
+               ? excludedEntities[index]
+               : nullptr;
+  }
+  void ClearForTest() { excludedEntities.Clear(); }
+
+private:
+  idList<idEntity*, 5> excludedEntities;
 };
 
 class idAnimStack;
@@ -1664,7 +1636,9 @@ public:
   int GetFocusTimeout() const { return focusTimeout; }
   bool GetKeepFocusInViewForTest() const { return keepFocusInView; }
   aimPoint_t GetAimPointSelection() const { return aimPoint; }
+  void SetAimPointSelection(aimPoint_t point) { aimPoint = point; }
   aimPoint_t GetAimPointForTest() const { return GetAimPointSelection(); }
+  void SetFocusTimeout(int timeout) { focusTimeout = timeout; }
   aiFocus_t GetFocusType() const { return focusType; }
   aiFocus_t GetFocusTypeForTest() const { return GetFocusType(); }
   aiFoci_t GetFociType() const { return fociType; }
@@ -1678,6 +1652,26 @@ public:
   void SetOffset(const idVec3& value) { offset = value; }
   int GetCurrentAnimatorIndex() const { return curAnimatorIndex; }
   int GetTrackingParmsIndex() const { return trackingParmsIndex; }
+  const idDeclTrackingParms* GetDeclTrackingParmsForTest() const {
+    return declTrackingParms;
+  }
+  float GetYawOnlyThresholdForTest() const {
+    return aimTracker.GetYawOnlyThreshold();
+  }
+  const idRotationTrackerRange& GetConstraintsForTest() const {
+    return aimTracker.GetConstraints();
+  }
+  void SetDefaultHeadTrackGroupForAI(int index) {
+    defaultHeadTrackGroup = index;
+  }
+  int GetDefaultHeadTrackGroupForTest() const {
+    return defaultHeadTrackGroup;
+  }
+  int GetCurrentHeadTrackGroupForTest() const {
+    return animators[curAnimatorIndex] != nullptr
+               ? animators[curAnimatorIndex]->trackGroupIndex
+               : -1;
+  }
   int GetUpdateCount() const { return updateCount; }
   idAnimator_TrackerBase* GetLastParentTrackerForTest() const {
     return lastParentTracker;
@@ -1728,13 +1722,20 @@ private:
   idStr debugText;
 };
 
+#if 0  // Definition moved before idAIFSMCallback for retail inheritance.
 class idFSMCallback {
 public:
   virtual ~idFSMCallback();
 };
+#endif
 
+#if 0  // Definition moved to ai2_actions.h for the retail nested status type.
 class idFiniteStateMachine {
 public:
+  enum fsmStatus_t : int {
+    FSMSTATUS_NONE = 0,
+  };
+
   explicit idFiniteStateMachine(const char* fsmName = nullptr)
       : name(fsmName != nullptr ? fsmName : "") {}
   void Save(idFile_String* file, const char* indent) const {
@@ -1863,6 +1864,7 @@ private:
   idAIFSMCallback* callback{nullptr};
   int status{1};
 };
+#endif
 
 class idFSMManager {
 public:
@@ -1893,6 +1895,12 @@ public:
                : nullptr;
   }
   idFiniteStateMachine* FindAlertCycleFSM() {
+    return alertCycleAvailable ? &alertCycle : nullptr;
+  }
+  idFiniteStateMachine* GetControllingFSM() {
+    return FindAlertCycleFSM();
+  }
+  const idFiniteStateMachine* GetControllingFSM() const {
     return alertCycleAvailable ? &alertCycle : nullptr;
   }
   void SetAlertCycleFSMAvailableForTest(bool value) {
@@ -2006,8 +2014,10 @@ private:
 class idLegsFSM {
 public:
   ~idLegsFSM();
-  int GetStatus() const { return status; }
-  void SetStatus(int value) { status = value; }
+  idFiniteStateMachine::fsmStatus_t GetStatus() const { return status; }
+  void SetStatus(int value) {
+    status = static_cast<idFiniteStateMachine::fsmStatus_t>(value);
+  }
   void Update(bool allowTransitions, int curTime, const void* eventData) {
     lastAllowTransitions = allowTransitions;
     lastUpdateTime = curTime;
@@ -2039,7 +2049,8 @@ public:
   int GetMeleeBlockedEventCount() const { return meleeBlockedEventCount; }
 
 private:
-  int status{0};
+  idFiniteStateMachine::fsmStatus_t status{
+      idFiniteStateMachine::FSMSTATUS_NONE};
   int updateCount{0};
   int lastUpdateTime{0};
   bool lastAllowTransitions{false};
@@ -2048,6 +2059,8 @@ private:
   idAI2* lastMeleeBlockedSource{nullptr};
   int meleeBlockedEventCount{0};
 };
+
+class idAIActionFSM : public idLegsFSM {};
 
 class idScriptFunction {
 public:

@@ -10,13 +10,14 @@
 
 class idDecl;
 class idStaticModel;
+struct MorphSkinGenValidationAccess;
 
-struct idMorphDef {
+class idMorphDef {
+public:
   idStr jointName;
   idVec3 pos;
   idVec3 size;
   std::uint32_t flags{};
-  std::uint32_t recoveredPadding{};
   idStr fileName;
 };
 
@@ -61,15 +62,20 @@ struct morphShape_t {
 
   morphShape_t(idTriangles* morphTris, const idDrawVert* morphTriVerts,
                const char* materialName, const idDecl* decl);
-  ~morphShape_t();
-
-  bool SkinMeshMorphPoint(const idVec3& inPoint, idVec3& outPoint);
-  bool MakeSphere(idTriangles* morphTris, const idDrawVert* morphTriVerts,
-                  const idDecl* decl);
-  bool MakeEllipsoid(idTriangles* morphTris,
-                     const idDrawVert* morphTriVerts, const idDecl* decl);
-  bool MakeSkinMesh(idTriangles* morphTris,
-                    const idDrawVert* morphTriVerts, const idDecl* decl);
+  __forceinline bool MorphPoint(const idVec3& inPoint, idVec3& outPoint) {
+    if (type == SKIN_MESH)
+      return SkinMeshMorphPoint(inPoint, outPoint);
+    if (type == SKIN_SPHERE)
+      return SphereContainsPoint(inPoint, outPoint);
+    return false;
+  }
+  __forceinline shapeType_t GetType() { return type; }
+  __forceinline idVec3 GetCenter() { return center; }
+  __forceinline float GetLength() { return length; }
+  __forceinline float GetRadius() { return radius; }
+  __forceinline idVec3 GetXAxis() { return xAxis; }
+  __forceinline idVec3 GetYAxis() { return yAxis; }
+  __forceinline idVec3 GetZAxis() { return zAxis; }
 
   shapeType_t type{NONE};
   idVec3 center{};
@@ -80,6 +86,40 @@ struct morphShape_t {
   float radius{};
   float radiusSqr{};
   idList<idVec3, 5> points;
+
+private:
+  bool SkinMeshMorphPoint(const idVec3& inPoint, idVec3& outPoint);
+  __forceinline bool SphereContainsPoint(const idVec3& inPoint,
+                                         idVec3& outPoint) {
+    outPoint = {};
+    return (inPoint - center).LengthSqr() <= radiusSqr;
+  }
+  __forceinline bool CylContained(const idVec3& inPoint, idVec3& outPoint) {
+    outPoint = {};
+    const idVec3 fromCenter = inPoint - center;
+    const float axialDistance = fromCenter * zAxis;
+    if (axialDistance < 0.0f || axialDistance > length)
+      return false;
+    const idVec3 radial = fromCenter - zAxis * axialDistance;
+    return radial.LengthSqr() <= radiusSqr;
+  }
+  bool MakeSkinMesh(idTriangles* morphTris,
+                    const idDrawVert* morphTriVerts, const idDecl* decl);
+  bool MakeSphere(idTriangles* morphTris, const idDrawVert* morphTriVerts,
+                  const idDecl* decl);
+  bool MakeEllipsoid(idTriangles* morphTris,
+                     const idDrawVert* morphTriVerts, const idDecl* decl);
+  __forceinline bool MakeCylinder(idTriangles*, const idDrawVert*,
+                                  const idDecl*) {
+    return false;
+  }
+
+public:
+  ~morphShape_t();
+
+private:
+  friend class idMorphVertGen;
+  friend struct MorphSkinGenValidationAccess;
 };
 
 class idMorphVertices : public idResource {
@@ -93,10 +133,6 @@ public:
 
   bool Load_Binary();
   bool Write_Binary();
-  bool ReadBinaryStream(idFile& file, idStr* md6Name = nullptr,
-                        idStr* md6FileName = nullptr);
-  bool WriteBinaryStream(idFile& file, const char* md6Name = nullptr,
-                         const char* md6FileName = nullptr) const;
 
   idList<idMD6MorphSet, 5> morphVertSet;
   std::uint32_t timestampDecl;
@@ -113,17 +149,21 @@ int idTypedResourceList<idMorphVertices>::AllocSize() const;
 
 class idMorphVertGen {
 public:
-  static void ProcessModel(const idMD6Model& model, const idDeclMD6* decl,
-                           const idMorphDef& morphDef,
-                           idMorphVertices& vertices);
-  static void OptimizeVertices(idMorphVertices& outputVertices,
-                               idMorphVertices& inputVertices);
   static void GenerateMorphVertsFromFile(const idDeclMD6* decl,
                                          const char* generationFile,
                                          idMorphVertices& vertices);
   static void GenerateMorphVerts(const idDeclMD6* decl,
                                  const idList<idMorphDef, 5>& morphDefs,
                                  idMorphVertices& vertices);
+
+private:
+  static void ProcessModel(const idMD6Model& model, const idDeclMD6* decl,
+                           const idMorphDef& morphDef,
+                           idMorphVertices& vertices);
+  static void OptimizeVertices(idMorphVertices& outputVertices,
+                               idMorphVertices& inputVertices);
+
+  friend struct MorphSkinGenValidationAccess;
 };
 
 static_assert(sizeof(idMorphDef) == 112);

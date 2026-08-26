@@ -1,5 +1,6 @@
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 
+#include "shared/idlib/csystems/cmdsystemlocal.h"
 #include "shared/idlib/lib.h"
 
 #include <algorithm>
@@ -20,9 +21,20 @@ idCVarSystemLocal cvarSystemLocal;
 idCVarSystem* cvarSystem = &cvarSystemLocal;
 
 idCVar::idCVar() = default;
-idCVar::idCVar(const char* n, const char* v, int f, const char* d, float min, float max,
+idCVar::idCVar(const char* n, const char* v, int f, const char* d,
+               argCompletion_t completion) {
+  if (completion == nullptr && (f & CVAR_BOOL) != 0) {
+    completion = idCmdSystem::ArgCompletion_Boolean;
+  }
+  Init(n, v, f, d, 1.0f, -1.0f, nullptr, completion);
+}
+idCVar::idCVar(const char* n, const char* v, int f, const char* d,
+               float min, float max, argCompletion_t completion) {
+  Init(n, v, f, d, min, max, nullptr, completion);
+}
+idCVar::idCVar(const char* n, const char* v, int f, const char* d,
                const char** values, argCompletion_t completion) {
-  Init(n, v, f, d, min, max, values, completion);
+  Init(n, v, f, d, 1.0f, -1.0f, values, completion);
 }
 void idCVar::Init(const char* n, const char* v, int f, const char* d, float min, float max,
                   const char** values, argCompletion_t completion) {
@@ -100,6 +112,60 @@ idCVar* idCVar::StaticVars() {
 void idCVar::RegisterStaticVars() {
   if (cvarSystem)
     cvarSystem->RegisterStaticVars();
+}
+
+idScopeCVar::idScopeCVar(idCVar* variable, const char* newValue) {
+  oldStr = variable->GetString();
+  if (idStr::Cmp(oldStr.data, newValue) != 0) {
+    cvar = variable;
+    cvarType = 0;
+    variable->SetString(newValue, true);
+  }
+}
+
+idScopeCVar::idScopeCVar(idCVar* variable, bool newValue) {
+  oldBool = variable->GetBool();
+  if (oldBool != newValue) {
+    cvar = variable;
+    cvarType = 1;
+    variable->SetBool(newValue, true);
+  }
+}
+
+idScopeCVar::idScopeCVar(idCVar* variable, int newValue) {
+  oldInt = variable->GetInteger();
+  if (oldInt != newValue) {
+    cvar = variable;
+    cvarType = 2;
+    variable->SetInteger(newValue, true);
+  }
+}
+
+idScopeCVar::idScopeCVar(idCVar* variable, float newValue) {
+  oldFloat = variable->GetFloat();
+  if (oldFloat != newValue) {
+    cvar = variable;
+    cvarType = 3;
+    variable->SetFloat(newValue, true);
+  }
+}
+
+idScopeCVar::~idScopeCVar() {
+  if (cvar != nullptr) {
+    switch (cvarType) {
+    case 0:
+      cvar->SetString(oldStr.data, true);
+      break;
+    case 1:
+      cvar->SetInteger(oldBool, true);
+      break;
+    case 2:
+      cvar->SetInteger(oldInt, true);
+      break;
+    default:
+      break;
+    }
+  }
 }
 
 idCVarSystemLocal::idCVarSystemLocal() : cvarHash(1024, 128) {

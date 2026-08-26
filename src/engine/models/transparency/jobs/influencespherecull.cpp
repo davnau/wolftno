@@ -2,12 +2,11 @@
 
 #include "shared/idlib/parallelism/paralleljoblist.h"
 
-#include <array>
 #include <cstdint>
 
 void CullInfluenceSpheresForView(const influenceSphereCullParms_t* parms) {
-  std::array<int, 1024> sortIndex;
-  std::array<std::uint8_t, 1024> keep;
+  int sortIndex[1024];
+  std::uint8_t keep[1024];
   const int numInfluenceSpheres = parms->numInfluenceSpheres;
   const float farDist = parms->farDist;
   const float nearDist = parms->nearDist;

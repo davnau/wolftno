@@ -129,8 +129,8 @@ int* reorderForsyth(const int* indices, int nTriangles, int nVertices) {
 
   auto* triangleOrder = static_cast<int*>(AllocateForsyth(
       sizeof(int) * static_cast<std::size_t>(nTriangles)));
-  std::array<int, 12> cache;
-  std::memset(cache.data(), 0xff, 11 * sizeof(int));
+  std::array<int, 11> cache;
+  std::memset(cache.data(), 0xff, sizeof(cache));
   int outputPosition = 0;
   int scanTriangle = 0;
   while (bestTriangle >= 0) {

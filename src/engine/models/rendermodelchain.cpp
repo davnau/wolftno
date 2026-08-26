@@ -310,7 +310,7 @@ bool idRenderModelChain::CommitSubclass() {
   return true;
 }
 
-void idRenderModelChain::Save(idFile* file) {
+void idRenderModelChain::Save(idFile* file) const {
   idRenderModel::Save(file);
   const bool hasMorphMaterial = morphMaterial != nullptr;
   file->Write(&hasMorphMaterial, 1);

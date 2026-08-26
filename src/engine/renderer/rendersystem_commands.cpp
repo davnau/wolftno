@@ -18,6 +18,7 @@
 #include "shared/idlib/csystems/autocomplete.h"
 #include "shared/idlib/csystems/cmdsystemlocal.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
+#include "shared/idlib/containers/heaparray.h"
 #include "shared/idlib/filesystem/filesystemlocal.h"
 #include "shared/idlib/lib.h"
 #include "shared/idlib/sys/sys_alloc.h"
@@ -40,25 +41,6 @@ int lastScreenshotNumber = 0;
 #if defined(WOLF_RENDERER_RENDERSYSTEM_COMMANDS_TEST_ACCESS)
 RenderSystemCommandsTestHooks testHooks{};
 #endif
-
-template <typename T> class TempScreenshotBuffer {
-public:
-  explicit TempScreenshotBuffer(std::size_t count) : count(count) {
-    data = static_cast<T*>(idMem::Singleton()->AllocWithLocation(
-        "w:\\build\\tech5\\shared\\idlib\\containers/Array.h(105) : TAG_TEMP",
-        count * sizeof(T), TAG_TEMP, false, ALIGN_16, HEAP_DEFAULTHEAP));
-  }
-  ~TempScreenshotBuffer() {
-    if (data != nullptr)
-      idMem::Singleton()->Free(data, ALIGN_16);
-  }
-
-  TempScreenshotBuffer(const TempScreenshotBuffer&) = delete;
-  TempScreenshotBuffer& operator=(const TempScreenshotBuffer&) = delete;
-
-  T* data{};
-  std::size_t count{};
-};
 
 const char* ScreenshotExtension(screenshotFormat_t format) {
   switch (format) {
@@ -151,21 +133,6 @@ void RunScreenshotEndFrame(idRenderSystemLocal* local, void* window,
                   false, false, renderTime);
 }
 
-void BuildExplicitScreenshotName(idStr& output, idStr& directory,
-                                 idStr& fileName,
-                                 screenshotFormat_t& format) {
-  if (fileName.Find(".tga", false) >= 0) {
-    format = SSFMT_TGA;
-  } else if (fileName.Find(".png", false) >= 0) {
-    format = SSFMT_PNG;
-  } else {
-    fileName.SetFileExtension("jpg");
-  }
-  if (fileName.Find("/", false) >= 0)
-    directory.Clear();
-  output = directory + fileName;
-}
-
 void PrintScreenshotPath(const idStr& path, fsPath_t basePath) {
   char osPath[256]{};
   fileSystem->RelativePathToOSPath(path.data, osPath, sizeof(osPath),
@@ -218,7 +185,7 @@ void idRenderSystemLocal::ArgCompletion_ImageName(
   for (int index = 0; index < idImage::resourceList.resourceList.Num();
        ++index) {
     idResource* const resource = idImage::resourceList.Index(index);
-    const char* const name = resource != nullptr ? resource->GetName() : "";
+    const char* const name = resource->GetName();
     if (name[0] == '_') {
       const idStr suggestion(name);
       completion.Append(suggestion, -1);
@@ -380,11 +347,11 @@ void idRenderSystemLocal::TakeRawScreenshot(
     bool fillAlphaWith255) {
   const int width = GetWidth();
   const int height = GetHeight();
-  TempScreenshotBuffer<std::uint8_t> pixels(
-      static_cast<std::size_t>(4) * width * height);
+  idHeapArray<std::uint8_t> pixels;
+  pixels.Alloc(static_cast<unsigned int>(4 * width * height));
   CaptureCurrentRenderTargetForScreenShot(width, height, fillAlphaWith255,
-                                          pixels.data);
-  WriteScreenshot(fileName, pixels.data, width, height, path, format);
+                                          pixels.buffer);
+  WriteScreenshot(fileName, pixels.buffer, width, height, path, format);
 }
 
 void idRenderSystemLocal::TakeScreenshotToBuffer(
@@ -400,31 +367,30 @@ void idRenderSystemLocal::TakeScreenshotToBuffer(
   const int pixelCount = width * height;
   const int captureWidth = width & ~3;
   blends = blends > 1 ? blends : 1;
-  TempScreenshotBuffer<std::uint16_t> accumulated(
-      blends > 1 ? static_cast<std::size_t>(4) * pixelCount : 0);
-  if (accumulated.data != nullptr) {
-    std::memset(accumulated.data, 0,
-                accumulated.count * sizeof(*accumulated.data));
+  idHeapArray<std::uint16_t> accumulated;
+  if (blends > 1) {
+    accumulated.Alloc(static_cast<unsigned int>(4 * pixelCount));
+    std::memset(accumulated.buffer, 0,
+                static_cast<std::size_t>(2) * accumulated.num);
   }
 
   const int renderTime = world != nullptr
                              ? world->RenderViewForIndex(0)->r.renderTime
                              : 0;
-  const int oldDofMode = r_postProcessDofMode.GetInteger();
-  if (oldDofMode != 5)
-    r_postProcessDofMode.SetInteger(5, true);
-
-  const std::int64_t primeStart = Sys_Milliseconds();
-  for (int prime = 0; prime < primes; ++prime) {
-    RunScreenshotEndFrame(this, renderSystem->GetGameWindow(), captureWidth,
-                          height, world, guiList, numGuis, renderTime);
+  {
+    idScopeCVar dofMode(&r_postProcessDofMode, 5);
+    const int primeStart = static_cast<int>(Sys_Milliseconds());
+    for (int prime = 0; prime < primes; ++prime) {
+      RunScreenshotEndFrame(this, renderSystem->GetGameWindow(), captureWidth,
+                            height, world, guiList, numGuis, renderTime);
+    }
+    idLib::Printf(
+        "%.2f seconds to endFrame for primes.\n",
+        static_cast<float>(static_cast<int>(Sys_Milliseconds()) - primeStart) *
+            0.001F);
   }
-  idLib::Printf("%.2f seconds to endFrame for primes.\n",
-                static_cast<float>(Sys_Milliseconds() - primeStart) * 0.001F);
-  if (oldDofMode != 5)
-    r_postProcessDofMode.SetInteger(oldDofMode, true);
 
-  const std::int64_t blendStart = Sys_Milliseconds();
+  const int blendStart = static_cast<int>(Sys_Milliseconds());
   for (int blend = 0; blend < blends; ++blend) {
     RunScreenshotEndFrame(this, renderSystem->GetGameWindow(), captureWidth,
                           height, world, guiList, numGuis, renderTime);
@@ -432,16 +398,18 @@ void idRenderSystemLocal::TakeScreenshotToBuffer(
                                             outputBuffer);
     if (blends > 1) {
       for (int index = 0; index < 4 * pixelCount; ++index)
-        accumulated.data[index] += outputBuffer[index];
+        accumulated.buffer[index] += outputBuffer[index];
     }
   }
   idLib::Printf("%.2f seconds to endFrame for blends.\n",
-                static_cast<float>(Sys_Milliseconds() - blendStart) * 0.001F);
+                static_cast<float>(static_cast<int>(Sys_Milliseconds()) -
+                                   blendStart) *
+                    0.001F);
 
   if (blends > 1) {
     for (int index = 0; index < 4 * pixelCount; ++index) {
       outputBuffer[index] =
-          static_cast<std::uint8_t>(accumulated.data[index] / blends);
+          static_cast<std::uint8_t>(accumulated.buffer[index] / blends);
     }
   }
   if (fillAlphaWith255) {
@@ -480,7 +448,16 @@ void R_RawScreenShot_f(const idCmdArgs& args) {
   shotName += com_capturePath.GetString();
   idStr outputPath;
   if (!fileName.IsEmpty()) {
-    BuildExplicitScreenshotName(outputPath, shotName, fileName, format);
+    if (fileName.Find(".tga", false) >= 0) {
+      format = SSFMT_TGA;
+    } else if (fileName.Find(".png", false) >= 0) {
+      format = SSFMT_PNG;
+    } else {
+      fileName.SetFileExtension("jpg");
+    }
+    if (fileName.Find("/", false) >= 0)
+      shotName.Clear();
+    outputPath = shotName + fileName;
   } else {
     shotName.AppendPath("rawshot");
     char numberedBase[256]{};
@@ -501,12 +478,12 @@ void idRenderSystemLocal::TakeScreenshot(
     screenshotFormat_t format, int primes, bool fillAlphaWith255,
     bool skipPostProcessing) {
   const int captureWidth = width & ~3;
-  TempScreenshotBuffer<std::uint8_t> pixels(
-      static_cast<std::size_t>(4) * height * captureWidth);
+  idHeapArray<std::uint8_t> pixels;
+  pixels.Alloc(static_cast<unsigned int>(4 * height * captureWidth));
   TakeScreenshotToBuffer(captureWidth, height, world, guiList, numGuis, blends,
-                         pixels.data, primes, fillAlphaWith255,
+                         pixels.buffer, primes, fillAlphaWith255,
                          skipPostProcessing);
-  WriteScreenshot(fileName, pixels.data, captureWidth, height, path, format);
+  WriteScreenshot(fileName, pixels.buffer, captureWidth, height, path, format);
 }
 
 void R_ScreenShot_f(const idCmdArgs& args) {
@@ -544,7 +521,16 @@ void R_ScreenShot_f(const idCmdArgs& args) {
   shotName += com_capturePath.GetString();
   idStr outputPath;
   if (!fileName.IsEmpty()) {
-    BuildExplicitScreenshotName(outputPath, shotName, fileName, format);
+    if (fileName.Find(".tga", false) >= 0) {
+      format = SSFMT_TGA;
+    } else if (fileName.Find(".png", false) >= 0) {
+      format = SSFMT_PNG;
+    } else {
+      fileName.SetFileExtension("jpg");
+    }
+    if (fileName.Find("/", false) >= 0)
+      shotName.Clear();
+    outputPath = shotName + fileName;
   } else if (com_captureFilename.valueString.IsEmpty()) {
     shotName.AppendPath("shot");
     char numberedBase[256]{};
@@ -568,18 +554,17 @@ void R_ScreenShot_f(const idCmdArgs& args) {
       console->Draw(false, false);
   }
 
-  idRenderView* primaryView =
-      tr.primaryWorld != nullptr ? tr.primaryWorld->RenderViewForIndex(0)
-                                 : nullptr;
-  if ((loadTextures || isViewNote) && primaryView != nullptr)
-    primaryView->g.forceFullVirtualTextureLoad = true;
+  if ((loadTextures || isViewNote) && tr.primaryWorld != nullptr)
+    tr.primaryWorld->RenderViewForIndex(0)->g.forceFullVirtualTextureLoad =
+        true;
 
   tr.TakeScreenshot(tr.GetWidth(), tr.GetHeight(), tr.primaryWorld, nullptr, 0,
                     outputPath.data, blends, FSPATH_SAVE, format, primes, true,
                     r_skipPostProcess.GetBool());
 
-  if ((loadTextures || isViewNote) && primaryView != nullptr)
-    primaryView->g.forceFullVirtualTextureLoad = false;
+  if ((loadTextures || isViewNote) && tr.primaryWorld != nullptr)
+    tr.primaryWorld->RenderViewForIndex(0)->g.forceFullVirtualTextureLoad =
+        false;
   PrintScreenshotPath(outputPath, FSPATH_SAVE);
 }
 
@@ -668,12 +653,12 @@ void R_EnvShot_f(const idCmdArgs& args) {
     outputName += extensions[face];
     view->g.viewaxis = axes[face];
     view->g.useExplicitProjectionMatrix = false;
-    TempScreenshotBuffer<std::uint8_t> pixels(
-        static_cast<std::size_t>(4) * height * width);
+    idHeapArray<std::uint8_t> pixels;
+    pixels.Alloc(static_cast<unsigned int>(4 * height * width));
     tr.TakeScreenshotToBuffer(width, height, world, nullptr, 0, blends,
-                              pixels.data, 0, true,
+                              pixels.buffer, 0, true,
                               r_skipPostProcess.GetBool());
-    WriteScreenshot(outputName.data, pixels.data, width, height, FSPATH_BASE,
+    WriteScreenshot(outputName.data, pixels.buffer, width, height, FSPATH_BASE,
                     SSFMT_TGA);
   }
 

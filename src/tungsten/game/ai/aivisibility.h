@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/cm/collisionmodel.h"
+#include "engine/gamelib/physics/clip.h"
 #include "tungsten/game/game_runtime.h"
 
 #include <cstdint>
@@ -11,10 +12,6 @@ struct idSpawnId {
 
   int GetEntityNumber() const { return value & 0x1fff; }
   bool IsValid() const { return value != 0x1fff; }
-};
-
-struct idClipQuery {
-  std::uint64_t index{0};
 };
 
 struct aiLatchedState_t;

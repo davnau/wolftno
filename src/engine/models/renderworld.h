@@ -52,6 +52,8 @@ class idStaticModel;
 class idTraceOpts;
 class idVirtualTexture;
 struct approximateLightingParms_t;
+struct areaNode_t;
+struct frustumCorners_t;
 struct idRenderAssetRemap;
 struct worldArea_t;
 template <typename T> class idCurve_Spline;
@@ -290,6 +292,9 @@ struct modelTrace_t {
 
 class idRenderWorldCommitted {
 public:
+  idRenderWorldCommitted();
+  ~idRenderWorldCommitted();
+  void PostCommitData(const idRenderView* renderView, int renderTime);
   int GetNumCommittedModels() const;
   int GetNumCommittedLights() const;
   int GetNumAddAlwaysModels() const;
@@ -306,6 +311,29 @@ public:
                          const idBounds& frustumBounds);
   void UnlinkModelFromTree(idRenderModelCommitted* model);
   void LinkApproximateLighting(idRenderModelCommitted* model);
+  void SetBinaryModelState(const char* binaryModelName, bool isVisible,
+                           bool makingDefinition);
+
+#if defined(WOLF_RENDERER_RENDERWORLDCOMMITTED_TEST_ACCESS)
+public:
+#else
+private:
+#endif
+  void BoundsInAreas_r(int nodeNum, const idBounds* bounds, int* areas,
+                       int* numAreas, int maxAreas);
+  void ShowApproximateLighting(idRenderModelCommitted* model,
+                               const approximateLightingParms_t* parms);
+  void ApproximateLightingForModel(const idRenderView* view,
+                                   idRenderModelCommitted* model,
+                                   int renderTime,
+                                   idParallelJobList* jobList);
+  void AddModelRefToArea(idRenderModelCommitted* model, worldArea_t* area);
+  void AddLightRefToArea(idRenderLightCommitted* light, worldArea_t* area);
+  void PushFrustumIntoTree_r(idRenderModelCommitted* model,
+                             idRenderLightCommitted* light,
+                             const frustumCorners_t* corners, int nodeNum);
+
+public:
 
   const char* mapName{};
   bool isComboMap{};
@@ -313,7 +341,7 @@ public:
   bool hasWorldGeometry{};
   bool hasWorldSurfaceOffsets{};
   std::uint8_t recoveredAreaPadding[4]{};
-  void* areaNodes{};
+  areaNode_t* areaNodes{};
   idBounds* areaNodeBounds{};
   int* areaNodeOcclusionIndex{};
   int numAreaNodes{};

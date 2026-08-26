@@ -22,7 +22,8 @@ struct cuttableGenSurface_t {
   int numVertices = 0;
 };
 
-struct idCuttableGenGeometry {
+class idCuttableGenGeometry {
+public:
   idList<cuttableGenSurface_t> surfaces;
   idList<std::uint16_t> indices;
   idList<idDrawVert> vertices;

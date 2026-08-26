@@ -228,9 +228,9 @@ void GatherFoliageIndicesForSubTree(const deferredFoliageGatherParms_t* parms) {
   const float distances[2] = {view.nearDist, view.farDist};
   const float maxFoliageHeight =
       static_cast<float>(parms->maxFoliageHeight);
+  idVec3 frustumVerts[8];
   int corner = 0;
   for (const float distance : distances) {
-    idVec3 points[4];
     for (int axis = 0; axis < 3; ++axis) {
       const float center =
           view.viewOrg[axis] + view.viewFwd[axis] * distance;
@@ -239,17 +239,22 @@ void GatherFoliageIndicesForSubTree(const deferredFoliageGatherParms_t* parms) {
       const float vertical =
           (view.viewUp[axis] * distance) * view.fov[1];
       const float height = view.viewUp[axis] * maxFoliageHeight;
-      points[0][axis] = center + horizontal + vertical + height;
-      points[1][axis] = center - horizontal + vertical + height;
-      points[2][axis] = center - horizontal - vertical - height;
-      points[3][axis] = center + horizontal - vertical - height;
+      frustumVerts[corner + 0][axis] =
+          center + horizontal + vertical + height;
+      frustumVerts[corner + 1][axis] =
+          center - horizontal + vertical + height;
+      frustumVerts[corner + 2][axis] =
+          center - horizontal - vertical - height;
+      frustumVerts[corner + 3][axis] =
+          center + horizontal - vertical - height;
     }
-    for (const idVec3& point : points) {
-      gather.frustumVerts[0][corner] = ToShort(point.x);
-      gather.frustumVerts[1][corner] = ToShort(point.y);
-      gather.frustumVerts[2][corner] = ToShort(point.z);
-      ++corner;
+    for (int point = 0; point < 4; ++point) {
+      const idVec3& frustumVertex = frustumVerts[corner + point];
+      gather.frustumVerts[0][corner + point] = ToShort(frustumVertex.x);
+      gather.frustumVerts[1][corner + point] = ToShort(frustumVertex.y);
+      gather.frustumVerts[2][corner + point] = ToShort(frustumVertex.z);
     }
+    corner += 4;
   }
 
   fm_subTreeTreeNodePtrs_t treePointers{};

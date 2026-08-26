@@ -32,6 +32,8 @@ struct userCmdString_t {
 };
 class idKeyInput {
 public:
+  static bool IsShiftDown(int inputDevice);
+  static bool IsCtrlDown(int inputDevice);
   static const char* KeyNumToString(keyNum_t keyNum);
   static const char* GetBinding(int inputDevice, bindContext_t context, keyNum_t keyNum,
                                 int bindingIndex);

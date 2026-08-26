@@ -9,6 +9,8 @@
 
 #include <cstdint>
 
+class idResourceList;
+
 class idAnimWebPath : public idStr {
 public:
   void GetWebName(idStr& webName) const;
@@ -137,6 +139,7 @@ enum md6WeightGroup_t {
 class idMD6Skel;
 class idMD6Model {
 public:
+  static idResourceList resourceList;
   void* vtable = nullptr;
   idAtomicString name;
   std::uint8_t resourceBase[32]{};
@@ -189,20 +192,63 @@ public:
   void UpdateCurrentAlpha(int timeMSec,int lastTimeMSec,int ticksPerSec);
   idMD6Node*left=nullptr;idMD6Node*right=nullptr;int leftTimeOverride=0;int rightTimeOverride=0;std::uint8_t filterGroup=0;std::uint8_t op=0;std::uint8_t originBlend=0;float currentAlpha=0.0f;float targetAlpha=0.0f;float alphaRate=0.0f;int blendType=BLEND_LINEAR;
 };
-class idMD6BlendBranchBase : public idMD6Branch { public: idList<float,30> coordinateList;idList<idMD6Node*,30> animationList; };
-class idMD6BlendBranch : public idMD6BlendBranchBase { public: void Update(bool forceUpdate,bool isSorted);idList<float,30> currentCoordinate;idList<idUserChannelIndex,30> userChannelIndices;idList<float,30> activeCoordinate;idList<int,30> activeIndices;idList<idMD6Branch,30> branchList;std::uint8_t numDimensions=0;bool isAngleWrapped=false; };
-class idMD6BlendAdditiveBranch : public idMD6BlendBranchBase { public: void Update(bool forceUpdate);float currentCoordinate=0.0f;float activeCoordinate=0.0f;idMD6Node*baseAnimation=nullptr; };
-class idMD6FusionBranch : public idMD6BlendBranch { public: void Update(bool forceUpdate,int gameTime,int ticksPerSec,const idMD6Skel* skeleton);idList<std::uint16_t,30> phaseToFrameLookupData; };
+class idMD6BlendBranch_Base : public idMD6Branch {
+public:
+  ~idMD6BlendBranch_Base();
+  int GetNumAnimations() const { return animationList.num; }
+  idMD6Node* GetAnimation(int index) const {
+    return index >= 0 && index < animationList.num ? animationList.list[index]
+                                                   : nullptr;
+  }
+
+  idList<float,30> coordinateList;
+  idList<idMD6Node*,30> animationList;
+
+protected:
+  explicit idMD6BlendBranch_Base(idMD6Node::nodeType_t nodeType);
+};
+class idMD6BlendBranch : public idMD6BlendBranch_Base {
+public:
+  idMD6BlendBranch();
+  ~idMD6BlendBranch();
+  void Update(bool forceUpdate,bool isSorted);
+  idList<float,30> currentCoordinate;
+  idList<idUserChannelIndex,30> userChannelIndices;
+  idList<float,30> activeCoordinate;
+  idList<int,30> activeIndices;
+  idList<idMD6Branch,30> branchList;
+  std::uint8_t numDimensions=0;
+  bool isAngleWrapped=false;
+
+protected:
+  explicit idMD6BlendBranch(idMD6Node::nodeType_t nodeType);
+};
+class idMD6BlendAdditiveBranch : public idMD6BlendBranch_Base {
+public:
+  idMD6BlendAdditiveBranch()
+      : idMD6BlendBranch_Base(idMD6Node::NODE_BLENDA_BRANCH) {}
+  void Update(bool forceUpdate);
+  float currentCoordinate=0.0f;
+  float activeCoordinate=0.0f;
+  idMD6Node*baseAnimation=nullptr;
+};
+class idMD6FusionBranch : public idMD6BlendBranch {
+public:
+  idMD6FusionBranch();
+  ~idMD6FusionBranch();
+  void Update(bool forceUpdate,int gameTime,int ticksPerSec,const idMD6Skel* skeleton);
+  idList<std::uint16_t,30> phaseToFrameLookupData;
+};
 class idMD6Filter : public idMD6Node {};
 class idMD6TagFilter : public idMD6Filter { public: const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned tagMask=0;std::uint8_t tagGroupIndex=0;std::uint8_t tagBias=0; };
-class idMD6BestLeaf : public idMD6Node { public: idList<idMD6Node*,30> leafList;idList<unsigned,30>tagList;idList<idMD6Filter*,30>filterList;idMD6TagFilter tagGroupFilter;std::uint8_t debugFilterLogicHelper=0;std::uint8_t debugPadding[7]{};const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned desiredTag=0;unsigned activeTag=0;unsigned defaultTag=0;std::uint16_t bestLeafIndex=0;std::uint8_t tagBias=0;std::uint8_t tagGroupIndex=0; };
+class idMD6BestLeaf : public idMD6Node { public: ~idMD6BestLeaf();idList<idMD6Node*,30> leafList;idList<unsigned,30>tagList;idList<idMD6Filter*,30>filterList;idMD6TagFilter tagGroupFilter;std::uint8_t debugFilterLogicHelper=0;std::uint8_t debugPadding[7]{};const idDeclAnimWebTagGroup*tagGroup=nullptr;unsigned desiredTag=0;unsigned activeTag=0;unsigned defaultTag=0;std::uint16_t bestLeafIndex=0;std::uint8_t tagBias=0;std::uint8_t tagGroupIndex=0; };
 static_assert(sizeof(idMD6Node)==1);
 static_assert(sizeof(idMD6Blend::jointMod_t)==64);
 static_assert(sizeof(idMD6Leaf)==24);
 static_assert(sizeof(idMD6LeafPlay)==40);
 static_assert(sizeof(idMD6LeafPause)==112);
 static_assert(sizeof(idMD6Branch)==56);
-static_assert(sizeof(idMD6BlendBranchBase)==104);
+static_assert(sizeof(idMD6BlendBranch_Base)==104);
 static_assert(sizeof(idMD6BlendBranch)==232);
 static_assert(sizeof(idMD6BlendAdditiveBranch)==120);
 static_assert(sizeof(idMD6FusionBranch)==256);
@@ -230,4 +276,10 @@ public:
   virtual int NumNodes()const=0;
   virtual idMD6Node* NodeForIndex(int index)=0;
   virtual const idMD6Node* NodeForIndex(int index)const=0;
+
+  template <typename NodeType> void Free(NodeType* node) {
+    node->~NodeType();
+    FreeMem(node);
+  }
+  static void FreeTyped(idMD6Allocator* allocator, const idMD6Node* node);
 };

@@ -123,7 +123,7 @@ void idAIScriptedAnimWeb::StartAIAction(idEntity* activator) {
   for (int index = 0; index < targets.Num(); ++index) {
     idAI2* ai = dynamic_cast<idAI2*>(targets[index]);
     if (ai == nullptr) continue;
-    ai->SetActionScript(&actionScript, this, activator);
+    ai->SetActionScript(actionScript, this, activator);
     ai->StartActionScript(gameTime);
   }
 }

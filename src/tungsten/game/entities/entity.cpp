@@ -19,6 +19,9 @@ std::unordered_map<const idEntity*, crosshairObservation_t>
 }  // namespace
 
 // Header-emitted entity support used by AI.
+// DIA: idEntity::GetColor
+void idEntity::GetColor(idVec4& color) const { color = entityColor; }
+
 const idVec3* idEntity::GetPresentableLeftDir() {
   return &presentableAxis[1];
 }

@@ -128,6 +128,7 @@ public:
   void UpdateFilterParms(bool forceUpdateFilterParms);
   void PushFeedback(const unsigned char* feedback, int width, int height,
                     int pitch, bool usePBO);
+  void VisaulizeFeedback();
   void FinishFeedback(bool force, int maxTimeMilliseconds);
   void ClearFeedback();
   void LogMetrics();
@@ -146,7 +147,14 @@ public:
   std::uint8_t recoveredTail[1168]{};
 };
 
+#if defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+alignas(idVirtualTextureSystem) extern unsigned char
+    renderThreadTestVirtualTextureSystemStorage[sizeof(idVirtualTextureSystem)];
+#define virtualTextureSystem (*reinterpret_cast<idVirtualTextureSystem*>(    \
+    renderThreadTestVirtualTextureSystemStorage))
+#else
 extern idVirtualTextureSystem virtualTextureSystem;
+#endif
 
 // NEEDS_WORK(engine/renderer/virtualtexture): recover the preloader internals
 // with its owning folder. RenderSystem_init only requires this lifecycle API.

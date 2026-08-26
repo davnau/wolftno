@@ -23,7 +23,7 @@ public:
                             const idMat3& orientation);
   void GetPieceTraceModel(int index, idTraceModel& traceModel);
   const idMaterial* GetPieceTraceMaterial(int index) const;
-  void Save(idFile* file) override;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
   void Reset();
 

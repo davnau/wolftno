@@ -1,6 +1,9 @@
 #include "tungsten/game/clientgame/presentable/presentableai.h"
+#include "tungsten/game/ai/ai2_core_support.h"
 
 #include <algorithm>
+
+idInfluenceTrailManager* influenceTrailManager = nullptr;
 
 // DIA: idPresentableActor::GetActorModifierManager
 // DIA: idPresentableAI::`scalar deleting destructor'
@@ -45,6 +48,25 @@ bool idPresentableAI::LootBody(int playerIndex){return InternalLootBody(playerIn
 void idPresentableAI::ClientThink(){idPresentable::ClientThink();if(!influenceTrail.empty())SetParm("influence",ai_influenceForce.GetFloat());}
 bool idPresentableAI::PredictHitScanHit(const idVec3& start,const idVec3& direction,float range)const{const idBounds bounds=GetAbsBounds();const idVec3 center=(bounds.b[0]+bounds.b[1])*0.5F;idVec3 ray=direction;if(ray.Normalize()==0)return false;const float along=(center-start)*ray;if(along<0||along>range)return false;const idVec3 closest=start+ray*along;const idVec3 extent=(bounds.b[1]-bounds.b[0])*0.5F;return (center-closest).Length()<=extent.Length();}
 idPresentableAI::idPresentableAI(){SetDefaults();}
+
+// DIA: idPresentableAI::idPresentableAI
+idPresentableAI::idPresentableAI(
+    idAI2* entity, idRenderModel* renderModel, idAnimStack* animStack,
+    idAnimator_Pain* painAnimator, idEntityInfluenceTrail* influenceSettings,
+    int entityNumber, const idDeclFX* fxDeclarationValue,
+    bool useSphereModelValue)
+    : aiEntity(entity),
+      sourceRenderModel(renderModel),
+      sourceAnimStack(animStack),
+      sourcePainAnimator(painAnimator),
+      influence(influenceSettings != nullptr ? *influenceSettings
+                                             : idEntityInfluenceTrail{}),
+      inventory(entity != nullptr ? entity->GetInventory() : nullptr),
+      fxDeclaration(fxDeclarationValue),
+      useSphereModel(useSphereModelValue) {
+  SetDefaults();
+  SetEntityNumber(entityNumber);
+}
 
 idCVar presentable_ai_serialize_render_parms("presentable_ai_serialize_render_parms","1",4,"serialize AI render parameters");
 idCVar ai_influenceForce("ai_influenceForce","1",4,"AI influence trail force");

@@ -17,12 +17,12 @@ idRenderModelCuttable::~idRenderModelCuttable() {
   modelResource = nullptr;
 }
 
-const idPlane* idRenderModelCuttable::GetReferencePlane() {
-  return &modelResource->triangleInterpolator.refPlane;
+const idPlane& idRenderModelCuttable::GetReferencePlane() const {
+  return modelResource->triangleInterpolator.refPlane;
 }
 
-const idList<idVec3>* idRenderModelCuttable::GetContourBounds() {
-  return &modelResource->contourBound;
+const idList<idVec3>& idRenderModelCuttable::GetContourBounds() const {
+  return modelResource->contourBound;
 }
 
 bool idRenderModelCuttable::LoadModel(const char* modelName) {
@@ -48,7 +48,7 @@ idRenderModelCuttable::idRenderModelCuttable(const char* modelName) {
   LoadModel(modelName);
 }
 
-void idRenderModelCuttable::Save(idFile* file) {
+void idRenderModelCuttable::Save(idFile* file) const {
   idRenderModel::Save(file);
   const std::uint32_t stored = ByteSwap32(static_cast<std::uint32_t>(bufferIndex));
   file->Write(&stored, sizeof(stored));
@@ -64,24 +64,24 @@ bool idRenderModelCuttable::Load(idFile* file) {
 }
 
 int idRenderModelCuttable::UpdateSurfaces(int bufferIndex_,
-                                          const idVertexBuffer* vertexBuffer,
-                                          const idVertexBuffer* stBuffer,
-                                          const idIndexBuffer* indexBuffer,
-                                          const idCuttableGenGeometry* genGeometry) {
+                                          const idVertexBuffer& vertexBuffer,
+                                          const idVertexBuffer& stBuffer,
+                                          const idIndexBuffer& indexBuffer,
+                                          const idCuttableGenGeometry& genGeometry) {
   const int previousBufferIndex = bufferIndex;
   bufferIndex = bufferIndex_;
   for (int surfaceIndex = 0; surfaceIndex < surfaces.Num(); ++surfaceIndex) {
     idRenderModelSurface& surface = surfaces[surfaceIndex];
     if (surface.geometry == nullptr)
       continue;
-    const cuttableGenSurface_t& generated = genGeometry->surfaces[surfaceIndex];
+    const cuttableGenSurface_t& generated = genGeometry.surfaces[surfaceIndex];
     surface.material = generated.material;
     surface.geometry->FreeCPUData();
-    surface.geometry->vertexBuffer.Reference(vertexBuffer);
-    surface.geometry->indexBuffer.Reference(indexBuffer, 2 * generated.indexOffset,
+    surface.geometry->vertexBuffer.Reference(&vertexBuffer);
+    surface.geometry->indexBuffer.Reference(&indexBuffer, 2 * generated.indexOffset,
                                             2 * generated.numIndices);
     if (surface.stMap != nullptr)
-      surface.stMap->Reference(stBuffer);
+      surface.stMap->Reference(&stBuffer);
     surface.geometry->numVerts = generated.numVertices;
     surface.geometry->numIndexes = generated.numIndices;
   }

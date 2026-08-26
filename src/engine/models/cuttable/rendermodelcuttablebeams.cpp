@@ -246,16 +246,16 @@ void idRenderModelCuttableBeams::StartFrame() {
       vertexBuffer[currentBuffer].MapBuffer(BM_WRITE_NOSYNC));
 }
 
-void idRenderModelCuttableBeams::SetBounds(const idBounds* bounds) {
-  referenceBounds.b[0] = bounds->b[0] - idVec3{1.0f, 1.0f, 1.0f};
-  referenceBounds.b[1] = bounds->b[1] + idVec3{1.0f, 1.0f, 1.0f};
+void idRenderModelCuttableBeams::SetBounds(const idBounds& bounds) {
+  referenceBounds.b[0] = bounds.b[0] - idVec3{1.0f, 1.0f, 1.0f};
+  referenceBounds.b[1] = bounds.b[1] + idVec3{1.0f, 1.0f, 1.0f};
   for (int index = 0; index < surfaces.num; ++index) {
     if (surfaces.list[index].geometry != nullptr)
       surfaces.list[index].geometry->bounds = referenceBounds;
   }
 }
 
-void idRenderModelCuttableBeams::Save(idFile* file) {
+void idRenderModelCuttableBeams::Save(idFile* file) const {
   idRenderModel::Save(file);
   std::uint8_t hasMaterial = materialIncision != nullptr ? 1U : 0U;
   file->Write(&hasMaterial, sizeof(hasMaterial));
@@ -293,7 +293,7 @@ bool idRenderModelCuttableBeams::Load(idFile* file) {
   return true;
 }
 
-void idRenderModelCuttableBeams::BuildIncisionInsides(const graphTree_t* graphTree) {
+void idRenderModelCuttableBeams::BuildIncisionInsides(const graphTree_t& graphTree) {
   idRenderModelSurface* surface = GetSurface(this, SURFACE_INCISIONINSIDES);
   if (surface == nullptr)
     return;
@@ -310,28 +310,28 @@ void idRenderModelCuttableBeams::BuildIncisionInsides(const graphTree_t* graphTr
   const int firstIndex = 6 * (firstVertex >> 2);
   int numVertices = 0;
   int numIndices = 0;
-  for (int contourIndex = 0; contourIndex < graphTree->contours.num; ++contourIndex) {
-    const graphBranch_t contour = graphTree->contours.list[contourIndex];
+  for (int contourIndex = 0; contourIndex < graphTree.contours.num; ++contourIndex) {
+    const graphBranch_t contour = graphTree.contours.list[contourIndex];
     if (contour.num <= 0 || vertexOffset + 4 * contour.num > MAX_BEAM_VERTICES)
       continue;
     idDrawVert* output = deferredVertices + vertexOffset;
     const int end = contour.index + contour.num - 1;
     for (int point = contour.index; point < end; ++point) {
       idDrawVert vertices[4];
-      InitializeVertex(vertices[0], graphTree->positions.list[point], {0.0f, 0.0f});
-      InitializeVertex(vertices[1], graphTree->positions.list[point + 1], {1.0f, 0.0f});
-      InitializeVertex(vertices[2], graphTree->positions.list[point] - graphNormal,
+      InitializeVertex(vertices[0], graphTree.positions.list[point], {0.0f, 0.0f});
+      InitializeVertex(vertices[1], graphTree.positions.list[point + 1], {1.0f, 0.0f});
+      InitializeVertex(vertices[2], graphTree.positions.list[point] - graphNormal,
                        {0.0f, 1.0f});
-      InitializeVertex(vertices[3], graphTree->positions.list[point + 1] - graphNormal,
+      InitializeVertex(vertices[3], graphTree.positions.list[point + 1] - graphNormal,
                        {1.0f, 1.0f});
       CopyQuad(output, vertices);
       output += 4;
     }
     idDrawVert vertices[4];
-    InitializeVertex(vertices[0], graphTree->positions.list[end], {0.0f, 0.0f});
-    InitializeVertex(vertices[1], graphTree->positions.list[contour.index], {1.0f, 0.0f});
-    InitializeVertex(vertices[2], graphTree->positions.list[end] - graphNormal, {0.0f, 1.0f});
-    InitializeVertex(vertices[3], graphTree->positions.list[contour.index] - graphNormal,
+    InitializeVertex(vertices[0], graphTree.positions.list[end], {0.0f, 0.0f});
+    InitializeVertex(vertices[1], graphTree.positions.list[contour.index], {1.0f, 0.0f});
+    InitializeVertex(vertices[2], graphTree.positions.list[end] - graphNormal, {0.0f, 1.0f});
+    InitializeVertex(vertices[3], graphTree.positions.list[contour.index] - graphNormal,
                      {1.0f, 1.0f});
     CopyQuad(output, vertices);
     vertexOffset += 4 * contour.num;
@@ -345,25 +345,25 @@ void idRenderModelCuttableBeams::BuildIncisionInsides(const graphTree_t* graphTr
 }
 
 void idRenderModelCuttableBeams::BuildIncisionRepoints(const idList<int>& repoints,
-                                                       const graphTree_t* graphTree) {
+                                                       const graphTree_t& graphTree) {
   BuildMarkerSurface(this, GetSurface(this, SURFACE_INCISIONREPOINT), materialIncisionCross,
                      repoints.num,
-                     [&](int index) { return graphTree->positions.list[repoints.list[index]]; });
+                     [&](int index) { return graphTree.positions.list[repoints.list[index]]; });
 }
 
-void idRenderModelCuttableBeams::BuildIncisionCrossings(const graphTree_t* graphTree) {
+void idRenderModelCuttableBeams::BuildIncisionCrossings(const graphTree_t& graphTree) {
   BuildMarkerSurface(this, GetSurface(this, SURFACE_INCISIONCROSSINGS), materialIncisionCross,
-                     graphTree->intersections.num,
-                     [&](int index) { return graphTree->intersections.list[index]; });
+                     graphTree.intersections.num,
+                     [&](int index) { return graphTree.intersections.list[index]; });
 }
 
-void idRenderModelCuttableBeams::BuildIncisionEndpoints(const graphTree_t* graphTree) {
+void idRenderModelCuttableBeams::BuildIncisionEndpoints(const graphTree_t& graphTree) {
   BuildMarkerSurface(this, GetSurface(this, SURFACE_INCISIONENDPOINTS), materialIncisionCross,
-                     graphTree->endpoints.num,
-                     [&](int index) { return graphTree->endpoints.list[index]; });
+                     graphTree.endpoints.num,
+                     [&](int index) { return graphTree.endpoints.list[index]; });
 }
 
-void idRenderModelCuttableBeams::BuildIncisions(const graphTree_t* graphTree) {
+void idRenderModelCuttableBeams::BuildIncisions(const graphTree_t& graphTree) {
   idRenderModelSurface* surface = GetSurface(this, SURFACE_INCISIONS);
   if (surface == nullptr)
     return;
@@ -384,8 +384,8 @@ void idRenderModelCuttableBeams::BuildIncisions(const graphTree_t* graphTree) {
   idStaticList<int, 4096> repoints;
   repoints.granularity = 1;
 
-  for (int branchIndex = 0; branchIndex < graphTree->branches.num; ++branchIndex) {
-    const graphBranch_t branch = graphTree->branches.list[branchIndex];
+  for (int branchIndex = 0; branchIndex < graphTree.branches.num; ++branchIndex) {
+    const graphBranch_t branch = graphTree.branches.list[branchIndex];
     if (branch.num <= 0)
       continue;
     const int segmentCount = branch.num - 1;
@@ -400,8 +400,8 @@ void idRenderModelCuttableBeams::BuildIncisions(const graphTree_t* graphTree) {
     float textureOffset = 0.0f;
     for (int segment = 0; segment < segmentCount; ++segment) {
       const int pointIndex = branch.index + segment;
-      const idVec3 start = graphTree->positions.list[pointIndex];
-      const idVec3 end = graphTree->positions.list[pointIndex + 1];
+      const idVec3 start = graphTree.positions.list[pointIndex];
+      const idVec3 end = graphTree.positions.list[pointIndex + 1];
       const idVec3 delta = end - start;
       const idVec3 left = NormalizeRetail(delta.Cross(graphNormal)) * halfWidth;
       const idVec3 forward = NormalizeRetail(delta);
@@ -461,11 +461,11 @@ bool idRenderModelCuttableBeams::UpdateInView(const idRenderView*, const idRende
     ClearGeometry(GetSurface(this, index), false);
   const int mode = g_cuttableBeamIncisions.GetInteger();
   if (static_cast<unsigned>(mode) < 2U)
-    BuildIncisions(&graphTree);
+    BuildIncisions(graphTree);
   if (mode == 0 || mode == 2)
-    BuildIncisionCrossings(&graphTree);
+    BuildIncisionCrossings(graphTree);
   if (mode == 0 || mode == 3)
-    BuildIncisionEndpoints(&graphTree);
+    BuildIncisionEndpoints(graphTree);
   CommitThisFrame();
   return true;
 }

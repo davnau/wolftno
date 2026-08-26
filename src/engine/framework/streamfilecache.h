@@ -11,6 +11,7 @@
 
 class idStreamFileCache {
 public:
+  bool OutOfMemoryCallback();
   void UncachedBackgroundRead(idFile* file, std::int64_t offset, int length,
                               void** destination, memTag_t tag,
                               volatile bool* completionFlag);

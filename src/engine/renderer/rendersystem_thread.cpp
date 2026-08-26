@@ -3,6 +3,23 @@
 #include "engine/renderer/jobs/render/graphicsapiwrapper.h"
 #include "engine/renderer/renderthread.h"
 #include "shared/idlib/lib.h"
+#include "shared/idlib/sys/sys_alloc.h"
+
+#include <new>
+
+#if defined(WOLF_RENDERER_RENDERSYSTEM_THREAD_TEST_ACCESS)
+extern idRenderSystemLocal* renderThreadTestGlobal;
+#endif
+
+__forceinline void* operator new(std::size_t size, memTag_t tag) noexcept {
+  return idMem::Singleton()->AllocWithLocation(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(95) : tag", size, tag,
+      false, ALIGN_16, HEAP_DEFAULTHEAP);
+}
+
+__forceinline void operator delete(void* pointer, memTag_t) noexcept {
+  idMem::Singleton()->Free(pointer, ALIGN_16);
+}
 
 void idRenderSystemLocal::RestartRenderThread(void* hdc) {
   if (!renderSynced) {
@@ -29,7 +46,11 @@ void idRenderSystemLocal::RestartRenderThread(void* hdc) {
       break;
     case RENDER_MODE_BINK:
     case RENDER_MODE_FORCE_EXIT:
-      if (WaitForNextVideoFrame(false)) {
+#if defined(WOLF_RENDERER_RENDERSYSTEM_THREAD_TEST_ACCESS)
+      if (renderThreadTestGlobal->WaitForNextVideoFrame(false)) {
+#else
+      if (tr.WaitForNextVideoFrame(false)) {
+#endif
         renderThread->RenderFrameInternal(renderThread->renderMode, hdc,
                                           false, false);
       }
@@ -45,7 +66,7 @@ void idRenderSystemLocal::AllowBackgroundSwaps(bool allow) {
 }
 
 void idRenderSystemLocal::StartRenderThread() {
-  renderThread = new idRenderThread();
+  renderThread = new (TAG_RENDERER) idRenderThread();
   renderThread->StartWorkerThread("Renderer", CORE_0B, THREAD_HIGHEST,
                                   0x40000);
 }

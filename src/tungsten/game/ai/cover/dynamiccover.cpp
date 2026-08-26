@@ -47,6 +47,15 @@ const idDynamicCover::coverInfo_t* idDynamicCover::GetCoverPoint(int index) cons
   return index >= 0 && index < coverInfo.Num() ? &coverInfo[index] : nullptr;
 }
 
+// DIA: idDynamicCover::AppendUsableCover
+bool idDynamicCover::AppendUsableCover(int coverIndex) {
+  if (coverIndex < 0) return false;
+  for (int i = 0; i < usableCover.Num(); ++i)
+    if (usableCover[i] == coverIndex) return false;
+  usableCover.Append(coverIndex);
+  return true;
+}
+
 aas2Cover_t* idDynamicCover::GetDynamicCoverPoint(const idAAS2*,
                                                    std::int16_t index) const {
   const coverInfo_t* info = GetCoverPoint(index);

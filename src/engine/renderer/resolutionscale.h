@@ -6,8 +6,6 @@
 
 class idStr;
 
-// NEEDS_WORK(engine/renderer/resolutionscale.cpp): declaration and ABI are
-// complete; behavior belongs to the later resolutionscale.cpp pass.
 class idResolutionScale {
 public:
   idResolutionScale();
@@ -17,19 +15,32 @@ public:
   void GetConsoleText(idStr& text);
   void LogMetrics();
 
-  idGaugeMetric resolutionScaleMetricX;
-  idGaugeMetric resolutionScaleMetricY;
   float dropMilliseconds;
   float raiseMilliseconds;
-  float currentResolution;
   int framesAboveRaise;
+  float currentResolution;
+  idGaugeMetric resolutionScaleMetricX;
+  idGaugeMetric resolutionScaleMetricY;
 };
 
+#if defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+alignas(idResolutionScale) extern unsigned char
+    renderThreadTestResolutionScaleStorage[sizeof(idResolutionScale)];
+#define resolutionScale (*reinterpret_cast<idResolutionScale*>(             \
+    renderThreadTestResolutionScaleStorage))
+#else
 extern idResolutionScale resolutionScale;
+#endif
 
-static_assert(offsetof(idResolutionScale, resolutionScaleMetricY) == 128,
-              "resolution scale second metric offset drift");
-static_assert(offsetof(idResolutionScale, currentResolution) == 264,
+static_assert(offsetof(idResolutionScale, dropMilliseconds) == 0,
+              "resolution scale drop threshold offset drift");
+static_assert(offsetof(idResolutionScale, framesAboveRaise) == 8,
+              "resolution scale frame counter offset drift");
+static_assert(offsetof(idResolutionScale, currentResolution) == 12,
               "resolution scale current value offset drift");
+static_assert(offsetof(idResolutionScale, resolutionScaleMetricX) == 16,
+              "resolution scale first metric offset drift");
+static_assert(offsetof(idResolutionScale, resolutionScaleMetricY) == 144,
+              "resolution scale second metric offset drift");
 static_assert(sizeof(idResolutionScale) == 272,
               "resolution scale ABI drift");

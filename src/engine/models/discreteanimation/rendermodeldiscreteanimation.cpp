@@ -207,7 +207,7 @@ const idMaterial* idRenderModelDiscreteAnimation::GetPieceTraceMaterial(
   return modelData->traceMaterials[index];
 }
 
-void idRenderModelDiscreteAnimation::Save(idFile* file) {
+void idRenderModelDiscreteAnimation::Save(idFile* file) const {
   idRenderModel::Save(file);
   WriteBig32(file, static_cast<std::uint32_t>(transforms.Num()));
   for (int index = 0; index < transforms.Num(); ++index) {

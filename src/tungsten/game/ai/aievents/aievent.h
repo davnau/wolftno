@@ -3,7 +3,6 @@
 #include "tungsten/game/game_runtime.h"
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/text/str.h"
-#include "tungsten/game/ai/cover/dynamiccover.h"
 
 class idTrajectory {
 public:
@@ -48,6 +47,7 @@ private:
 
 class idAIEvent {
 public:
+  enum aiEventClass_t : int {};
   enum aiEventUpdateResult_t { AIUPDATE_KEEP, AIUPDATE_REMOVE };
 
   idAIEvent();
@@ -60,7 +60,7 @@ public:
   int GetDuration() const;
   int GetPriority() const;
   int GetInstigatorStimulus() const;
-  int GetEventClass() const;
+  aiEventClass_t GetEventClass() const;
   aiEventUpdateResult_t UpdateAttached(int currentTime);
   aiEventUpdateResult_t Update(int currentTime);
   void Init(const idDeclAiEvent* declaration, const idEntity* eventOriginator,
@@ -80,6 +80,14 @@ public:
     origin = value;
     stimulusOrigin = value;
   }
+  void ConfigureEventForTest(const idEntity* eventOriginator,
+                             const idEntity* eventInstigator,
+                             const idVec3& eventOrigin) {
+    originator = eventOriginator;
+    instigator = eventInstigator;
+    origin = eventOrigin;
+  }
+  void SetHandleForTest(int value) { handle = value; }
 
 private:
   const idDeclAiEvent* eventDecl{nullptr};

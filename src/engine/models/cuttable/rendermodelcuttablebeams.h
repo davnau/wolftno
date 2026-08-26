@@ -9,6 +9,7 @@
 class idMaterial;
 class idRenderModelUpdateTools;
 class idRenderView;
+class CuttableBeamsValidationAccess;
 
 template <typename T> void SwapValues(T* left, T* right);
 
@@ -37,17 +38,20 @@ public:
   static void Init();
   static void Shutdown();
   static void StartFrame();
-  void SetBounds(const idBounds* bounds);
-  void Save(idFile* file) override;
+  void SetBounds(const idBounds& bounds);
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
-  void BuildIncisionInsides(const graphTree_t* graphTree);
-  void BuildIncisionRepoints(const idList<int>& repoints, const graphTree_t* graphTree);
-  void BuildIncisionCrossings(const graphTree_t* graphTree);
-  void BuildIncisionEndpoints(const graphTree_t* graphTree);
-  void BuildIncisions(const graphTree_t* graphTree);
+
+private:
+  void BuildIncisionInsides(const graphTree_t& graphTree);
+  void BuildIncisionRepoints(const idList<int>& repoints, const graphTree_t& graphTree);
+  void BuildIncisionCrossings(const graphTree_t& graphTree);
+  void BuildIncisionEndpoints(const graphTree_t& graphTree);
+  void BuildIncisions(const graphTree_t& graphTree);
   bool UpdateInView(const idRenderView* currentView, const idRenderView* nextView,
                     idRenderModelUpdateTools* updateTools) override;
 
+public:
   const idMaterial* materialIncision = nullptr;
   const idMaterial* materialIncisionInside = nullptr;
   const idMaterial* materialIncisionCross = nullptr;
@@ -60,6 +64,8 @@ public:
   static idDrawVert* deferredVertices;
   static idVertexBuffer vertexBuffer[NUM_VERTEX_BUFFERS];
   static idIndexBuffer indexBuffer;
+
+  friend class CuttableBeamsValidationAccess;
 };
 
 static_assert(sizeof(idRenderModelCuttableBeams) == 2224,

@@ -4,6 +4,8 @@
 #include "tungsten/game/ai/aimoveparms.h"
 #include "tungsten/game/ai/aiorientation.h"
 
+#include <cstddef>
+
 enum aiMoveStatus_t {
   MOVE_STATUS_DONE,
   MOVE_STATUS_MOVING,
@@ -71,6 +73,10 @@ public:
 
   const idVec3& GetFinalPoint() const;
   aiMoveStatus_t GetMoveStatus() const;
+  aiMoveStatus_t GetMoveStatus(bool checkAlignment) {
+    lastMoveStatusCheckAlignment = checkAlignment;
+    return moveStatus;
+  }
   idRecoveredValue GetNextPoint(...);
   bool IsPlayingTraversalAnim() const;
   void SetTranslationDeltaScale(const idVec3& scale);
@@ -193,6 +199,9 @@ public:
   void ResetAlignToNextPointCallCountForTest() {
     alignToNextPointCallCount = 0;
   }
+  bool GetLastMoveStatusCheckAlignmentForTest() const {
+    return lastMoveStatusCheckAlignment;
+  }
 
 private:
   void AdvanceLinearMovement(int time, float speedScale);
@@ -233,11 +242,21 @@ private:
   bool alignToNextPointOverrideEnabled{false};
   bool alignToNextPointOverrideResult{false};
   int alignToNextPointCallCount{0};
+  bool lastMoveStatusCheckAlignment{false};
   idScenePoint* destinationTraversal{nullptr};
   idObstacleInfo obstacleInfo;
   idList<moveFailureInfo_t, 5> moveFailures;
   idAIOrientation moveOrientation;
   idVec3 translationScale{1.0F, 1.0F, 1.0F};
+};
+
+class idAIMoveInterface : public idAIMoveState {
+public:
+  idAIMoveInterface* operator->() { return this; }
+  const idAIMoveInterface* operator->() const { return this; }
+  operator idAIMoveState*() { return this; }
+  operator const idAIMoveState*() const { return this; }
+  bool operator!=(std::nullptr_t) const { return true; }
 };
 
 extern idCVar ai_debugMove;

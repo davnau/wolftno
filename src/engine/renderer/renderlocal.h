@@ -112,7 +112,7 @@ public:
   void GetMonitorSize(int, int*, int*) override;
   void BeginBinkVideo(void* hdc, const idVideoDesc* videoDesc,
                       videoFlags_t videoFlags, void* xAudioHardware,
-                      std::int16_t soundSystemSpeakerMask,
+                      int soundSystemSpeakerMask,
                       float binkVolumeDBFloat,
                       idRenderVideoOverlay* overlay, bool force) override;
   bool BinkVideoIsLoaded() override;
@@ -353,7 +353,19 @@ public:
   ogl_pc_t ogl_pc;
 };
 
+#if defined(WOLF_RENDERER_RENDERWORLDCOMMITTED_TEST_ACCESS)
+alignas(idRenderSystemLocal) extern unsigned char
+    renderWorldCommittedTestRenderSystemStorage[sizeof(idRenderSystemLocal)];
+#define tr (*reinterpret_cast<idRenderSystemLocal*>(                         \
+    renderWorldCommittedTestRenderSystemStorage))
+#elif defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+alignas(idRenderSystemLocal) extern unsigned char
+    renderThreadTestRenderSystemStorage[sizeof(idRenderSystemLocal)];
+#define tr (*reinterpret_cast<idRenderSystemLocal*>(                         \
+    renderThreadTestRenderSystemStorage))
+#else
 extern idRenderSystemLocal tr;
+#endif
 
 static_assert(sizeof(performanceCounters_t) == 264,
               "performance counters ABI drift");

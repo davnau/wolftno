@@ -8,6 +8,13 @@
 #include <cstring>
 #include <limits>
 
+const idRenderMatrix renderMatrix_identity{{
+    1.0F, 0.0F, 0.0F, 0.0F,
+    0.0F, 1.0F, 0.0F, 0.0F,
+    0.0F, 0.0F, 1.0F, 0.0F,
+    0.0F, 0.0F, 0.0F, 1.0F,
+}};
+
 namespace {
 idVec4 Transform(const idRenderMatrix& matrix, const idVec3& point) {
   return {matrix.m[0] * point.x + matrix.m[1] * point.y + matrix.m[2] * point.z + matrix.m[3],
@@ -297,9 +304,17 @@ void idRenderMatrix::GetFrustumCorners(frustumCorners_t& corners, const idRender
 }
 int idRenderMatrix::CullFrustumCornersToPlane(const frustumCorners_t& corners,
                                               const idPlane& plane) {
-  int bits = 0;
-  for (int i = 0; i < 8; ++i)
-    if (plane.a * corners.x[i] + plane.b * corners.y[i] + plane.c * corners.z[i] + plane.d < 0)
-      bits |= 1 << i;
-  return bits;
+  int negative = 0;
+  for (int i = 0; i < 8; ++i) {
+    negative += plane.a * corners.x[i] + plane.b * corners.y[i] +
+                        plane.c * corners.z[i] + plane.d <
+                    0.0f
+                ? 1
+                : 0;
+  }
+  if (negative == 0)
+    return 1; // FRUSTUM_CULL_FRONT
+  if (negative == 8)
+    return 2; // FRUSTUM_CULL_BACK
+  return 3;   // FRUSTUM_CULL_CROSS
 }

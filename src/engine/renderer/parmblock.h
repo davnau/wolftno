@@ -119,7 +119,7 @@ public:
   idStaticParmBlock(const idStaticParmBlock& other) : idStaticParmBlock() {
     *this = other;
   }
-  ~idStaticParmBlock() noexcept(false) = default;
+  ~idStaticParmBlock() = default;
   idStaticParmBlock& operator=(const idStaticParmBlock& other) {
     const int numOps = other.ops.num;
     const int numConstants = other.constants.num;

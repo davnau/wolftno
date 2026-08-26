@@ -6,6 +6,11 @@ enum turnDirection_t { TURN_NONE, TURN_LEFT, TURN_RIGHT };
 
 class idAIOrientation {
 public:
+  idAIOrientation* operator->() { return this; }
+  const idAIOrientation* operator->() const { return this; }
+  bool operator==(const idAIOrientation* other) const {
+    return this == other;
+  }
   idAIOrientation(float minimumRate = 0.0F, float maximumRate = 360.0F);
   void UpdateStatic();
   void Init(const idMat3& value);

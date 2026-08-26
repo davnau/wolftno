@@ -13,6 +13,7 @@ struct idJointMat {
 class idMD6Skel {
 public:
   idJointIndex_t GetJointIndex(const char* jointName) const;
+  idUserChannelIndex GetUserChannelIndex(const char* channelName) const;
   const void* data = nullptr;
   idList<idAtomicString, 5> jointNames;
   idAtomicString name;

@@ -50,15 +50,23 @@ private:
 class idBinkTimingWatcher : public idSysThread {
 public:
   idBinkTimingWatcher();
+  static void operator delete(void* pointer) noexcept;
+  static void operator delete(void* pointer, std::size_t) noexcept;
   int Run() override;
+  void StepFrame(int frame) {
+    curFrame = frame;
+    frameEv.Raise();
+  }
 
   int curFrame;
   std::uint32_t recoveredAlignment;
   idSysSignal frameEv;
 };
 
+#if defined(WOLF_RENDERER_RENDERSYSTEM_BINK_TEST_ACCESS)
 void* binkMemAlloc(std::uint32_t bytes);
 void binkMemFree(void* pointer);
+#endif
 std::uint32_t bink_percentage_full(BINK* movie);
 void FillBinkBuffer(volatile bool& cancelToTerminate);
 

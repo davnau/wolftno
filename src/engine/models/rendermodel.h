@@ -28,6 +28,7 @@ class idRenderWorldLocal;
 struct idSerializer;
 struct idRenderModelCommitted;
 struct decalParams_t;
+struct sourceSurface_t;
 
 struct decalHandle_t {
   int decalIndex;
@@ -150,7 +151,7 @@ public:
   idRenderModel();
   virtual ~idRenderModel();
 
-  virtual void Save(idFile* file);
+  virtual void Save(idFile* file) const;
   virtual bool Load(idFile* file);
   virtual bool UpdateInView(const idRenderView* currentView,
                             const idRenderView* nextView,
@@ -158,6 +159,9 @@ public:
   virtual bool CommitSubclass();
   virtual void UnlinkSubclass();
   virtual void DeleteSubclass();
+  virtual const idList<sourceSurface_t, 5>* GetSourceSurfaces() const {
+    return nullptr;
+  }
 
   int GetIndex() const;
   idRenderDebug* GetRenderDebug() const;

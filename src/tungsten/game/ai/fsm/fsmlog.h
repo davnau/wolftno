@@ -2,13 +2,25 @@
 
 #include "shared/idlib/containers/list.h"
 
-#include <string>
+class idFiniteStateMachine;
+class idTypeInfo;
 
 struct idFSMLogEntry {
+  enum fsmLogEntry_t : int {
+    LOGENTRY_TRANSITION = 0,
+    LOGENTRY_RESTART = 1,
+    LOGENTRY_ERROR = 2,
+  };
+
+  fsmLogEntry_t type{LOGENTRY_TRANSITION};
   int time{0};
-  int transitionCode{0};
-  std::string state;
+  const idFiniteStateMachine* fsm{nullptr};
+  const idTypeInfo* curStateType{nullptr};
+  const idTypeInfo* nextStateType{nullptr};
+  const idTypeInfo* transitionType{nullptr};
+  int transCode{0};
 };
+static_assert(sizeof(idFSMLogEntry) == 48, "idFSMLogEntry ABI drift");
 
 class idFSMLog {
 public:

@@ -22,8 +22,10 @@ class idPlayer;
 class idWaypoint;
 enum aimPoint_t : int;
 enum usableState_t : int;
-class idFocusTrace;
+class idFocusTrace {};
 class idCrosshairInfo;
+class idRenderModel;
+struct trace_t;
 
 enum aiHoldFireReason_t : int {
   AI_HOLDFIRE_REASON_NONE = 0,
@@ -81,6 +83,12 @@ static_assert(sizeof(inputSettings_t) == 40,
 
 class idPhysics {
 public:
+  struct contact_t {
+    int entityNumber{-1};
+    int bodyId{0};
+    idVec3 normal{};
+  };
+
   virtual ~idPhysics() = default;
 
   virtual const idBounds& GetAbsBounds() const = 0;
@@ -149,6 +157,26 @@ public:
   virtual bool IsAIInjuryEligible() const { return false; }
   virtual bool ShouldEnterDormancyImmediately() const { return false; }
   virtual int GetBoundaryType() const { return 1; }
+  virtual const idBounds& GetBounds(int bodyId = -1) const {
+    (void)bodyId;
+    return GetAbsBounds();
+  }
+  virtual int GetEntityNumber() const { return -1; }
+  virtual int GetPhysicsType() const { return 0; }
+  virtual int GetNumContacts() const { return 0; }
+  virtual bool GetContact(int index, contact_t& contact) const {
+    (void)index;
+    (void)contact;
+    return false;
+  }
+  virtual bool IsGroundNormal(const idVec3& normal) const {
+    const idVec3 up = GetGravityNormal() * -1.0F;
+    return normal * up > 0.7F;
+  }
+  virtual idVec3 GetPushedLinearVelocity(int bodyId = 0) const {
+    (void)bodyId;
+    return {};
+  }
 };
 
 class idEntity {
@@ -163,6 +191,8 @@ public:
   }
   virtual void OnShow() { hidden = false; }
   virtual void OnActivate(idEntity* activator) { (void)activator; }
+  virtual void GetColor(idVec4& color) const;
+  void SetColorForTest(const idVec4& color) { entityColor = color; }
   virtual void KilledNotification(idEntity* victim, idEntity* inflictor,
                                   const idDeclDamage* damageDecl,
                                   float damage = 0.0F,
@@ -190,19 +220,51 @@ public:
   virtual bool IsWeaponStaticProp() const { return false; }
   virtual idFaction* GetFaction() const { return nullptr; }
   virtual bool IsDead() const { return false; }
+  virtual float Damage(idEntity* inflictor, idEntity* attacker,
+                       const idDeclDamage* damageDecl, float damageScale,
+                       const idVec3& direction, trace_t* trace) {
+    (void)inflictor;
+    (void)attacker;
+    (void)damageDecl;
+    (void)damageScale;
+    (void)direction;
+    (void)trace;
+    return 0.0F;
+  }
   virtual void GetAimPoint(aimPoint_t point, idVec3* result) const {
     (void)point;
     *result = physics != nullptr ? physics->GetOrigin() : idVec3{};
   }
   virtual idVec3 GetLinearVelocity() const { return {}; }
-  virtual bool ShouldLeaveDormancy() const { return leaveDormancy; }
-  virtual void GetSoundTransform(idVec3* origin, idMat3* axis) const {
+  virtual void ApplyImpulse(int physicsId, int bodyId,
+                            const idVec3& point,
+                            const idVec3& impulse) {
+    (void)physicsId;
+    if (physics != nullptr) physics->ApplyImpulse(bodyId, point, impulse);
+  }
+  virtual void ApplyForce(int physicsId, int bodyId,
+                          const idVec3& point,
+                          const idVec3& force) {
+    (void)physicsId;
+    if (physics != nullptr) physics->ApplyForce(bodyId, point, force);
+  }
+  virtual void GetModelTransform(idVec3& origin, idMat3& axis) const {
     if (physics != nullptr) {
-      *origin = physics->GetOrigin();
-      *axis = physics->GetAxis();
+      origin = physics->GetOrigin();
+      axis = physics->GetAxis();
     } else {
-      *origin = {};
-      *axis = {};
+      origin = {};
+      axis = {};
+    }
+  }
+  virtual bool ShouldLeaveDormancy() { return leaveDormancy; }
+  virtual void GetSoundTransform(idVec3& origin, idMat3& axis) const {
+    if (physics != nullptr) {
+      origin = physics->GetOrigin();
+      axis = physics->GetAxis();
+    } else {
+      origin = {};
+      axis = {};
     }
   }
   virtual bool ShouldEnterDormancy() const { return hidden; }
@@ -234,6 +296,14 @@ public:
                                    const idFocusTrace* focusTrace,
                                    usableState_t usable,
                                    idCrosshairInfo* info);
+  virtual bool IsCrosshairSubdued(const idEntity* activator,
+                                  const idFocusTrace& focusTrace,
+                                  usableState_t usable) const {
+    (void)activator;
+    (void)focusTrace;
+    (void)usable;
+    return false;
+  }
 
   idMat3* GetPresentableAxis();
   const idMat3* GetPresentableAxis() const { return &presentableAxis; }
@@ -312,6 +382,7 @@ protected:
   int dropToFloorCount{0};
   bool lastDropToFloorActivate{false};
   unsigned int entityFlags{0};
+  idVec4 entityColor{1.0F, 1.0F, 1.0F, 1.0F};
 };
 
 class idSoundWorld {
@@ -325,6 +396,14 @@ public:
   }
 };
 
+class idMover : public idEntity {
+public:
+  virtual bool IsPusher(int bodyId) const {
+    (void)bodyId;
+    return false;
+  }
+};
+
 class idGameLocal {
 public:
   virtual ~idGameLocal() = default;
@@ -335,6 +414,7 @@ public:
                                      bool enabled,
                                      const char* debugName) = 0;
   virtual int GetFrameNum() const { return 0; }
+  virtual bool IsMultiplayer() const { return false; }
   virtual int GetAlarmTimestamp() const { return -1; }
   virtual std::uint32_t GetRandomSeed() const { return 0; }
   virtual void SetRandomSeed(std::uint32_t seed) { (void)seed; }
@@ -363,6 +443,10 @@ public:
     (void)entityNumber;
     return nullptr;
   }
+  virtual idPhysics* GetPhysicsForId(int physicsId) const {
+    idEntity* entity = GetEntityByNumber(physicsId);
+    return entity != nullptr ? entity->GetPhysics() : nullptr;
+  }
   virtual idRenderWorld* GetRenderWorld() const { return nullptr; }
   virtual idAASVisCache* GetAASVisCache() { return nullptr; }
   virtual idAIGameState* GetAIGameState() { return nullptr; }
@@ -377,6 +461,12 @@ public:
     (void)index;
     return nullptr;
   }
+  virtual idAAS2* GetAAS(const char* name, bool allowDefault) const {
+    (void)name;
+    return allowDefault && NumAAS() > 0 ? GetAAS(0) : nullptr;
+  }
+  virtual void AddTrackAAS(const idAAS2* aas) { (void)aas; }
+  virtual int GetGameFlags() const { return 0; }
   virtual float GetAIIncomingDamageScale() const { return 1.0F; }
   virtual std::uint64_t SubmitTranslationQuery(
       const idVec3& start, const idVec3& end, int clipSize,
@@ -454,6 +544,17 @@ public:
     (void)handle;
     (void)color;
   }
+  virtual void StartGlobalLensFlare(int handle, const idVec3& origin,
+                                    const idMat3& axis, const idVec4& color,
+                                    float fadeStart, float fadeEnd) {
+    (void)handle;
+    (void)origin;
+    (void)axis;
+    (void)color;
+    (void)fadeStart;
+    (void)fadeEnd;
+  }
+  virtual void StopGlobalLensFlare(int handle) { (void)handle; }
   virtual bool GetTrackAASPos(const idAAS2* aas,
                               const idVec3& position) const {
     (void)aas;

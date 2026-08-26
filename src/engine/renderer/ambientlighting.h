@@ -20,6 +20,7 @@ public:
 
 private:
   friend class idRender;
+  friend class idRenderWorldCommitted;
   void FreeData();
 
   ambientMapCPU_t* ambientMap;

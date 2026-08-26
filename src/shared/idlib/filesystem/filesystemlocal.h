@@ -80,6 +80,9 @@ public:
   idFile* OpenFileRead(const char* path, bool, bool) {
     return OpenFileRead(path);
   }
+  idFile* OpenFileWrite(const char* path, fsPath_t) {
+    return OpenFileWrite(path);
+  }
   // NEEDS_WORK(shared/idlib/filesystem): this is the renderer-facing retail
   // boundary. Recover the platform/path-selection implementation with the
   // filesystem module; the fallback preserves already-native full paths.

@@ -1,5 +1,4 @@
 #include "tungsten/game/clientgame/presentable/presentable.h"
-#include "tungsten/game/clientgame/presentable/presentablevehiclecar.h"
 
 #include <algorithm>
 
@@ -103,10 +102,6 @@
 // DIA: `dynamic atexit destructor for 'cg_optimizePresents''
 // DIA: `dynamic atexit destructor for 'cg_optimizePresentsCountdown''
 #include <cstring>
-
-bool idPresentableVehicle::ShouldEnableSphereCollision() const {
-  return sphereCollisionEnabled;
-}
 
 void idPresentable::SetParm(const idDeclRenderParm*, float value) {
   floatParms["aiRobotGlow"] = value;

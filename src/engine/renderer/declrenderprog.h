@@ -75,7 +75,7 @@ template <typename T, std::size_t Count> struct idDeclFixedArray {
 class idDeclRenderProg : public idDecl {
 public:
   idDeclRenderProg();
-  ~idDeclRenderProg() override;
+  ~idDeclRenderProg() noexcept override;
   const char* DefaultDefinition() const override;
   bool ReloadIfStale() override;
   void Print() override;

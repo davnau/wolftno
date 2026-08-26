@@ -17,7 +17,7 @@ idCVar clothsim_useJobs(
     "clothsim_useJobs", "1", CVAR_INTEGER,
     "0 = off, 1 = threaded, 2 = SPURS, 3 = SPURS emulation", 0.0f, 3.0f);
 idCVar r_skipCloth("r_skipCloth", "0", CVAR_INTEGER,
-                   "1 = skip cloth rendering", 0.0f, 1.0f, nullptr,
+                   "1 = skip cloth rendering", 0.0f, 1.0f,
                    idCmdSystem::ArgCompletion_Integer<0, 1>);
 idCVar g_clothTestNormalWind("g_clothTestNormalWind", "1", CVAR_BOOL, "");
 idCVar g_clothTestOverideIterations(
@@ -506,7 +506,7 @@ void idRenderModelCloth::SerializeSnapshot(idSerializer* serializer,
     clothSimulation->windDirection = wind;
 }
 
-void idRenderModelCloth::Save(idFile* file) {
+void idRenderModelCloth::Save(idFile* file) const {
   idRenderModel::Save(file);
   const std::uint8_t hasClothSystem = clothSystem != nullptr;
   file->Write(&hasClothSystem, 1);

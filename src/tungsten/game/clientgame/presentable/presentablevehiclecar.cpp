@@ -4,6 +4,11 @@
 #include <cmath>
 #include <cstring>
 
+// DIA: idPresentableVehicle::ShouldEnableSphereCollision
+bool idPresentableVehicle::ShouldEnableSphereCollision() const {
+  return sphereCollisionEnabled;
+}
+
 // DIA: LerpAngle
 // DIA: idPhysics_Vehicle::~idPhysics_Vehicle
 // DIA: `idPhysics_Vehicle::~idPhysics_Vehicle'::`1'::dtor$0

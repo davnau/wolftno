@@ -34,11 +34,11 @@ public:
   virtual void ArgCompletion_FolderExtension(idAutoComplete*, const char*, const char*, bool) = 0;
   static void ArgCompletion_ConfigName(idAutoComplete*);
   static void ArgCompletion_MapName(idAutoComplete*);
+  static void ArgCompletion_Boolean(idAutoComplete*);
   template <int Minimum, int Maximum>
   static void ArgCompletion_Integer(idAutoComplete* completion) {
     for (int value = Minimum; value <= Maximum; ++value) {
-      idStr suggestion;
-      suggestion.Format("%d", value);
+      idStr suggestion(va("%d", value));
       completion->Append(suggestion, -1);
     }
   }

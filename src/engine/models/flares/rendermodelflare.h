@@ -36,7 +36,7 @@ public:
                     const idRenderView* nextView,
                     idRenderModelUpdateTools* updateTools) override;
   void SerializeSnapshot(idSerializer* serializer, bool serializeParmBlock);
-  void Save(idFile* file) override;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
 
   const idDeclFlare* flareDecl;
@@ -70,7 +70,7 @@ public:
                     const idRenderView* nextView,
                     idRenderModelUpdateTools* updateTools) override;
   void SerializeSnapshot(idSerializer* serializer, bool serializeParmBlock);
-  void Save(idFile* file) override;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
 
   bool isSunFlare;

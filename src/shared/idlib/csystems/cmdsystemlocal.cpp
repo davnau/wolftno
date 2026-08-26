@@ -158,6 +158,12 @@ void idCmdSystem::ArgCompletion_ConfigName(idAutoComplete* c) {
 void idCmdSystem::ArgCompletion_MapName(idAutoComplete* c) {
   cmdSystem->ArgCompletion_FolderExtension(c, ".", "map", true);
 }
+void idCmdSystem::ArgCompletion_Boolean(idAutoComplete* completion) {
+  idStr suggestion("0");
+  completion->Append(suggestion, -1);
+  suggestion = "1";
+  completion->Append(suggestion, -1);
+}
 void idCmdSystemLocal::Echo_f(const idCmdArgs* a) {
   if (a)
     idLib::Printf("%s\n", a->Args(1));

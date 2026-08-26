@@ -7,6 +7,7 @@
 
 struct aas2Cover_t;
 struct aas2TraceFloor_t;
+class idAAS2Settings;
 
 class idAAS2 {
 public:
@@ -37,6 +38,9 @@ public:
                           bool ignoreSameArea) const;
   virtual bool PushPointIntoNearestAreaNum(int* areaNum,
                                            idVec3& point) const;
+  virtual const idAAS2Settings* GetSettings() const { return nullptr; }
+  virtual bool IsDefault() const { return false; }
+  virtual const char* GetName() const { return ""; }
 };
 
 class idAASPosition {

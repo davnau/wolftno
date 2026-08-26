@@ -13,6 +13,7 @@ class idFile_Memory;
 
 class idFileResource : public idResource {
 public:
+  idFileResource() = default;
   ~idFileResource() override;
 
   void FreeData();
@@ -21,14 +22,20 @@ public:
   void LoadResource() override;
   idFile_Memory* GetFileReadOnly();
   idFile_Memory* GetFile() const;
+  int GetLength() const { return static_cast<int>(length); }
+  void* GetData() const { return data; }
   bool ReloadIfStale() override;
 
   static idTypedResourceList<idFileResource> resourceList;
 
-  std::uint32_t timestamp;
-  std::uint64_t length;
-  void* data;
+  std::uint32_t timestamp = static_cast<std::uint32_t>(-1);
+  std::uint64_t length = 0;
+  void* data = nullptr;
 };
+
+template <>
+idFileResource*
+idTypedResourceList<idFileResource>::Alloc(const char* resourceName) const;
 
 static_assert(offsetof(idFileResource, length) == 0x38,
               "file-resource length offset drift");

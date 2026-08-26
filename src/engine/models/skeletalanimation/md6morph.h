@@ -16,7 +16,8 @@ enum morphDataType_t : std::int32_t {
   MORPHDATA_CLIPELLIPSOID = 5
 };
 
-struct idMD6MorphSet {
+class idMD6MorphSet {
+public:
   int meshIndex;
   int groupIndex;
   morphDataType_t type;
@@ -33,9 +34,11 @@ struct idMD6MorphSet {
 
 class idMD6Morph {
 public:
-  void Write_Binary(idFile* file);
+  void Write_Binary(idFile* file) const;
   void Load_Binary(idFile* file, unsigned int magic);
-  idMD6MorphSet* AllocSet();
+  idMD6MorphSet& AllocSet();
+  int NumSets() const { return sets.Num(); }
+  const idMD6MorphSet& GetSet(int index) const { return sets[index]; }
 
   idList<idMD6MorphSet, 5> sets;
 };

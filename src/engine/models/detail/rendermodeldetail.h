@@ -12,19 +12,22 @@ class idMaterial;
 class idRenderView;
 class idRenderModelUpdateTools;
 
-void DetailGatherJob(const deferredDetailGatherParms_t* parms);
-void DetailGenJob(const deferredDetailGenParms_t* parms);
-
-class alignas(16) idRenderModelDetail final : public idRenderModel {
+class alignas(16) idRenderModelDetail : public idRenderModel {
 public:
   idRenderModelDetail();
+
+  void SetDetailModel(idDetailModel* model) { detailBSP = model; }
+
+protected:
   ~idRenderModelDetail() override;
 
+private:
   bool UpdateInView(const idRenderView* currentView,
                     const idRenderView* nextView,
                     idRenderModelUpdateTools* updateTools) override;
 
-  void SetDetailModel(idDetailModel* model) { detailBSP = model; }
+  friend struct idRenderModelDetailLayoutVerifier;
+  friend struct idRenderModelDetailValidationAccess;
 
   idDetailModel* detailBSP;
   deferredDetailGatherParms_t* detailGatherParms;
@@ -45,31 +48,33 @@ extern idCVar r_useDetailGenJobs;
 extern idCVar r_detailGenJobsPerSubTree;
 extern idCVar r_showDetailNodeBounds;
 
-static_assert(offsetof(idRenderModelDetail, detailBSP) == 2176,
-              "idRenderModelDetail::detailBSP ABI drift");
-static_assert(offsetof(idRenderModelDetail, detailGatherParms) == 2184,
-              "idRenderModelDetail::detailGatherParms ABI drift");
-static_assert(offsetof(idRenderModelDetail, detailGenParms) == 2192,
-              "idRenderModelDetail::detailGenParms ABI drift");
-static_assert(offsetof(idRenderModelDetail, viewData) == 2200,
-              "idRenderModelDetail::viewData ABI drift");
-static_assert(offsetof(idRenderModelDetail, currentIndex) == 2208,
-              "idRenderModelDetail::currentIndex ABI drift");
-static_assert(offsetof(idRenderModelDetail, detailIndices) == 2216,
-              "idRenderModelDetail::detailIndices ABI drift");
-static_assert(offsetof(idRenderModelDetail, subTreeDetailCounts) == 2224,
-              "idRenderModelDetail::subTreeDetailCounts ABI drift");
-static_assert(offsetof(idRenderModelDetail, totalsUsed) == 2232,
-              "idRenderModelDetail::totalsUsed ABI drift");
-static_assert(offsetof(idRenderModelDetail, vertexBuffers) == 2240,
-              "idRenderModelDetail::vertexBuffers ABI drift");
-static_assert(offsetof(idRenderModelDetail, indexBuffers) == 2312,
-              "idRenderModelDetail::indexBuffers ABI drift");
-static_assert(offsetof(idRenderModelDetail, deferredVerts) == 2384,
-              "idRenderModelDetail::deferredVerts ABI drift");
-static_assert(offsetof(idRenderModelDetail, deferredIndices) == 2392,
-              "idRenderModelDetail::deferredIndices ABI drift");
-static_assert(offsetof(idRenderModelDetail, detailMaterial) == 2400,
-              "idRenderModelDetail::detailMaterial ABI drift");
+struct idRenderModelDetailLayoutVerifier {
+  static_assert(offsetof(idRenderModelDetail, detailBSP) == 2176,
+                "idRenderModelDetail::detailBSP ABI drift");
+  static_assert(offsetof(idRenderModelDetail, detailGatherParms) == 2184,
+                "idRenderModelDetail::detailGatherParms ABI drift");
+  static_assert(offsetof(idRenderModelDetail, detailGenParms) == 2192,
+                "idRenderModelDetail::detailGenParms ABI drift");
+  static_assert(offsetof(idRenderModelDetail, viewData) == 2200,
+                "idRenderModelDetail::viewData ABI drift");
+  static_assert(offsetof(idRenderModelDetail, currentIndex) == 2208,
+                "idRenderModelDetail::currentIndex ABI drift");
+  static_assert(offsetof(idRenderModelDetail, detailIndices) == 2216,
+                "idRenderModelDetail::detailIndices ABI drift");
+  static_assert(offsetof(idRenderModelDetail, subTreeDetailCounts) == 2224,
+                "idRenderModelDetail::subTreeDetailCounts ABI drift");
+  static_assert(offsetof(idRenderModelDetail, totalsUsed) == 2232,
+                "idRenderModelDetail::totalsUsed ABI drift");
+  static_assert(offsetof(idRenderModelDetail, vertexBuffers) == 2240,
+                "idRenderModelDetail::vertexBuffers ABI drift");
+  static_assert(offsetof(idRenderModelDetail, indexBuffers) == 2312,
+                "idRenderModelDetail::indexBuffers ABI drift");
+  static_assert(offsetof(idRenderModelDetail, deferredVerts) == 2384,
+                "idRenderModelDetail::deferredVerts ABI drift");
+  static_assert(offsetof(idRenderModelDetail, deferredIndices) == 2392,
+                "idRenderModelDetail::deferredIndices ABI drift");
+  static_assert(offsetof(idRenderModelDetail, detailMaterial) == 2400,
+                "idRenderModelDetail::detailMaterial ABI drift");
+};
 static_assert(sizeof(idRenderModelDetail) == 2416,
               "idRenderModelDetail ABI drift");

@@ -14,6 +14,7 @@
 #include "shared/idlib/csystems/autocomplete.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 #include "shared/idlib/lib.h"
+#include "shared/idlib/sys/sys_alloc.h"
 #include "shared/idlib/sys/sys_time.h"
 #include "shared/idlib/text/parser.h"
 
@@ -23,8 +24,19 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <numeric>
 #include <string>
+
+__forceinline void* operator new(std::size_t size, memTag_t tag) noexcept {
+  return idMem::Singleton()->AllocWithLocation(
+      "w:\\build\\tech5\\shared\\idlib\\Heap.h(95) : tag", size, tag,
+      false, ALIGN_16, HEAP_DEFAULTHEAP);
+}
+
+__forceinline void operator delete(void* pointer, memTag_t) noexcept {
+  idMem::Singleton()->Free(pointer, ALIGN_16);
+}
 
 namespace {
 
@@ -63,10 +75,9 @@ wglCreateContextAttribsARBProc_t wglCreateContextAttribsARB{};
 bool glOutOfMemory{};
 bool insideDisplayChange{};
 bool glInStudio{};
-std::int64_t lastSwapTime{};
-std::array<std::int64_t, 128> frameTimes{};
+int lastSwapTime{};
+std::array<int, 128> frameTimes{};
 int frameTimeIndex{};
-int frameTimeCount{};
 
 constexpr PIXELFORMATDESCRIPTOR fakePixelFormat = {
     sizeof(PIXELFORMATDESCRIPTOR),
@@ -98,20 +109,7 @@ constexpr PIXELFORMATDESCRIPTOR fakePixelFormat = {
 };
 
 bool HasExtension(const char* extensions, const char* extension) {
-  if (extensions == nullptr || extension == nullptr || *extension == '\0') {
-    return false;
-  }
-  const std::size_t length = std::strlen(extension);
-  const char* cursor = extensions;
-  while ((cursor = std::strstr(cursor, extension)) != nullptr) {
-    const bool startsWord = cursor == extensions || cursor[-1] == ' ';
-    const bool endsWord = cursor[length] == '\0' || cursor[length] == ' ';
-    if (startsWord && endsWord) {
-      return true;
-    }
-    cursor += length;
-  }
-  return false;
+  return std::strstr(extensions, extension) != nullptr;
 }
 
 void ReportExtension(const char* name, bool present) {
@@ -148,14 +146,6 @@ void NormalizeAspect(int width, int height, int& numerator, int& denominator) {
   }
 }
 
-idRenderDestination* Destination(idImage* color, idImage* depth,
-                                 idImage* stencil) {
-  auto* destination = new idRenderDestination();
-  destination->CreateFromImages(color, depth, stencil);
-  destination->SetDefault();
-  return destination;
-}
-
 void NoOpClampColor(unsigned, unsigned) {}
 
 }  // namespace
@@ -165,6 +155,7 @@ extern idCVar r_swapInterval;
 extern idCVar r_useFloatBuffers;
 extern idCVar r_useUniformArrays;
 extern idCVar r_generateMipMaps;
+extern bool forceIdListsToReallocateEveryAppend;
 
 extern "C" unsigned int glewInit();
 
@@ -197,7 +188,7 @@ idCVar r_multiSamplesGuiClamp(
 idCVar r_mode(
     "r_mode", "-1", 65538,
     "Select the resolution and monitor to use in fullscreen mode (hit TAB to view available modes)",
-    0.0F, 0.0F, nullptr, R_ModeCompletion);
+    R_ModeCompletion);
 idCVar r_initialMonitor("r_initialMonitor", "0", 65538,
                         "The initial monitor used to initialize the render system");
 idCVar r_displayRefresh("r_displayRefresh", "0", 2,
@@ -226,9 +217,7 @@ glCompressedTexMultiSubImage2DAMDProc_t
 
 void qglBindMultiTextureEXT(unsigned textureUnit, unsigned target,
                             unsigned texture) {
-  if (_glewActiveTextureARB != nullptr) {
-    _glewActiveTextureARB(textureUnit);
-  }
+  _glewActiveTextureARB(textureUnit);
   glBindTexture(target, texture);
 }
 
@@ -255,41 +244,35 @@ void qglCompressedTexMultiSubImage2DAMD(
   }
 }
 
-void qglGetMultiQueryObjectuivAMD(unsigned* ids, int count,
+void qglGetMultiQueryObjectuivAMD(unsigned* ids, unsigned count,
                                   unsigned parameter, unsigned* values) {
-  for (int index = 0; index < count; ++index) {
-    _glewGetQueryObjectuivARB(ids[index], parameter, &values[index]);
+  if (static_cast<int>(count) > 0) {
+    for (unsigned index = 0; index < count; ++index) {
+      _glewGetQueryObjectuivARB(ids[index], parameter, &values[index]);
+    }
   }
 }
 
-void R_PrintSeparatedWords(char* text) {
-  if (text == nullptr || *text == '\0') {
-    return;
-  }
+__declspec(noinline) void R_PrintSeparatedWords(char* text) {
   int column = 0;
-  for (char* cursor = text; *cursor != '\0';) {
-    while (*cursor != '\0' && static_cast<unsigned char>(*cursor) <= ' ') {
-      ++cursor;
-    }
-    if (*cursor == '\0') {
-      break;
-    }
-    char* end = cursor;
-    while (*end != '\0' && static_cast<unsigned char>(*end) > ' ') {
-      ++end;
-    }
-    const char saved = *end;
-    *end = '\0';
-    idLib::Printf("%-40s", cursor);
-    *end = saved;
-    cursor = end;
-    if (++column == 2) {
+  if (*text != '\0') {
+    do {
+      idStr word;
+      word.Clear();
+      while (*text > 32) {
+        word.Append(*text);
+        ++text;
+      }
+      idLib::Printf("%-40s", word.data);
+      if (++column >= 2) {
+        idLib::Printf("\n");
+        column = 0;
+      }
+      ++text;
+    } while (*text != '\0');
+    if (column > 0) {
       idLib::Printf("\n");
-      column = 0;
     }
-  }
-  if (column != 0) {
-    idLib::Printf("\n");
   }
 }
 
@@ -458,7 +441,7 @@ void idRenderSystemLocal::ShutdownSystem() {
     const HWND desktop = GetDesktopWindow();
     HDC dc = GetDC(desktop);
     SetDeviceGammaRamp(dc, sys3D.oldHardwareGamma);
-    ReleaseDC(desktop, dc);
+    ReleaseDC(GetDesktopWindow(), dc);
   }
 }
 
@@ -587,7 +570,8 @@ void GL_CheckErrors(bool forcePrint) {
     }
     char numericName[128]{};
     if (errorName == nullptr) {
-      std::snprintf(numericName, sizeof(numericName), "%u ", error);
+      idStr::snPrintf(numericName, sizeof(numericName), "%i ",
+                      static_cast<int>(error));
       errorName = numericName;
     }
     if (r_ignoreGLErrors.GetInteger() == -1) {
@@ -684,7 +668,7 @@ HGLRC CreateOpenGLContextOnDC(HDC dc, HGLRC shareWithContext) {
   int minorVersion = r_glMinorVersion.GetInteger();
   const char* vendor =
       reinterpret_cast<const char*>(glGetString(GL_VENDOR_VALUE));
-  if (vendor != nullptr && _strnicmp(vendor, "Intel", 5) == 0) {
+  if (vendor != nullptr && idStr::Icmpn(vendor, "Intel", 5) == 0) {
     majorVersion = 3;
     minorVersion = 1;
   }
@@ -699,11 +683,13 @@ HGLRC CreateOpenGLContextOnDC(HDC dc, HGLRC shareWithContext) {
   if (context == nullptr) {
     const DWORD error = GetLastError();
     if (LOWORD(error) == 0x2095) {
-      idLib::Printf("ERROR_INVALID_VERSION_ARB: 0x%lx\n", error);
+      idLib::Printf("%sERROR_INVALID_VERSION_ARB: 0x%x\n",
+                    error == 0x2095 ? "" : "Probably ", error);
     } else if (LOWORD(error) == 0x2096) {
-      idLib::Printf("ERROR_INVALID_PROFILE_ARB: 0x%lx\n", error);
+      idLib::Printf("%sERROR_INVALID_PROFILE_ARB: 0x%x\n",
+                    error == 0x2096 ? "" : "Probably ", error);
     } else {
-      idLib::Printf("unknown error: 0x%lx\n", error);
+      idLib::Printf("unknown error: 0x%x\n", error);
     }
     idLib::FatalError("wglCreateContextAttribsARB failed");
   }
@@ -738,7 +724,11 @@ HGLRC CreateOpenGLContextForCurrentThread(HWND* hiddenContextWindow,
 
 idThreadGraphicsContext* AllocThreadGraphicsContextAndShare(
     HGLRC shareWithContext) {
-  auto* context = new idThreadGraphicsContext();
+  auto* context = static_cast<idThreadGraphicsContext*>(
+      idMem::Singleton()->AllocWithLocation(
+          "w:\\build\\tech5\\shared\\idlib\\Heap.h(53) : TAG_NEW",
+          sizeof(idThreadGraphicsContext), TAG_NEW, false, ALIGN_16,
+          HEAP_DEFAULTHEAP));
   context->glContext = CreateOpenGLContextForCurrentThread(
       &context->contextWindow, shareWithContext);
   wglMakeCurrent(nullptr, nullptr);
@@ -759,7 +749,7 @@ void idRenderSystemLocal::DestroyThreadGraphicsContext(
     wglMakeCurrent(nullptr, nullptr);
     wglDeleteContext(context->glContext);
     DestroyWindow(context->contextWindow);
-    delete context;
+    idMem::Singleton()->Free(context, ALIGN_16);
   }
 }
 
@@ -780,7 +770,7 @@ void SetupVidMode() {
     HDC dc = GetDC(desktop);
     const int desktopWidth = GetDeviceCaps(dc, HORZRES);
     const int desktopHeight = GetDeviceCaps(dc, VERTRES);
-    ReleaseDC(desktop, dc);
+    ReleaseDC(GetDesktopWindow(), dc);
 
     for (int mode = 0;
          renderSystem->EnumerateModes(mode, &width, &height, &monitor);
@@ -852,7 +842,7 @@ void SetupVidMode() {
       sys3D.vidMode.height = 540;
     }
   }
-  sys3D.curentSwapInterval = -1;
+  sys3D.curentSwapInterval = 0xFFFF;
 }
 
 int CreateDefaultFBO(int requestedSamples, bool useFloatBuffers) {
@@ -869,30 +859,26 @@ int CreateDefaultFBO(int requestedSamples, bool useFloatBuffers) {
 
   GL_SetDefaultState();
   for (int attempt = 0;; ++attempt) {
-    auto options = [&](textureFormat_t format) {
-      idImageOpts result{};
-      result.textureType = TT_2D;
-      result.format = format;
-      result.colorFormat = CFM_DEFAULT;
-      result.width = renderSystem->GetWidth();
-      result.height = renderSystem->GetHeight();
-      result.depth = 1;
-      result.numLevels = 1;
-      result.numSamples = samples;
-      result.packedTail = true;
-      result.textureBindType = TB_SHADER;
-      result.textureUsage = TU_DEFAULT;
-      result.textureOptions = TO_NONE;
-      result.sampler.filter = TF_NEAREST;
-      result.sampler.repeat = TR_CLAMP;
-      result.sampler.lodMaxClamp = 0.0F;
-      return result;
-    };
-
-    const idImageOpts colorOptions =
-        options(useFloatBuffers ? FMT_RGBA16F : FMT_RGBA8);
-    const idImageOpts rgbaOptions = options(FMT_RGBA8);
-    const idImageOpts depthOptions = options(FMT_DEPTH_STENCIL);
+    idImageOpts colorOptions{};
+    colorOptions.textureType = TT_2D;
+    colorOptions.format = useFloatBuffers ? FMT_RGBA16F : FMT_RGBA8;
+    colorOptions.colorFormat = CFM_DEFAULT;
+    colorOptions.width = renderSystem->GetWidth();
+    colorOptions.height = renderSystem->GetHeight();
+    colorOptions.depth = 1;
+    colorOptions.numLevels = 1;
+    colorOptions.numSamples = samples;
+    colorOptions.packedTail = true;
+    colorOptions.textureBindType = TB_SHADER;
+    colorOptions.textureUsage = TU_DEFAULT;
+    colorOptions.textureOptions = TO_NONE;
+    colorOptions.sampler.filter = TF_NEAREST;
+    colorOptions.sampler.repeat = TR_CLAMP;
+    colorOptions.sampler.lodMaxClamp = 0.0F;
+    idImageOpts rgbaOptions = colorOptions;
+    rgbaOptions.format = FMT_RGBA8;
+    idImageOpts depthOptions = colorOptions;
+    depthOptions.format = FMT_DEPTH_STENCIL;
     frontColor = globalImages->ScratchImage("_frontColor", colorOptions);
     frontScratch = globalImages->ScratchImage("_frontScratch", colorOptions);
     frontFeedback =
@@ -917,18 +903,33 @@ int CreateDefaultFBO(int requestedSamples, bool useFloatBuffers) {
     samples = 0;
   }
 
+  idMem::Singleton()->PushHeap(HEAP_SYSTEMHEAP);
   renderDestNative = nullptr;
-  renderDestScaledLinear = nullptr;
-  renderDestScaledColor =
-      Destination(frontColor, frontDepthStencil, frontDepthStencil);
-  renderDestScaledColor2 =
-      Destination(frontScratch, frontDepthStencil, frontDepthStencil);
-  renderDestScaledDepth =
-      Destination(nullptr, frontDepthStencil, frontDepthStencil);
-  renderDestScaledFeedback =
-      Destination(frontFeedback, frontDepthStencil, frontDepthStencil);
+  renderDestScaledColor = new (TAG_RENDERER) idRenderDestination();
+  renderDestScaledColor2 = new (TAG_RENDERER) idRenderDestination();
+  renderDestScaledDepth = new (TAG_RENDERER) idRenderDestination();
+  renderDestScaledFeedback = new (TAG_RENDERER) idRenderDestination();
   renderDestScaledColorWithFeedback =
-      Destination(frontColor, frontDepthStencil, frontDepthStencil);
+      new (TAG_RENDERER) idRenderDestination();
+  renderDestScaledLinear = nullptr;
+  idMem::Singleton()->PopHeap();
+
+  renderDestScaledColor->SetDefault();
+  renderDestScaledColor->CreateFromImages(frontColor, frontDepthStencil,
+                                           frontDepthStencil);
+  renderDestScaledColor2->SetDefault();
+  renderDestScaledColor2->CreateFromImages(frontScratch, frontDepthStencil,
+                                            frontDepthStencil);
+  renderDestScaledDepth->SetDefault();
+  renderDestScaledDepth->CreateFromImages(nullptr, frontDepthStencil,
+                                           frontDepthStencil);
+  renderDestScaledFeedback->SetDefault();
+  renderDestScaledFeedback->CreateFromImages(frontFeedback,
+                                              frontDepthStencil,
+                                              frontDepthStencil);
+  renderDestScaledColorWithFeedback->SetDefault();
+  renderDestScaledColorWithFeedback->CreateFromImages(
+      frontColor, frontDepthStencil, frontDepthStencil);
   renderDestScaledColorWithFeedback->AddTarget(frontFeedback);
   if (frontNormal != nullptr) {
     renderDestScaledColorWithFeedback->AddTarget(frontNormal);
@@ -990,14 +991,13 @@ void idRenderSystemLocal::SwapBuffers(void* deviceContext, bool forceVsync) {
 
   if (r_swapInterval.GetInteger() != 0 && Sys_IsGameWindowActive() &&
       !win32.monitorPoweredOff) {
-    const std::int64_t now = Sys_Milliseconds();
+    const int now = static_cast<int>(Sys_Milliseconds());
     frameTimes[frameTimeIndex & 127] = now;
     ++frameTimeIndex;
-    frameTimeCount = (std::min)(frameTimeCount + 1, 128);
     if (frameTimeIndex > 128) {
       const int newest = (frameTimeIndex - 1) & 127;
       const int oldest = frameTimeIndex & 127;
-      const std::int64_t elapsed = frameTimes[newest] - frameTimes[oldest];
+      const int elapsed = frameTimes[newest] - frameTimes[oldest];
       if (elapsed / 128 < 14) {
         idLib::Warning(
             "vsync turned off because the game is running too fast!");
@@ -1007,10 +1007,10 @@ void idRenderSystemLocal::SwapBuffers(void* deviceContext, bool forceVsync) {
   }
 
   if (r_swapInterval.GetInteger() == -1 &&
-      Sys_Milliseconds() - lastSwapTime < 12) {
+      static_cast<int>(Sys_Milliseconds()) - lastSwapTime < 12) {
     do {
       Sys_Sleep(1);
-    } while (Sys_Milliseconds() - lastSwapTime < 12);
+    } while (static_cast<int>(Sys_Milliseconds()) - lastSwapTime < 12);
   }
 
   if (forceVsync) {
@@ -1033,7 +1033,7 @@ void idRenderSystemLocal::SwapBuffers(void* deviceContext, bool forceVsync) {
     dc = sys3D.lastDC;
   }
   ::SwapBuffers(dc);
-  lastSwapTime = Sys_Milliseconds();
+  lastSwapTime = static_cast<int>(Sys_Milliseconds());
   pc.endSwapMicroSec = Sys_Microseconds();
 }
 
@@ -1067,8 +1067,7 @@ void idRenderSystemLocal::ShowGameWindow() {
     r_initialMonitor.SetInteger(sys3D.vidMode.monitorNum, true);
     const char* oldDevice = nullptr;
     MONITORINFOEXA oldInfo{};
-    if (sys3D.currentFullscreen && currentMonitor >= 0 &&
-        currentMonitor < sys3D.monitors.Num()) {
+    if (sys3D.currentFullscreen) {
       oldInfo.cbSize = sizeof(oldInfo);
       GetMonitorInfoA(sys3D.monitors[currentMonitor].hMonitor, &oldInfo);
       oldDevice = oldInfo.szDevice;
@@ -1080,12 +1079,20 @@ void idRenderSystemLocal::ShowGameWindow() {
   }
   sys3D.currentFullscreen = sys3D.vidMode.fullscreen;
 
-  MONITORINFOEXA info{};
-  info.cbSize = sizeof(info);
-  GetMonitorInfoA(sys3D.monitors[sys3D.vidMode.monitorNum].hMonitor, &info);
   if (IsFullscreen()) {
-    bool displayModeChanged = true;
-    if (!r_fullscreenWindowed.GetBool()) {
+    MONITORINFOEXA info{};
+    info.cbSize = sizeof(info);
+    GetMonitorInfoA(sys3D.monitors[sys3D.vidMode.monitorNum].hMonitor,
+                    &info);
+    if (r_fullscreenWindowed.GetBool()) {
+      SetWindowLongA(win32.hWnd, GWL_STYLE,
+                     static_cast<LONG>(0x800A0000u));
+      SetWindowLongA(win32.hWnd, GWL_EXSTYLE, 0);
+      SetWindowPos(win32.hWnd, HWND_NOTOPMOST, info.rcMonitor.left,
+                   info.rcMonitor.top, sys3D.vidMode.width,
+                   sys3D.vidMode.height,
+                   SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    } else {
       DEVMODEA mode{};
       mode.dmSize = sizeof(mode);
       mode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
@@ -1098,8 +1105,7 @@ void idRenderSystemLocal::ShowGameWindow() {
       }
       const LONG change = MyChangeDisplaySettings(
           info.szDevice, &mode, nullptr, CDS_FULLSCREEN, nullptr);
-      displayModeChanged = change == DISP_CHANGE_SUCCESSFUL;
-      if (!displayModeChanged) {
+      if (change != DISP_CHANGE_SUCCESSFUL) {
         const char* message = "Unknown error";
         switch (change) {
           case DISP_CHANGE_BADDUALVIEW:
@@ -1112,7 +1118,7 @@ void idRenderSystemLocal::ShowGameWindow() {
             message = "An invalid set of flags was passed in.";
             break;
           case DISP_CHANGE_NOTUPDATED:
-            message = "Unable to write settings to the registry.";
+            message = "Windows NT/2000/XP: Unable to write settings to the registry.";
             break;
           case DISP_CHANGE_BADMODE:
             message = "The graphics mode is not supported.";
@@ -1130,24 +1136,27 @@ void idRenderSystemLocal::ShowGameWindow() {
       } else {
         GetMonitorInfoA(sys3D.monitors[sys3D.vidMode.monitorNum].hMonitor,
                         &info);
+        SetWindowLongA(win32.hWnd, GWL_STYLE,
+                       static_cast<LONG>(0x800A0000u));
+        SetWindowLongA(win32.hWnd, GWL_EXSTYLE, 0);
+        SetWindowPos(win32.hWnd, HWND_NOTOPMOST, info.rcMonitor.left,
+                     info.rcMonitor.top, sys3D.vidMode.width,
+                     sys3D.vidMode.height,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+      }
+      if (renderThread != nullptr) {
+        glFinish();
       }
     }
-    if (r_fullscreenWindowed.GetBool() || displayModeChanged) {
-      SetWindowLongA(win32.hWnd, GWL_STYLE,
-                     static_cast<LONG>(0x800A0000u));
-      SetWindowLongA(win32.hWnd, GWL_EXSTYLE, 0);
-      SetWindowPos(win32.hWnd, HWND_TOPMOST, info.rcMonitor.left,
-                   info.rcMonitor.top, sys3D.vidMode.width,
-                   sys3D.vidMode.height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-    }
-    if (renderThread != nullptr) {
-      glFinish();
-    }
   } else {
+    MONITORINFOEXA info{};
+    info.cbSize = sizeof(info);
+    GetMonitorInfoA(sys3D.monitors[sys3D.vidMode.monitorNum].hMonitor,
+                    &info);
     RECT rectangle{sys3D.vidMode.x, sys3D.vidMode.y,
                    sys3D.vidMode.x + sys3D.vidMode.width,
                    sys3D.vidMode.y + sys3D.vidMode.height};
-    AdjustWindowRect(&rectangle, WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME, FALSE);
+    AdjustWindowRect(&rectangle, 0x00CE0000u, FALSE);
     if (rectangle.right - rectangle.left >
         info.rcWork.right - info.rcWork.left) {
       rectangle.left = info.rcWork.left;
@@ -1176,7 +1185,7 @@ void idRenderSystemLocal::ShowGameWindow() {
     }
     SetWindowLongA(win32.hWnd, GWL_STYLE, 0x00CE0000);
     SetWindowLongA(win32.hWnd, GWL_EXSTYLE, 0);
-    SetWindowPos(win32.hWnd, HWND_TOPMOST, rectangle.left, rectangle.top,
+    SetWindowPos(win32.hWnd, HWND_NOTOPMOST, rectangle.left, rectangle.top,
                  rectangle.right - rectangle.left,
                  rectangle.bottom - rectangle.top,
                  SWP_FRAMECHANGED | SWP_SHOWWINDOW);
@@ -1260,14 +1269,8 @@ void R_ModeCompletion(idAutoComplete* autoComplete) {
                                 monitorAspectY == modeAspectY
                             ? "^7"
                             : "^8";
-    idStr suggestion;
-    if (sys3D.monitors.Num() == 1) {
-      suggestion.Format(format, mode, color, width, height, modeAspectX,
-                        modeAspectY);
-    } else {
-      suggestion.Format(format, mode, color, width, height, modeAspectX,
-                        modeAspectY, monitor);
-    }
+    idStr suggestion(va(format, mode, color, width, height, modeAspectX,
+                        modeAspectY, monitor));
     autoComplete->Append(suggestion, -1);
   }
 }
@@ -1300,22 +1303,19 @@ void GL_Init() {
   int numExtensions = 0;
   glGetIntegerv(GL_NUM_EXTENSIONS_VALUE, &numExtensions);
   glConfig.extensions_string.Clear();
-  if (_glewGetStringi != nullptr) {
-    for (int index = 0; index < numExtensions; ++index) {
-      const char* extension = reinterpret_cast<const char*>(
-          _glewGetStringi(GL_EXTENSIONS_VALUE, index));
-      if (extension != nullptr) {
-        glConfig.extensions_string.Append(extension);
-      }
-      if (index + 1 < numExtensions) {
-        glConfig.extensions_string.Append(' ');
-      }
+  for (int index = 0; index < numExtensions; ++index) {
+    const char* extension = reinterpret_cast<const char*>(
+        _glewGetStringi(GL_EXTENSIONS_VALUE, index));
+    glConfig.extensions_string.Append(extension);
+    if (index + 1 < numExtensions) {
+      glConfig.extensions_string.Append(' ');
     }
   }
+  glConfig.extensions_string.Append('\0');
   const char* extensions = glConfig.extensions_string.data;
 
-  if (_strnicmp(glConfig.renderer_string, "ATI ", 4) == 0 ||
-      _strnicmp(glConfig.renderer_string, "AMD ", 4) == 0) {
+  if (idStr::Icmpn(glConfig.renderer_string, "ATI ", 4) == 0 ||
+      idStr::Icmpn(glConfig.renderer_string, "AMD ", 4) == 0) {
     r_generateMipMaps.SetInteger(0, true);
     if (r_useGPUTimer.GetInteger() == 1) {
       r_useGPUTimer.SetInteger(0, true);
@@ -1328,9 +1328,9 @@ void GL_Init() {
     if (tessellation) {
       idParser::AddGlobalDefine("ATI_CLAMPED_ANISO");
     }
-  } else if (_strnicmp(glConfig.renderer_string, "NVIDIA", 6) == 0) {
+  } else if (idStr::Icmpn(glConfig.renderer_string, "NVIDIA", 6) == 0) {
     glConfig.vendor = VENDOR_NVIDIA;
-  } else if (_strnicmp(glConfig.renderer_string, "Intel", 5) == 0) {
+  } else if (idStr::Icmpn(glConfig.renderer_string, "Intel", 5) == 0) {
     glConfig.vendor = VENDOR_INTEL;
   }
 
@@ -1412,15 +1412,13 @@ void GL_Init() {
   glConfig.debugOutputAvailable = extensionFlag("GL_ARB_debug_output");
 
   if (glConfig.debugOutputAvailable) {
-    if (r_debugContext.GetInteger() >= 1 &&
-        _glewDebugMessageCallbackARB != nullptr) {
+    if (r_debugContext.GetInteger() >= 1) {
       _glewDebugMessageCallbackARB(DebugCallback, nullptr);
     }
     if (r_debugContext.GetInteger() >= 2) {
       glEnable(0x8242);
     }
-    if (r_debugContext.GetInteger() >= 3 &&
-        _glewDebugMessageControlARB != nullptr) {
+    if (r_debugContext.GetInteger() >= 3) {
       _glewDebugMessageControlARB(0x1100, 0x1100, 0x1100, 0, nullptr, 1);
     }
   }
@@ -1484,15 +1482,13 @@ void idRenderSystemLocal::CreateMainThreadContext() {
   sys3D.numSamples =
       CreateDefaultFBO(sys3D.numSamples, sys3D.useFloatBuffers);
 
-  wrapperContext_t context{};
+  wrapperContext_t context;
   context.disableDepthBoundsTest = !glConfig.depthBoundsTestAvailable;
   context.useUniformArrays = r_useUniformArrays.GetBool();
   context.useTimerQuery =
       glConfig.timerQueryAvailable && r_useGPUTimer.GetInteger() != 0;
-  if (_glewGenQueries != nullptr) {
-    for (auto& queryGroup : context.queries) {
-      _glewGenQueries(256, queryGroup);
-    }
+  for (auto& queryGroup : context.queries) {
+    _glewGenQueries(256, queryGroup);
   }
   GL_SetWrapperContext(context);
 }
@@ -1500,13 +1496,95 @@ void idRenderSystemLocal::CreateMainThreadContext() {
 template <typename T> class idSort {
 public:
   virtual ~idSort() = default;
-  virtual int Compare(const T& lhs, const T& rhs) const = 0;
+  virtual void Sort(T* base, unsigned int num) const = 0;
 };
 
-template <typename T> class idSort_QuickDefault final : public idSort<T> {
+template <typename T, typename Derived>
+class idSort_Quick : public idSort<T> {
+public:
+  void Sort(T* base, unsigned int num) const override {
+    if (num <= 1) {
+      return;
+    }
+    constexpr std::int64_t maxLevels = 128;
+    std::int64_t lo[maxLevels];
+    std::int64_t hi[maxLevels];
+    std::int64_t low = 0;
+    std::int64_t high = num - 1;
+    std::int64_t level = 0;
+    for (;;) {
+      std::int64_t i = low;
+      std::int64_t j = high;
+      if (j - i >= 4 && level < maxLevels - 1) {
+        const std::int64_t pivotIndex = (i + j) / 2;
+        std::swap(base[j], base[pivotIndex]);
+        T& pivot = base[j--];
+        do {
+          while (static_cast<const Derived*>(this)->Compare(base[i], pivot) <
+                 0) {
+            if (++i >= j) {
+              break;
+            }
+          }
+          while (static_cast<const Derived*>(this)->Compare(base[j], pivot) >
+                 0) {
+            if (--j <= i) {
+              break;
+            }
+          }
+          if (i >= j) {
+            break;
+          }
+          std::swap(base[i], base[j]);
+        } while (++i < --j);
+        while (static_cast<const Derived*>(this)->Compare(base[i], pivot) <=
+                   0 &&
+               i < high) {
+          ++i;
+        }
+        while (static_cast<const Derived*>(this)->Compare(base[j], pivot) >=
+                   0 &&
+               low < j) {
+          --j;
+        }
+        std::swap(pivot, base[i]);
+        if (high - i <= j - low) {
+          lo[level] = low;
+          hi[level++] = j;
+          low = i;
+        } else {
+          hi[level] = high;
+          lo[level++] = i;
+          high = j;
+        }
+      } else {
+        for (; i < j; --j) {
+          std::int64_t maximum = i;
+          for (std::int64_t index = i + 1; index <= j; ++index) {
+            if (static_cast<const Derived*>(this)->Compare(base[index],
+                                                            base[maximum]) >
+                0) {
+              maximum = index;
+            }
+          }
+          std::swap(base[maximum], base[j]);
+        }
+        if (--level < 0) {
+          return;
+        }
+        low = lo[level];
+        high = hi[level];
+      }
+    }
+  }
+};
+
+template <typename T>
+class idSort_QuickDefault final
+    : public idSort_Quick<T, idSort_QuickDefault<T>> {
 public:
   ~idSort_QuickDefault() override;
-  int Compare(const T& lhs, const T& rhs) const override {
+  int Compare(const T& lhs, const T& rhs) const {
     return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
   }
 };
@@ -1516,15 +1594,18 @@ idSort_QuickDefault<unsigned int>::~idSort_QuickDefault() {}
 
 void DestroyDefaultFBO() {
   if (renderDestScaledColor != nullptr) {
-    delete renderDestScaledColor;
+    renderDestScaledColor->~idRenderDestination();
+    idMem::Singleton()->Free(renderDestScaledColor, ALIGN_16);
     renderDestScaledColor = nullptr;
   }
   if (renderDestScaledFeedback != nullptr) {
-    delete renderDestScaledFeedback;
+    renderDestScaledFeedback->~idRenderDestination();
+    idMem::Singleton()->Free(renderDestScaledFeedback, ALIGN_16);
     renderDestScaledFeedback = nullptr;
   }
   if (renderDestScaledColorWithFeedback != nullptr) {
-    delete renderDestScaledColorWithFeedback;
+    renderDestScaledColorWithFeedback->~idRenderDestination();
+    idMem::Singleton()->Free(renderDestScaledColorWithFeedback, ALIGN_16);
     renderDestScaledColorWithFeedback = nullptr;
   }
   GL_CheckErrors(false);
@@ -1548,21 +1629,47 @@ bool idRenderSystemLocal::WindowChangeMultisamples(int samples,
 
 template <typename T>
 T* idListArrayNew(int count, unsigned int tag, bool zeroBuffer) {
-  (void)tag;
-  (void)zeroBuffer;
-  return count > 0 ? new T[static_cast<std::size_t>(count)] : nullptr;
+  idMem* const memory = idMem::Singleton();
+  T* const allocation = static_cast<T*>(memory->AllocWithLocation(
+      zeroBuffer
+          ? "w:\\build\\tech5\\shared\\idlib\\containers\\List.h(27) : tag"
+          : "w:\\build\\tech5\\shared\\idlib\\containers\\List.h(29) : tag",
+      sizeof(T) * static_cast<std::size_t>(count),
+      static_cast<memTag_t>(tag), zeroBuffer, ALIGN_16, HEAP_DEFAULTHEAP));
+  if (allocation == nullptr) {
+    return nullptr;
+  }
+  int constructed = 0;
+  try {
+    for (; constructed < count; ++constructed) {
+      ::new (static_cast<void*>(&allocation[constructed])) T;
+    }
+  } catch (...) {
+    while (constructed > 0) {
+      allocation[--constructed].~T();
+    }
+    memory->Free(allocation, ALIGN_16);
+    throw;
+  }
+  return allocation;
 }
 
 template <typename T> void idListArrayDelete(T* pointer, int count) {
-  (void)count;
-  delete[] pointer;
+  for (int index = 0; index < count; ++index) {
+    pointer[index].~T();
+  }
+  idMem::Singleton()->Free(pointer, ALIGN_16);
 }
 
 template <typename T>
 T* idListArrayResize(T* oldPointer, int oldCount, int newCount,
                      unsigned int tag, bool zeroBuffer) {
-  T* replacement = idListArrayNew<T>(newCount, tag, zeroBuffer);
-  if (replacement != nullptr) {
+  T* replacement = nullptr;
+  if (newCount > 0) {
+    replacement = idListArrayNew<T>(newCount, tag, zeroBuffer);
+    if (replacement == nullptr) {
+      return nullptr;
+    }
     const int copyCount = (std::min)(oldCount, newCount);
     for (int index = 0; index < copyCount; ++index) {
       replacement[index] = oldPointer[index];
@@ -1610,7 +1717,9 @@ template <> monitor_t* idList<monitor_t, 62>::Alloc() {
   const int required = num + 1;
   if (required > size) {
     int newSize = 1;
-    if (granularity != 0) {
+    if (forceIdListsToReallocateEveryAppend) {
+      newSize = required;
+    } else if (granularity != 0) {
       newSize = required + granularity - 1;
       newSize -= newSize % granularity;
     } else {
@@ -1627,27 +1736,22 @@ template <> monitor_t* idList<monitor_t, 62>::Alloc() {
 }
 
 sys3D_t::sys3D_t() {
-  std::memset(oldHardwareGamma, 0, sizeof(oldHardwareGamma));
-  win32DC = nullptr;
-  currentFullscreen = false;
-  currentMonitor = -1;
-  numSamples = 1;
-  useFloatBuffers = false;
-  vidMode.monitorNum = 0;
-  vidMode.x = 0;
-  vidMode.y = 0;
   vidMode.width = 1;
   vidMode.height = 1;
   vidMode.pixelAspect = 1.0F;
   vidMode.fullscreen = true;
+  vidMode.monitorNum = 0;
+  vidMode.x = 0;
+  vidMode.y = 0;
+  win32DC = nullptr;
+  currentFullscreen = false;
+  currentMonitor = -1;
+  numSamples = 1;
   lastDC = nullptr;
+  renderThreadContext = nullptr;
   mainThreadContext = nullptr;
   pixelFormat = 0;
-  std::memset(&pfd, 0, sizeof(pfd));
-  relayContext = nullptr;
-  renderThreadContext = nullptr;
   ignoreSizeMessages = true;
-  curentSwapInterval = -1;
 }
 
 BOOL CALLBACK MonitorEnumProc(HMONITOR monitor, HDC, RECT*, LPARAM) {
@@ -1663,8 +1767,8 @@ void EnumerateMonitors() {
   sys3D.monitors.ClearFree();
   EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, 0);
 
-  int monitorIndex = 0;
-  while (monitorIndex < sys3D.monitors.Num()) {
+  for (int monitorIndex = 0; monitorIndex < sys3D.monitors.Num();
+       ++monitorIndex) {
     monitor_t& monitor = sys3D.monitors[monitorIndex];
     MONITORINFOEXA info{};
     info.cbSize = sizeof(info);
@@ -1695,15 +1799,12 @@ void EnumerateMonitors() {
       }
     }
     idSort_QuickDefault<unsigned int> sorter;
-    std::sort(monitor.supportedModes.list,
-              monitor.supportedModes.list + monitor.supportedModes.Num(),
-              [&sorter](unsigned lhs, unsigned rhs) {
-                return sorter.Compare(lhs, rhs) < 0;
-              });
+    if (monitor.supportedModes.list != nullptr) {
+      sorter.Sort(monitor.supportedModes.list,
+                  monitor.supportedModes.Num());
+    }
     if (monitor.supportedModes.Num() == 0) {
       sys3D.monitors.RemoveIndex(monitorIndex);
-    } else {
-      ++monitorIndex;
     }
   }
 
@@ -1732,7 +1833,9 @@ void idRenderSystemLocal::PreliminaryRenderSetup() {
 
   EnumerateMonitors();
   SetupVidMode();
-  GetDeviceGammaRamp(dc, sys3D.oldHardwareGamma);
+  HDC gammaDC = GetDC(GetDesktopWindow());
+  GetDeviceGammaRamp(gammaDC, sys3D.oldHardwareGamma);
+  ReleaseDC(GetDesktopWindow(), gammaDC);
   sys3D.numSamples = r_multiSamples.GetInteger();
   CreateWindowClasses(win32.hInstance);
   GetWGLExtensionsWithFakeWindow();
@@ -1754,6 +1857,6 @@ void idRenderSystemLocal::PreliminaryRenderSetup() {
     idLib::FatalError("wglChoosePixelFormatARB failed.");
   }
   DescribePixelFormat(dc, sys3D.pixelFormat, sizeof(sys3D.pfd), &sys3D.pfd);
-  ReleaseDC(desktop, dc);
+  ReleaseDC(GetDesktopWindow(), dc);
   CreateMainThreadContext();
 }

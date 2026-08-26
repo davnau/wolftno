@@ -1,5 +1,8 @@
 #pragma once
 
+#include "shared/idlib/sys/sys_alloc.h"
+
+#include <cstddef>
 #include <cstdint>
 
 class idRenderFrameInfo;
@@ -43,7 +46,14 @@ enum stereoRenderMode_t : int {
 // remain permissive until their owning renderer-system CPP is reconstructed.
 class idRenderSystem {
 public:
-  virtual ~idRenderSystem() = default;
+  virtual ~idRenderSystem();
+  static __forceinline void operator delete(void* pointer) noexcept {
+    idMem::Singleton()->Free(pointer, ALIGN_16);
+  }
+  static __forceinline void operator delete(void* pointer,
+                                             std::size_t) noexcept {
+    operator delete(pointer);
+  }
   virtual void Init() {}
   virtual void Init2() {}
   virtual void Shutdown() {}
@@ -60,7 +70,7 @@ public:
   virtual int FrameNumber() { return 0; }
   virtual bool SyncRenderThread(bool) { return false; }
   virtual void BeginBinkVideo(void*, const idVideoDesc*, videoFlags_t, void*,
-                              std::int16_t, float, idRenderVideoOverlay*, bool) {}
+                              int, float, idRenderVideoOverlay*, bool) {}
   virtual bool BinkVideoIsLoaded() { return false; }
   virtual void BinkVideoPause(bool) {}
   virtual bool BinkVideoIsPlaying() { return false; }

@@ -16,8 +16,21 @@ float EmittedCosineDegrees(const float degrees) {
 #define RECOVERED_METHOD(owner, method) \
   idRecoveredValue owner::method(...) { return {}; }
 
+void idFiniteStateMachine::Save(idFile_String* file,
+                                const char* indent) const {
+  lastSaveIndent = indent != nullptr ? indent : "";
+  ++saveCount;
+  file->Printf("%s%s", lastSaveIndent.data, saveText.data);
+}
+
 idAction_MoveToPoint::~idAction_MoveToPoint() = default;
+idAIActionManager::idAIActionManager()
+    : actionFSM(std::make_unique<idAIActionFSM>()) {}
 idAIActionManager::~idAIActionManager() = default;
+idAIActionFSM* idAIActionManager::GetActionFSM() { return actionFSM.get(); }
+const idAIActionFSM* idAIActionManager::GetActionFSM() const {
+  return actionFSM.get();
+}
 idAIDamageInfo::~idAIDamageInfo() = default;
 idAIDeathInfo::idAIDeathInfo() = default;
 idAIDeathInfo::~idAIDeathInfo() = default;
@@ -308,7 +321,7 @@ idAI2::idAIConstant::idAIConstant() {
   animation.useFaceSetupEyeTrackingEnabled = false;
 }
 
-RECOVERED_METHOD(idAIEvent, GetOriginator)
+idAIFSMCallback::idAIFSMCallback() : log(64) {}
 idAIFSMCallback::~idAIFSMCallback() = default;
 idAIMoveState::~idAIMoveState() = default;
 RECOVERED_METHOD(idAIMoveState, GetNextPoint)

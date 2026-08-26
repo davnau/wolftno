@@ -13,6 +13,7 @@ struct idMath {
   static float Exp16(float f);
   static float Sin16(float a);
   static float Cos16(float a);
+  static void SinCos16(float a, float& s, float& c);
   static float ONE_OVER_TWO_PI;
   static __m128 vector_float_smallestNonDenorm;
 };

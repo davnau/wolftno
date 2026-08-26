@@ -486,7 +486,7 @@ idDeclRenderProg::idDeclRenderProg()
   Clear();
 }
 
-idDeclRenderProg::~idDeclRenderProg() { FreeData(); }
+idDeclRenderProg::~idDeclRenderProg() noexcept { FreeData(); }
 
 void idDeclRenderProg::Parse(idParser& source) {
   const renderProgParms_t parms{PT_PC,

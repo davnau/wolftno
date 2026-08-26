@@ -7,6 +7,7 @@
 #include "shared/idlib/parallelism/thread.h"
 #include "engine/renderer/jobs/render/graphicsapiwrapper.h"
 #include "engine/renderer/rendersystem_runtime.h"
+#include "shared/idlib/sys/sys_alloc.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +28,25 @@ public:
   void RenderFrameInternal(renderMode_t mode, void* deviceContext,
                            bool swapBuffers, bool forceVSync);
   void SetLoadingIconInfo(float posX, float posY, float scale, float speed);
+
+  static void operator delete(void* pointer) noexcept {
+    if (pointer != nullptr)
+      idMem::Singleton()->Free(pointer, ALIGN_16);
+  }
+
+#if defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+public:
+#else
+private:
+#endif
+  void RenderLoadingIcon(float fracX, float fracY, float size);
+  void RenderSavingIcon();
+  void RenderAutomatic(void* deviceContext);
+  void RenderVideo();
+  void RenderManual(void* deviceContext, bool resolveDepth);
+  void RenderBink(void* deviceContext);
+
+public:
 
   void* hdc;
   renderMode_t renderMode;
@@ -59,3 +79,28 @@ static_assert(offsetof(idRenderThread, renderLoadingIcon) == 0x331,
               "render thread loading-icon offset drift");
 static_assert(sizeof(idRenderThread) == 0x348,
               "render thread ABI drift");
+
+void ResizeImages(const idScreenRect* screenRect);
+void UpdateGraphicsAPIWrapperConfig();
+
+#if defined(WOLF_RENDERER_RENDERTHREAD_TEST_ACCESS)
+class idDeclRenderParm;
+class idDeclRenderProg;
+class idMaterial;
+
+struct renderThreadTestResources_t {
+  const idDeclRenderParm* viewColorMap;
+  const idDeclRenderParm* loadingIconParms;
+  const idDeclRenderParm* loadingIcon;
+  const idDeclRenderParm* savingIcon;
+  const idDeclRenderParm* transMap;
+  const idDeclRenderProg* guiBlend;
+  const idDeclRenderProg* guiLoading;
+  const idDeclRenderProg* viewColorIdentity;
+  const idDeclRenderParm* gammaForBrightness;
+  const idMaterial* binkMaterial;
+  const idDeclRenderProg* binkProgram;
+};
+
+void SetRenderThreadTestResources(const renderThreadTestResources_t& resources);
+#endif

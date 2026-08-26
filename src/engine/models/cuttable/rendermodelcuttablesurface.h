@@ -9,15 +9,18 @@ public:
   explicit idRenderModelCuttable(const char* modelName);
   ~idRenderModelCuttable() override;
 
-  const idPlane* GetReferencePlane();
-  const idList<idVec3>* GetContourBounds();
-  bool LoadModel(const char* modelName);
-  void Save(idFile* file) override;
+  const idPlane& GetReferencePlane() const;
+  const idList<idVec3>& GetContourBounds() const;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
-  int UpdateSurfaces(int bufferIndex_, const idVertexBuffer* vertexBuffer,
-                     const idVertexBuffer* stBuffer, const idIndexBuffer* indexBuffer,
-                     const idCuttableGenGeometry* genGeometry);
+  int UpdateSurfaces(int bufferIndex_, const idVertexBuffer& vertexBuffer,
+                     const idVertexBuffer& stBuffer, const idIndexBuffer& indexBuffer,
+                     const idCuttableGenGeometry& genGeometry);
 
+private:
+  bool LoadModel(const char* modelName);
+
+public:
   idRenderModelCuttableResource* modelResource = nullptr;
   int bufferIndex = 0;
 };

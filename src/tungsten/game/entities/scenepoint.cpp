@@ -9,6 +9,16 @@ void idScenePoint::Disable(int currentTime, float disableSeconds) {
                           static_cast<int>(disableSeconds * -1000.0F);
 }
 
+void idScenePoint::DebugDrawScenepoint(const idVec3& viewOrigin, float score,
+                                       bool drawText,
+                                       bool drawConnection) {
+  lastDebugDrawOrigin = viewOrigin;
+  lastDebugDrawScore = score;
+  lastDebugDrawText = drawText;
+  lastDebugDrawConnection = drawConnection;
+  ++debugDrawCount;
+}
+
 bool idScenePoint_Combat::HasEnterAnimation() const {
   return !enterAnimation.IsEmpty() || extraEnterAnimationCount > 0;
 }

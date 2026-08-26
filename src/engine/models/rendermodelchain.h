@@ -39,7 +39,7 @@ public:
   void SetLinkMorphAmount(int id, float amount);
   void RemoveSmoothSkinning(int id);
   bool CommitSubclass() override;
-  void Save(idFile* file) override;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
 
   void Build(const chainGenerateInfo_t& generateInfo, const idStr& modelName,

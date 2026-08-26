@@ -50,7 +50,7 @@ public:
                       int widthOverride, int heightOverride,
                       float hSpacingOverride, float vSpacingOverride);
   void SerializeSnapshot(idSerializer* serializer, bool serializeParmBlock);
-  void Save(idFile* file) override;
+  void Save(idFile* file) const override;
   bool Load(idFile* file) override;
   void SetupClothJob(idParallelJobList* parallelJobList,
                      idDrawVert* vertices, int renderTime);

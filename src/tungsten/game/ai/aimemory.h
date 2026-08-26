@@ -66,6 +66,7 @@ struct idDeclAIBehavior {
     bool allowEnemySightedCrouchIdle{false};
     bool obstacleAvoidIgnorePlayer{false};
     bool aasPush{false};
+    bool allowElevators{false};
   } movementBehaviors;
   struct runTypeBehaviors_t {
     int scrambleRunIndex{0};
