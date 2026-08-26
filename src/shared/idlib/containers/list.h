@@ -10,6 +10,7 @@
 
 class idMD6MorphSet;
 class idAnimator_FaceTracks;
+class idAnimator_Synced;
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -26,6 +27,7 @@ struct idListAllocReturnsReference<
 template <typename T, int DefaultTag = 5> class idList {
 public:
   friend class idAnimator_FaceTracks;
+  friend class idAnimator_Synced;
   T* list;
   int num;
   int size;
@@ -53,7 +55,13 @@ public:
       list[i] = other.list[i];
     return *this;
   }
-  ~idList() { ClearFree(); }
+  ~idList()
+#if defined(WOLFTNO_RETAIL_SYNCED_DTOR_UNWIND_ABI)
+      noexcept(false)
+#endif
+  {
+    ClearFree();
+  }
 
   int Num() const { return num; }
   bool IsFull() const { return listStatic != 0 && num >= size; }

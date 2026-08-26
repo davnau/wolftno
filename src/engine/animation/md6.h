@@ -250,6 +250,8 @@ public:
 static_assert(sizeof(idMD6Anim::compressionSetting_t) == 552);
 class idMD6Model;
 class idMD6Mesh;
+class idJointGroupCollection;
+class idPropsCollection;
 class idDecl;
 class idParser;
 struct idMD6AliasEntry {
@@ -289,7 +291,8 @@ public:
                             bool removeOriginOffset) const;
   idAliasHandle_t FindAliasHandle(const char* aliasName) const;
   const char* FindAliasName(idAliasHandle_t aliasHandle) const;
-#if defined(WOLFTNO_RETAIL_FACETRACKS_FIND_ALIAS_ABI)
+#if defined(WOLFTNO_RETAIL_FACETRACKS_FIND_ALIAS_ABI) ||                       \
+    defined(WOLFTNO_RETAIL_FIND_ALIAS_REFERENCE_ABI)
   const idMD6Alias* FindAlias(const idAliasHandle_t& aliasHandle,
 #else
   const idMD6Alias* FindAlias(idAliasHandle_t aliasHandle,
@@ -322,6 +325,24 @@ public:
   int GetHeadTrackGroupIndex(const char* groupName) const;
   bool GetRandomValidMeshKits(idAtomicString (&meshKits)[3],
                               idRandom2& random) const;
+  int NumMeshKits(int component) const;
+  const char* GetMeshKitName(int component, int kitIndex) const;
+  const idList<int, 19>* GetMeshKitMeshes(int component,
+                                          int kitIndex) const;
+  void AddMeshKit(int component, const char* kitName,
+                  const idList<int, 19>& meshIndices);
+  const char* GetMeshKitDefaultOverride(int component) const;
+  void SetMeshKitDefaultOverride(int component, const char* kitName);
+  const char* GetDefaultSkinOverride() const;
+  void SetDefaultSkinOverride(const char* skinName);
+  int NumWrinkleMapRegionExpressions() const;
+  const char* GetWrinkleMapRegionExpression(int index) const;
+  void AddWrinkleMapRegionExpression(const char* expression);
+  int NumSkipUseHintMeshes() const;
+  int GetSkipUseHintMesh(int index) const;
+  void AddSkipUseHintMesh(int meshIndex);
+  idJointGroupCollection* GetJointGroupCollection() const;
+  idPropsCollection* GetPropsCollection() const;
 
   void PinStreamedSound(int eventNum, int maxFrame) const;
   bool FindAnimEvents(const idMD6Anim* anim, int startFrame, int endFrame,
@@ -477,12 +498,25 @@ public:
 };
 class idMD6LeafPlay : public idMD6Leaf {
 public:
+#if defined(WOLFTNO_RETAIL_SYNCED_LEAF_INIT_ABI)
+  idMD6LeafPlay()
+      : idMD6Leaf(NODE_LEAF_PLAY), startTime(0), rateScale(1.0f),
+        syncGroup(0), syncEnabled(0) {}
+#else
   idMD6LeafPlay() : idMD6Leaf(NODE_LEAF_PLAY) { Clear(); }
+#endif
   void Clear();
+#if defined(WOLFTNO_RETAIL_SYNCED_LEAF_INIT_ABI)
+  void Init(const idMD6Anim* animation, int gameTime, int ticksPerSec,
+            int frame, float animationRateScale,
+            wrapMode_t animationWrapMode,
+            md6WeightGroup_t animationWeightGroup);
+#else
   void Init(const idMD6Anim* animation, int gameTime, int ticksPerSec,
             std::uint16_t frame, float animationRateScale,
             wrapMode_t animationWrapMode,
             md6WeightGroup_t animationWeightGroup);
+#endif
   void Restart(int gameTime, int ticksPerSec, std::uint16_t frame,
                wrapMode_t animationWrapMode);
   void SetFrameTime(int gameTime, int targetTime);

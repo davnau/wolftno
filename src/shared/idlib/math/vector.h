@@ -8,7 +8,15 @@
 class idAngles;
 class idQuat;
 class idMat3;
+#if defined(WOLFTNO_RETAIL_IDROTATION_CLASS_ABI)
+class idRotation;
+#else
 struct idRotation;
+#endif
+#if defined(WOLFTNO_RETAIL_IDVEC3_RADIANS_ABI)
+enum RadiansUnique_t : int;
+template <typename T, typename UniqueTag> class idTypesafeNumber;
+#endif
 
 class idVec2 {
 public:
@@ -100,6 +108,11 @@ public:
   void ProjectSelfOntoSphere(float radius);
   const idVec3& RotateSelf(const idVec3& axis, float angleDegrees);
   const idVec3& RotateSelfRadians(const idVec3& axis, float angleRadians);
+#if defined(WOLFTNO_RETAIL_IDVEC3_RADIANS_ABI)
+  const idVec3&
+  RotateSelf(const idVec3& axis,
+             idTypesafeNumber<float, RadiansUnique_t> angleRadians);
+#endif
   const char* ToString(int precision = 2) const;
 };
 
@@ -210,7 +223,12 @@ struct idMat4 {
   bool InverseSelf();
 };
 
+#if defined(WOLFTNO_RETAIL_IDROTATION_CLASS_ABI)
+class idRotation {
+public:
+#else
 struct idRotation {
+#endif
   idVec3 origin;
   idVec3 vec;
   float angle;

@@ -6,7 +6,11 @@
 #include <cstdint>
 
 class idAnimator_Base;
+class idClip;
+class idGameTimeManager;
 class idJointAnimator;
+class idSerializer;
+class idTreeAnimator;
 
 class idAnimStack {
 public:
@@ -22,6 +26,9 @@ public:
   void ClearAnimatorFlag(const idAnimator_Base* animator,
                          animatorFlag_t flag);
   idAnimator_Base* GetAnimatorByIndex(int index) const;
+  void SerializeSnapshot(idSerializer& serializer, idClip* clip,
+                         int curTime, idGameTimeManager* gameTimeManager,
+                         idTreeAnimator* treeAnimator);
 
   idMD6Allocator* GetAllocator() {
     return reinterpret_cast<idMD6Allocator*>(

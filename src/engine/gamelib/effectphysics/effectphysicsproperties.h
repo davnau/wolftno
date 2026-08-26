@@ -1,6 +1,6 @@
 #pragma once
 
-#include "shared/idlib/math/vector.h"
+#include "engine/gamelib/effectphysics/effectphysicsbroadphase.h"
 
 #include <cstddef>
 
@@ -9,12 +9,6 @@ public:
   void GetMassProperties(int traceModelIndex, float density, float& mass,
                          idVec3& centerOfMass,
                          idMat3& inertiaTensor) const;
-};
-
-class idEffectPhysicsBroadPhase {
-public:
-  void* clip;
-  idTraceModelCache* traceModelCache;
 };
 
 class idEffectPhysicsProperties {
@@ -63,4 +57,3 @@ static_assert(offsetof(idEffectPhysicsProperties, maxSimulationTime) == 0xA4,
               "idEffectPhysicsProperties ABI drift");
 static_assert(sizeof(idEffectPhysicsProperties) == 0xA8,
               "idEffectPhysicsProperties ABI drift");
-

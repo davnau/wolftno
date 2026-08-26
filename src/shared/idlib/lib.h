@@ -57,7 +57,10 @@ struct idLib {
   static void ErrorOrWarning(bool error, const char* format, ...);
   static void PopupWarning(const char* format, ...);
   static void PrintStackToConsole();
-  [[noreturn]] static void Error(const char* format, ...);
+#if !defined(WOLFTNO_RETAIL_IDLIB_ERROR_RETURNS_ABI)
+  [[noreturn]]
+#endif
+  static void Error(const char* format, ...);
   [[noreturn]] static void FatalError(const char* format, ...);
 };
 

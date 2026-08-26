@@ -522,6 +522,9 @@ public:
   void SetEnvironmentBounds(const dynamicEnvironmentHandle_t&, const idBounds&) override;
   int FindEnvironment(const dynamicEnvironmentHandle_t&) const override;
   const idDeclEnv* FindEnvironmentDecl(const idVec3&) const override;
+  idOceanSharedTileMemory* GetOceanSharedTileMemory() override {
+    return m_pSharedTileMemory;
+  }
   idRenderLight* AllocRenderLight(bool) override;
   idRenderModel* AllocBaseRenderModel() override;
   idRenderModel* AllocStaticModel(const char*, bool) override;
@@ -562,6 +565,9 @@ public:
   bool LoadEnvAreas(const char* worldName, const char* fileName);
   void ClearWorld();
   bool ParseProc(const char* fileName);
+  void Ocean_Init() override;
+  void Ocean_Swap();
+  void Ocean_Destroy();
   bool& CommitLight(int index) { return commitLights.ptr[index]; }
 
   idOceanSharedTileMemory* m_pSharedTileMemory{};

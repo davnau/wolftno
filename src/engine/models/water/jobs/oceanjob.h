@@ -30,6 +30,8 @@ struct idRenderModelOcean_WaveParams {
   };
 
   struct CWaveSOAStore {
+    void Create(CWave* waves, int waveCount);
+
     float m_lWaveVec_x[64];
     float m_lWaveVec_y[64];
     float m_lWaveVecMag[64];

@@ -15,6 +15,19 @@ public:
 
   void SerializePacked(int* original);
 
+  void Serialize(std::uint64_t* value) {
+    if (writing) {
+      msg->WriteBits(static_cast<int>(*value), 32);
+      msg->WriteBits(static_cast<int>(*value >> 32u), 32);
+    } else {
+      const std::uint64_t low =
+          static_cast<std::uint32_t>(msg->ReadBits(32));
+      const std::uint64_t high =
+          static_cast<std::uint32_t>(msg->ReadBits(32));
+      *value = low | (high << 32u);
+    }
+  }
+
   template <int Maximum, int Bits> void SerializeUQ(float* value) {
     constexpr int quantizedMaximum = (1U << Bits) - 1U;
     constexpr int integerScale = quantizedMaximum / Maximum;

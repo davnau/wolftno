@@ -87,11 +87,16 @@ public:
   };
 
   idAnimator_Base();
-  virtual ~idAnimator_Base();
+  virtual ~idAnimator_Base()
+#if defined(WOLFTNO_RETAIL_SYNCED_DTOR_UNWIND_ABI)
+      noexcept(false)
+#endif
+      ;
 
   bool Init(idGameTimeManager* gameTimeManager,
             const idAnimatorParms_Base& parms);
   bool IsContributing() const;
+  md6WeightGroup_t GetFilterGroup() const;
 
   virtual priority_t GetStackPriority() const;
   virtual serializeType_t GetSerializeType();

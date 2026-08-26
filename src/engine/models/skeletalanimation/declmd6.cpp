@@ -2,6 +2,8 @@
 
 #include "engine/models/skeletalanimation/md6morph.h"
 #include "engine/models/skeletalanimation/md6util.h"
+#include "engine/models/skeletalanimation/jointgroup.h"
+#include "engine/models/skeletalanimation/taginfo.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
 #include "shared/idlib/math/random.h"
 
@@ -25,6 +27,11 @@ struct validMeshKitSet_t {
 };
 
 struct idDeclMD6RecoveredState {
+  struct meshKit_t {
+    idStr name;
+    idList<int, 19> meshIndices;
+  };
+
   idAnimEvents animEvents;
   idList<const idDeclMD6*, 5> includes;
   idList<idVarArgs<6>, 19> userProps;
@@ -37,6 +44,13 @@ struct idDeclMD6RecoveredState {
   };
   idList<userChannelAliasOverride_t, 5> userChannelAliasOverrides;
   idList<idAliasHandle_t, 5> userChannelAliasMap;
+  idList<meshKit_t, 5> meshKitGroups[3];
+  idStr meshKitDefaultOverride[3];
+  idStr defaultSkinOverride;
+  idList<idStr, 5> wrinkleMapRegionExpressions;
+  idList<int, 5> skipUseHintMeshes;
+  idJointGroupCollection jointGroups;
+  idPropsCollection props;
 };
 
 idDeclMD6RecoveredState& State(idDeclMD6& declaration) {
@@ -824,6 +838,104 @@ bool idDeclMD6::GetRandomValidMeshKits(
     meshKits[category] = names[nameIndex];
   }
   return true;
+}
+
+int idDeclMD6::NumMeshKits(int component) const {
+  return component >= 0 && component < 3
+             ? State(*this).meshKitGroups[component].Num()
+             : 0;
+}
+
+const char* idDeclMD6::GetMeshKitName(int component, int kitIndex) const {
+  if (component < 0 || component >= 3)
+    return nullptr;
+  const auto& kits = State(*this).meshKitGroups[component];
+  return kitIndex >= 0 && kitIndex < kits.Num() ? kits[kitIndex].name.data
+                                                : nullptr;
+}
+
+const idList<int, 19>*
+idDeclMD6::GetMeshKitMeshes(int component, int kitIndex) const {
+  if (component < 0 || component >= 3)
+    return nullptr;
+  const auto& kits = State(*this).meshKitGroups[component];
+  return kitIndex >= 0 && kitIndex < kits.Num()
+             ? &kits[kitIndex].meshIndices
+             : nullptr;
+}
+
+void idDeclMD6::AddMeshKit(int component, const char* kitName,
+                           const idList<int, 19>& meshIndices) {
+  if (component < 0 || component >= 3)
+    return;
+  auto& kits = State(*this).meshKitGroups[component];
+  for (int index = 0; index < kits.Num(); ++index) {
+    if (SameText(kits[index].name.data, kitName)) {
+      kits[index].meshIndices = meshIndices;
+      return;
+    }
+  }
+  idDeclMD6RecoveredState::meshKit_t kit;
+  kit.name = kitName != nullptr ? kitName : "";
+  kit.meshIndices = meshIndices;
+  kits.Append(kit);
+}
+
+const char* idDeclMD6::GetMeshKitDefaultOverride(int component) const {
+  return component >= 0 && component < 3
+             ? State(*this).meshKitDefaultOverride[component].data
+             : "";
+}
+
+void idDeclMD6::SetMeshKitDefaultOverride(int component,
+                                          const char* kitName) {
+  if (component >= 0 && component < 3)
+    State(*this).meshKitDefaultOverride[component] =
+        kitName != nullptr ? kitName : "";
+}
+
+const char* idDeclMD6::GetDefaultSkinOverride() const {
+  return State(*this).defaultSkinOverride.data;
+}
+
+void idDeclMD6::SetDefaultSkinOverride(const char* skinName) {
+  State(*this).defaultSkinOverride = skinName != nullptr ? skinName : "";
+}
+
+int idDeclMD6::NumWrinkleMapRegionExpressions() const {
+  return State(*this).wrinkleMapRegionExpressions.Num();
+}
+
+const char* idDeclMD6::GetWrinkleMapRegionExpression(int index) const {
+  const auto& expressions = State(*this).wrinkleMapRegionExpressions;
+  return index >= 0 && index < expressions.Num() ? expressions[index].data
+                                                  : nullptr;
+}
+
+void idDeclMD6::AddWrinkleMapRegionExpression(const char* expression) {
+  State(*this).wrinkleMapRegionExpressions.Append(
+      idStr(expression != nullptr ? expression : ""));
+}
+
+int idDeclMD6::NumSkipUseHintMeshes() const {
+  return State(*this).skipUseHintMeshes.Num();
+}
+
+int idDeclMD6::GetSkipUseHintMesh(int index) const {
+  const auto& meshes = State(*this).skipUseHintMeshes;
+  return index >= 0 && index < meshes.Num() ? meshes[index] : -1;
+}
+
+void idDeclMD6::AddSkipUseHintMesh(int meshIndex) {
+  State(*this).skipUseHintMeshes.Append(meshIndex);
+}
+
+idJointGroupCollection* idDeclMD6::GetJointGroupCollection() const {
+  return const_cast<idJointGroupCollection*>(&State(*this).jointGroups);
+}
+
+idPropsCollection* idDeclMD6::GetPropsCollection() const {
+  return const_cast<idPropsCollection*>(&State(*this).props);
 }
 
 void idDeclMD6::PinStreamedSound(int eventNum, int maxFrame) const {

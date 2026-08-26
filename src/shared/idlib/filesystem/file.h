@@ -178,7 +178,7 @@ public:
 
 class idFileLocal {
 public:
-  explicit idFileLocal(idFile* value = nullptr) : file(value) {}
+  __forceinline explicit idFileLocal(idFile* value = nullptr) : file(value) {}
   ~idFileLocal() { delete file; }
   idFile* operator->() const { return file; }
   idFile* Release() {

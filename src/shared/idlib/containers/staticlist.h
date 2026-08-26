@@ -5,7 +5,11 @@
 template <typename T, int Capacity>
 class idStaticList : public idList<T, 5> {
 public:
-  idStaticList() noexcept {
+  idStaticList()
+#if !defined(WOLFTNO_RETAIL_STATICLIST_THROWING_CTOR_ABI)
+      noexcept
+#endif
+  {
     this->list = staticList;
     this->num = 0;
     this->size = Capacity;
