@@ -26,7 +26,11 @@
 #include <cstdint>
 
 class idDeclEnv;
+#if defined(WOLFTNO_RETAIL_IDBOX_CLASS_ABI)
+class idBox;
+#else
 struct idBox;
+#endif
 struct idCylinder;
 class idMegaTexture;
 class idLexer;
@@ -63,8 +67,9 @@ enum invalidDynamicEnvHandle_t : int { INVALID_DYNAMIC_ENV_HANDLE = -1 };
 // The game layer owns the primary idHandle template. This explicit engine
 // specialization preserves the retail decorated signatures without defining
 // that primary template a second time.
-template <typename T, typename InvalidEnum, T InvalidValue> struct idHandle;
-template <> struct idHandle<int, invalidDynamicEnvHandle_t, -1> {
+template <typename T, typename InvalidEnum, int InvalidValue> class idHandle;
+template <> class idHandle<int, invalidDynamicEnvHandle_t, -1> {
+public:
   int value{-1};
   bool operator==(const idHandle& other) const { return value == other.value; }
   bool operator!=(const idHandle& other) const { return value != other.value; }
@@ -206,12 +211,12 @@ public:
                                  const idVec3& origin, int lifetime,
                                  bool depthTest) = 0;
   virtual void DebugText(const char* text, const idVec3& origin, float scale,
-                         const idVec4& color, int align, int lifetime,
-                         bool depthTest, bool bold) = 0;
-  virtual void DebugText(const char* text, const idVec3& origin, float scale,
                          const idVec4& color, const idMat3& viewAxis,
                          int align, int lifetime, bool depthTest,
                          bool bold) = 0;
+  virtual void DebugText(const char* text, const idVec3& origin, float scale,
+                         const idVec4& color, int align, int lifetime,
+                         bool depthTest, bool bold) = 0;
   virtual void DebugSpline(const idVec4& color,
                            idCurve_Spline<idVec3>* spline, float step,
                            bool drawKnots, int lifetime, bool depthTest) = 0;
@@ -263,10 +268,10 @@ public:
                           bool) override;
   void DebugFilledBounds(const idVec4&, const idBounds&, const idVec3&, int,
                          bool) override;
-  void DebugText(const char*, const idVec3&, float, const idVec4&, int, int,
-                 bool, bool) override;
   void DebugText(const char*, const idVec3&, float, const idVec4&,
                  const idMat3&, int, int, bool, bool) override;
+  void DebugText(const char*, const idVec3&, float, const idVec4&, int, int,
+                 bool, bool) override;
   void DebugSpline(const idVec4&, idCurve_Spline<idVec3>*, float, bool, int,
                    bool) override;
   idList<debugLine_t, 3> debugLines;

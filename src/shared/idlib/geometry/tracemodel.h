@@ -20,6 +20,7 @@ enum traceModel_t {
 };
 
 class idEffectPhysicsBoxFountain;
+class idPhysics_AI;
 
 struct traceModelEdge_t {
   std::uint16_t v[2];
@@ -119,6 +120,7 @@ private:
   void InitBox();
 
   friend class idEffectPhysicsBoxFountain;
+  friend class idPhysics_AI;
   void Swap();
 
   bool operator==(const idTraceModel& other) const { return Compare(other); }

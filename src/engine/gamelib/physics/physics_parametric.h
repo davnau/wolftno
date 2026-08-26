@@ -46,12 +46,12 @@ public:
   const idVec3& GetLocalOrigin(int) override;
   void SetLinearVelocity(const idVec3&, int) override;
   void SetAngularVelocity(const idVec3&, int) override;
-  idVec3 GetLinearVelocity(int) override;
+  idVec3 GetLinearVelocity(int) const override;
   idVec3 GetAngularVelocity(int) override;
-  void GetImpactInfo(int, const idVec3&, impactInfo_t&) override;
+  void GetImpactInfo(int, const idVec3&, impactInfo_t&) const override;
   void Activate() override;
   void PutToRest() override;
-  bool IsAtRest() override;
+  bool IsAtRest() const override;
   bool IsPushable(int) override;
   void SaveState() override;
   void RestoreState() override;

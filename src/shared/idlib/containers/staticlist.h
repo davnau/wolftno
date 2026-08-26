@@ -7,6 +7,8 @@ class idStaticList : public idList<T, 5> {
 public:
 #if defined(WOLFTNO_RETAIL_STATICLIST_FORCEINLINE_CTOR_ABI)
   __forceinline
+#elif defined(WOLFTNO_RETAIL_STATICLIST_NOINLINE_CTOR_ABI)
+  __declspec(noinline)
 #endif
   idStaticList()
 #if !defined(WOLFTNO_RETAIL_STATICLIST_THROWING_CTOR_ABI)

@@ -8,6 +8,10 @@ struct idMath {
   static constexpr float M_DEG2RAD = PI / 180.0f;
   static constexpr float M_RAD2DEG = 180.0f / PI;
 #if defined(WOLFTNO_RETAIL_IDMATH_CONSTANT_ABI)
+#ifdef INFINITY
+#undef INFINITY
+#endif
+  static const float INFINITY;
   static const float FLOAT_EPSILON;
 #else
   static constexpr float FLOAT_EPSILON = 1.192092896e-07f;
@@ -17,6 +21,7 @@ struct idMath {
   static float Exp16(float f);
   static float Sin16(float a);
   static float Cos16(float a);
+  static float Cos(float a);
   static bool IsValid(float f);
   static float ASin(float value);
   static float AngleNormalize360(float angle);

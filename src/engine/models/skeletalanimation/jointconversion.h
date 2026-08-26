@@ -15,7 +15,7 @@ enum invalidUserChannelHandle_t { INVALID_USER_CHANNEL_HANDLE = -1 };
 enum invalidJointConversionHandle_t { INVALID_JOINT_CONVERSION_HANDLE = -1 };
 enum invalidCrc_t { INVALID_CRC = -1 };
 
-template <typename T, typename InvalidTag, T InvalidValue> class idHandle;
+template <typename T, typename InvalidTag, int InvalidValue> class idHandle;
 
 #define WOLFTNO_DECLARE_USHORT_HANDLE(TagType)                              \
   template <> class idHandle<unsigned short, TagType, 65535> {             \

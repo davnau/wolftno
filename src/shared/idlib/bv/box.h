@@ -2,7 +2,12 @@
 
 #include "bounds.h"
 
+#if defined(WOLFTNO_RETAIL_IDBOX_CLASS_ABI)
+class idBox {
+public:
+#else
 struct idBox {
+#endif
   idVec3 center;
   idVec3 extents;
   idMat3 axis;

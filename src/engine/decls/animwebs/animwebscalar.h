@@ -29,7 +29,11 @@ public:
 #else
   float GetScalar(const idScalarMemBlock* block) const;
 #endif
+#if defined(WOLFTNO_RETAIL_ANIMWEB_SETSCALAR_REFERENCE_ABI)
+  void SetScalar(idScalarMemBlock& block, float value);
+#else
   void SetScalar(idScalarMemBlock* block, float value);
+#endif
   void SetScalarPtr(float* scalar);
   void SetIndex(const idScalarMemBlock* block, std::int16_t index);
   idAtomicString name;

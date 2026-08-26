@@ -26,6 +26,9 @@ public:
 
 class idClip;
 class idTraceModelCache;
+class idMaterial;
+class idTypeInfoTools;
+struct contactsResult_t;
 
 class idCollisionQuery {
 public:
@@ -40,6 +43,8 @@ public:
 
 class idClipModel {
 public:
+  idClipModel(idClip* clip_, const idTraceModel* traceModels_,
+              int numTraceModels, const idMaterial* material);
   int GetNumCollisionModels() const;
   idCollisionModel* GetCollisionModel(int index) const;
   void Delete();
@@ -107,6 +112,37 @@ public:
                        const idMat3& startAxis, int clipMask,
                        int passEntityNumber, bool moveClipModel,
                        const char* userName);
+  void TranslationModel(trace_t& result, const idVec3& start,
+                        const idVec3& end, const idClipModel* clipModel,
+                        const idMat3& startAxis, int clipMask,
+                        const idClipModel* model, const idVec3& modelOrigin,
+                        const idMat3& modelAxis,
+                        const char* userName) const;
+  void RotationModel(trace_t& result, const idVec3& start,
+                     const idRotation& rotation,
+                     const idClipModel* clipModel,
+                     const idMat3& startAxis, int clipMask,
+                     const idClipModel* model, const idVec3& modelOrigin,
+                     const idMat3& modelAxis,
+                     const char* userName) const;
+  idClipQuery Contents(trace_t* result, const idVec3& start,
+                       const idClipModel* clipModel,
+                       const idMat3& startAxis, int clipMask,
+                       int passEntityNumber, const char* userName);
+  void ContentsModel(trace_t& result, const idVec3& start,
+                     const idClipModel* clipModel,
+                     const idMat3& startAxis, int clipMask,
+                     const idClipModel* model, const idVec3& modelOrigin,
+                     const idMat3& modelAxis,
+                     const char* userName) const;
+  idClipQuery StepMoveContacts(
+      trace_t* result, contactsResult_t* contacts, const idVec3& start,
+      const idVec3& end, const idVec3& downNormal, float stepUp,
+      float stepDown, const idClipModel* clipModel,
+      const idMat3& startAxis, int clipMask, int passEntityNumber,
+      bool moveClipModel, const char* userName);
+  void ShowCollisionPoint(const contactInfo_t& contact,
+                          const idTypeInfoTools* tools);
 
   bool TracePoint(trace_t& result, const idVec3& start, const idVec3& end,
                   int clipMask, int passEntityNumber, const char* userName);
@@ -147,7 +183,10 @@ public:
   idClipCollisionQuery collisionQueries[4096];
   std::uint64_t collisionQueryFirstSubmittedIndex;
   std::uint64_t collisionQueryLastSubmittedIndex;
-  std::uint8_t recoveredResidencyPrefix[0xD058];
+  std::uint64_t collisionQueryFirstAllocedIndex;
+  std::uint64_t collisionQueryLastAllocedIndex;
+  std::uint64_t collisionQueryLastResolvedIndex;
+  std::uint8_t recoveredResidencyPrefix[0xD040];
   idClipResidencyQuery residencyQueries[1024];
   std::uint64_t residencyQueryFirstSubmittedIndex;
   std::uint64_t residencyQueryLastSubmittedIndex;
@@ -185,6 +224,12 @@ static_assert(offsetof(idClip, collisionQueryFirstSubmittedIndex) == 0x74288,
               "idClip first-submitted offset drift");
 static_assert(offsetof(idClip, collisionQueryLastSubmittedIndex) == 0x74290,
               "idClip last-submitted offset drift");
+static_assert(offsetof(idClip, collisionQueryFirstAllocedIndex) == 0x74298,
+              "idClip first-allocated offset drift");
+static_assert(offsetof(idClip, collisionQueryLastAllocedIndex) == 0x742A0,
+              "idClip last-allocated offset drift");
+static_assert(offsetof(idClip, collisionQueryLastResolvedIndex) == 0x742A8,
+              "idClip last-resolved offset drift");
 static_assert(offsetof(idClip, residencyQueries) == 0x812F0,
               "idClip residency-query array offset drift");
 static_assert(offsetof(idClip::idClipResidencyQuery, resident) == 0x18,

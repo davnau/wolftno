@@ -53,6 +53,7 @@ public:
   idConeConstraint_Quat(const idQuat& center_, const idRadians maxAngle_);
 
   void RotateTo(const idVec3& dir, float lerpRate);
+  void SetLimitAngle(idRadians angle);
 
   void SetCurrent(const idQuat& value) { current = value; }
   const idQuat& GetCurrent() const { return current; }

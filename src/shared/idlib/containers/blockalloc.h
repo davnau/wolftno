@@ -33,7 +33,11 @@ public:
       : blocks(nullptr), free(nullptr), total(0), active(0),
         allowAllocs(true), clearAllocs(clear) {}
 
+#if defined(WOLFTNO_RETAIL_BLOCKALLOC_DTOR_ABI)
+  __forceinline ~idBlockAlloc() { Shutdown(); }
+#else
   ~idBlockAlloc() { Shutdown(); }
+#endif
 
   std::size_t Allocated() const {
     return static_cast<std::size_t>(active) * sizeof(T);
@@ -42,7 +46,11 @@ public:
     return static_cast<std::size_t>(total) * sizeof(T);
   }
 
+#if defined(WOLFTNO_RETAIL_BLOCKALLOC_DTOR_ABI)
+  __declspec(noinline) void Shutdown() {
+#else
   void Shutdown() {
+#endif
     while (blocks != nullptr) {
       idBlock* const block = blocks;
       blocks = block->next;

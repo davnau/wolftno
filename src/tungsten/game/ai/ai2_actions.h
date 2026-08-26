@@ -93,7 +93,7 @@ enum animationPose_t : int {
 };
 enum invalidFiberId_t : int { INVALID_FIBER_ID = 0 };
 enum invalidThreadHandle_t : int { INVALID_THREAD_HANDLE = 0 };
-template <typename T, typename InvalidEnum, T InvalidValue>
+template <typename T, typename InvalidEnum, int InvalidValue>
 class idHandle {
 public:
   T value{InvalidValue};

@@ -59,6 +59,11 @@ public:
   idCVar(const char* name, const char* value, int flags,
          const char* description, float minimum, float maximum,
          argCompletion_t completion = nullptr);
+  // Retail gamelib overload whose callback takes idAutoComplete by reference.
+  // Keep the distinct decoration available to recovered compilands.
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, float minimum, float maximum,
+         argCompletionRef_t completion);
   idCVar(const char* name, const char* value, int flags,
          const char* description, const char** values,
          argCompletion_t completion);

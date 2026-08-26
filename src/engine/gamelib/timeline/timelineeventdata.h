@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/gamelib/timeline/timelinekeytypes.h"
+#include "shared/idlib/containers/list.h"
 #include "shared/idlib/math/vector.h"
 #include "shared/idlib/text/str.h"
 
@@ -9,15 +10,6 @@
 
 class idSoundShader;
 class idTimelineEnv;
-
-template <typename T> struct timelineListABI_t {
-  T* list;
-  int num;
-  int size;
-  std::int16_t granularity;
-  std::uint8_t memTag;
-  std::uint8_t listStatic;
-};
 
 template <> class idStrStatic<33> : public idStr {
 public:
@@ -30,10 +22,22 @@ public:
   mgTimelineKeyAnimData();
   ~mgTimelineKeyAnimData();
 
-  timelineListABI_t<float> times;
-  timelineListABI_t<unsigned char> data;
-  int type;
+  void PostLoadInit();
+
+  bool GetData(float time, bool* value) const;
+  bool GetData(float time, int* value) const;
+  bool GetData(float time, float* value) const;
+  bool GetData(float time, idVec3* value) const;
+  bool GetData(float time, idVec4* value) const;
+  bool GetData(float time, idVec6* value) const;
+
+  tlKeyType_t type;
   int keySize;
+  idList<float, 5> times;
+  idList<char, 5> data;
+
+private:
+  template <typename T> bool GetLerped(float time, T* value) const;
 };
 
 enum tlEventType_t {
@@ -67,8 +71,14 @@ struct tlEventData_t {
 
 static_assert(sizeof(mgTimelineKeyAnimData) == 0x38,
               "mgTimelineKeyAnimData ABI drift");
-static_assert(sizeof(timelineListABI_t<float>) == 0x18,
-              "timeline list ABI drift");
+static_assert(offsetof(mgTimelineKeyAnimData, type) == 0x00,
+              "timeline key type ABI drift");
+static_assert(offsetof(mgTimelineKeyAnimData, keySize) == 0x04,
+              "timeline key size ABI drift");
+static_assert(offsetof(mgTimelineKeyAnimData, times) == 0x08,
+              "timeline key times ABI drift");
+static_assert(offsetof(mgTimelineKeyAnimData, data) == 0x20,
+              "timeline key data ABI drift");
 static_assert(sizeof(idStrStatic<33>) == 0x28,
               "idStrStatic<33> ABI drift");
 static_assert(offsetof(tlEventData_t, anim) == 0x10,

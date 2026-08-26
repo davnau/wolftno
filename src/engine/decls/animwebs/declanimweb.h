@@ -52,7 +52,14 @@ public:
     idModelInfo();
     idModelInfo(const idModelInfo& other);
     idModelInfo& operator=(const idModelInfo& other);
+#if defined(WOLFTNO_RETAIL_BLEND_EQ_MODELINFO_DTOR_ABI)
+    __forceinline ~idModelInfo() {
+      SetNumCoordinateDimensions(0);
+      UpdateTagGroupsList(0);
+    }
+#else
     ~idModelInfo();
+#endif
     void SetNumCoordinateDimensions(int count);
     void SetCoordinate(int propIndex,const idList<float,5>& value);
     void AddTagGroup();

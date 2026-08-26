@@ -95,6 +95,9 @@ struct trace_t {
       bool allSolid;
     };
   };
+#if defined(WOLFTNO_RETAIL_TRACE_ASSIGN_ABI)
+  trace_t& operator=(const trace_t& other);
+#endif
 };
 #ifdef _MSC_VER
 #pragma warning(pop)

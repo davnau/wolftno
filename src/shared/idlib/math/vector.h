@@ -98,6 +98,7 @@ public:
     return length;
   }
   float NormalizeFast();
+  void ProjectOntoPlane(const idVec3& normal, float overBounce);
   bool FixDenormals();
   bool FixDegenerateNormal();
 
@@ -174,7 +175,12 @@ public:
 
   float& operator[](int index) { return (&x)[index]; }
   const float& operator[](int index) const { return (&x)[index]; }
+#if defined(WOLFTNO_RETAIL_PONYTAIL_QUATERNION_MULTIPLY_ABI)
+  idQuat operator*(const idQuat& rhs) const;
+  idQuat& operator*=(const idQuat& rhs);
+#else
   float operator*(const idQuat& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z + w * rhs.w; }
+#endif
   idQuat operator-() const { return {-x, -y, -z, -w}; }
   idQuat operator+(const idQuat& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w}; }
   idQuat operator-(const idQuat& rhs) const { return {x - rhs.x, y - rhs.y, z - rhs.z, w - rhs.w}; }

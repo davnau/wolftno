@@ -8,7 +8,7 @@
 
 enum invalidJointHandle_t { INVALID_JOINT_HANDLE = -1 };
 
-template <typename T, typename InvalidTag, T InvalidValue>
+template <typename T, typename InvalidTag, int InvalidValue>
 class idHandle {
 public:
   T value;

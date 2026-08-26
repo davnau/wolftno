@@ -31,6 +31,31 @@ enum physicsType_t : int {
 class idPhysicsCallbacks {
 public:
   const void* const* vtable;
+
+  template <typename Function> Function Slot(std::size_t index) const {
+    return reinterpret_cast<Function>(vtable[index]);
+  }
+
+  bool GetMasterTransform(idVec3& origin, idMat3& axis) {
+    return Slot<bool (*)(idPhysicsCallbacks*, idVec3&, idMat3&)>(2)(
+        this, origin, axis);
+  }
+  int Collide(int physicsId_, trace_t& collision,
+              const idVec3& velocity) {
+    return Slot<int (*)(idPhysicsCallbacks*, int, trace_t&, const idVec3&)>(3)(
+        this, physicsId_, collision, velocity);
+  }
+  void ApplyImpulse(int physicsId_, int bodyId, const idVec3& point,
+                    const idVec3& impulse) {
+    Slot<void (*)(idPhysicsCallbacks*, int, int, const idVec3&,
+                  const idVec3&)>(5)(this, physicsId_, bodyId, point, impulse);
+  }
+  void ActivatePhysics(int physicsId_) {
+    Slot<void (*)(idPhysicsCallbacks*, int)>(9)(this, physicsId_);
+  }
+  void DeactivatePhysics(int physicsId_) {
+    Slot<void (*)(idPhysicsCallbacks*, int)>(10)(this, physicsId_);
+  }
 };
 
 class idPhysics {
@@ -57,27 +82,51 @@ public:
   idPhysicsCallbacks* GetCallbacks() const { return callbacks; }
 
   virtual void SetClipModel(idClipModel*, float, int, bool) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual idClipModel* GetClipModel(int) const = 0;
+  virtual int GetNumClipModels() const = 0;
+#else
   virtual idClipModel* GetClipModel(int) = 0;
   virtual int GetNumClipModels() = 0;
+#endif
   virtual void SetMass(float, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual float GetMass(int) const = 0;
+#else
   virtual float GetMass(int) = 0;
+#endif
   virtual void SetContents(int, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual int GetContents(int) const = 0;
+#else
   virtual int GetContents(int) = 0;
+#endif
   virtual void SetClipMask(int, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual int GetClipMask(int) const = 0;
+  virtual const idBounds& GetBounds(int) const = 0;
+  virtual const idBounds& GetAbsBounds(int) const = 0;
+#else
   virtual int GetClipMask(int) = 0;
   virtual const idBounds& GetBounds(int) = 0;
   virtual const idBounds& GetAbsBounds(int) = 0;
+#endif
   virtual void SetOrigin(const idVec3&, int) = 0;
   virtual void SetAxis(const idMat3&, int) = 0;
   virtual void Translate(const idVec3&, int) = 0;
   virtual void Rotate(const idRotation&, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual const idVec3& GetOrigin(int) const = 0;
+  virtual const idMat3& GetAxis(int) const = 0;
+#else
   virtual const idVec3& GetOrigin(int) = 0;
   virtual const idMat3& GetAxis(int) = 0;
+#endif
   virtual const idVec3& GetLocalOrigin(int) = 0;
   virtual const idMat3& GetLocalAxis(int) = 0;
   virtual void SetLinearVelocity(const idVec3&, int) = 0;
   virtual void SetAngularVelocity(const idVec3&, int) = 0;
-  virtual idVec3 GetLinearVelocity(int) = 0;
+  virtual idVec3 GetLinearVelocity(int) const = 0;
   virtual idVec3 GetAngularVelocity(int) = 0;
   virtual void SetGravity(const idVec3&) = 0;
   virtual const idVec3& GetGravity() = 0;
@@ -89,22 +138,34 @@ public:
   virtual int GetWaterEntNum() = 0;
   virtual float GetWaterSurfaceWrldHeight() = 0;
   virtual float GetBuoyancyScale() = 0;
-  virtual void GetImpactInfo(int, const idVec3&, impactInfo_t&) = 0;
+  virtual void GetImpactInfo(int, const idVec3&, impactInfo_t&) const = 0;
   virtual void ApplyImpulse(int, const idVec3&, const idVec3&) = 0;
   virtual void ApplyForce(int, const idVec3&, const idVec3&) = 0;
   virtual void Activate() = 0;
   virtual void PutToRest() = 0;
-  virtual bool IsAtRest() = 0;
+  virtual bool IsAtRest() const = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual bool IsPushable(int) const = 0;
+#else
   virtual bool IsPushable(int) = 0;
+#endif
   virtual void SaveState() = 0;
   virtual void RestoreState() = 0;
   virtual bool Evaluate(int, int) = 0;
   virtual void UpdateTime(int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+  virtual void ClipTranslation(trace_t&, const idVec3&,
+                               const idClipModel*) const = 0;
+  virtual void ClipRotation(trace_t&, const idRotation&,
+                            const idClipModel*) const = 0;
+  virtual int ClipContents(const idClipModel*, int) const = 0;
+#else
   virtual void ClipTranslation(trace_t&, const idVec3&,
                                const idClipModel*) = 0;
   virtual void ClipRotation(trace_t&, const idRotation&,
                             const idClipModel*) = 0;
   virtual int ClipContents(const idClipModel*, int) = 0;
+#endif
   virtual void DisableClip() = 0;
   virtual void EnableClip() = 0;
   virtual void UnlinkClip() = 0;
@@ -122,7 +183,7 @@ public:
   virtual bool IsGroundEntity(int) = 0;
   virtual bool IsGroundClipModel(int, int) = 0;
   virtual void SetPushed(int) = 0;
-  virtual idVec3 GetPushedLinearVelocity(int) = 0;
+  virtual idVec3 GetPushedLinearVelocity(int) const = 0;
   virtual idVec3 GetPushedAngularVelocity(int) = 0;
   virtual void SetMaster(bool, const idVec3&, const idMat3&,
                          bindFlags_t) = 0;
@@ -148,7 +209,11 @@ public:
   idResidencyQuery residencyQuery;
   residency_t collisionResidency;
 
-  static void operator delete(void* memory) noexcept {
+  static
+#if defined(WOLFTNO_RETAIL_IDPHYSICS_FORCEINLINE_DELETE_ABI)
+      __forceinline
+#endif
+      void operator delete(void* memory) noexcept {
 #if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
     idMem::Singleton().Free(memory, ALIGN_16);
 #else

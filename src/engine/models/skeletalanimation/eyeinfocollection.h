@@ -13,10 +13,11 @@ class idParser;
 
 enum invalidEyeInfo_t { INVALID_EYE_INFO = 0xffff };
 
-template <typename T, typename InvalidEnum, T InvalidValue> struct idHandle;
+template <typename T, typename InvalidEnum, int InvalidValue> class idHandle;
 
 template <>
-struct idHandle<std::uint16_t, invalidEyeInfo_t, 0xffff> {
+class idHandle<std::uint16_t, invalidEyeInfo_t, 0xffff> {
+public:
   std::uint16_t value = 0xffff;
   bool operator==(const idHandle& other) const {
     return value == other.value;

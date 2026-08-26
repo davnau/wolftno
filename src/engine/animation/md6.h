@@ -19,7 +19,7 @@ template <typename First, typename Second> struct idPair {
   First first{};
   Second second{};
 };
-template <typename T, typename InvalidTag, T InvalidValue> class idHandle;
+template <typename T, typename InvalidTag, int InvalidValue> class idHandle;
 template <int MaxArgs> class idVarArgs;
 class idAnimEvents;
 class idDeclMD6;
@@ -591,7 +591,11 @@ public:
 class idMD6LeafPause : public idMD6Leaf {
 public:
   idMD6LeafPause();
-  ~idMD6LeafPause();
+  ~idMD6LeafPause()
+#if defined(WOLFTNO_RETAIL_TRACKER_LEAF_DTOR_UNWIND_ABI)
+      noexcept(false)
+#endif
+      ;
   void Init(const idMD6Anim* animation, float animationFrame,
             idMD6Leaf::wrapMode_t animationWrapMode,
             md6WeightGroup_t animationWeightGroup);

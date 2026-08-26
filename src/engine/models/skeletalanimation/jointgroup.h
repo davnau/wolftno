@@ -13,7 +13,7 @@ class idParser;
 
 enum invalidJointGroupHandle { INVALID_JOINT_GROUP_HANDLE = 0 };
 
-template <typename T, typename InvalidEnum, T InvalidValue> struct idHandle;
+template <typename T, typename InvalidEnum, int InvalidValue> class idHandle;
 
 template <>
 class idHandle<int, invalidJointGroupHandle, 0> {

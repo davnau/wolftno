@@ -38,6 +38,7 @@ struct idListAllocReturnsReference<
 
 template <typename T, int DefaultTag = 5> class idList {
 public:
+  template <typename, int> friend class idList;
   friend class idAnimator_FaceTracks;
   friend class idAnimator_EndAdditiveChannels;
   friend class idAnimator_ChannelWeight;
@@ -98,6 +99,44 @@ public:
     SetNum(other.num);
     for (int i = 0; i < num; ++i)
       list[i] = other.list[i];
+    return *this;
+  }
+  template <int OtherTag>
+  idList& operator=(const idList<T, OtherTag>& other) {
+    if (reinterpret_cast<const void*>(this) ==
+        reinterpret_cast<const void*>(&other)) {
+      return *this;
+    }
+    ClearFree();
+    if (listStatic != 0) {
+      num = other.num < size ? other.num : size;
+    } else {
+      num = other.num;
+      size = other.size;
+      granularity = other.granularity;
+      memTag = other.memTag;
+      if (size > 0) {
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+        idMem* const memory = &idMem::Singleton();
+#else
+        idMem* const memory = idMem::Singleton();
+#endif
+        list = static_cast<T*>(memory->AllocWithLocation(
+            "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : "
+            "tag",
+            sizeof(T) * static_cast<std::size_t>(size),
+            static_cast<memTag_t>(memTag), false, ALIGN_16,
+            HEAP_DEFAULTHEAP));
+        if (list != nullptr) {
+          for (int constructed = 0; constructed < size; ++constructed) {
+            ::new (static_cast<void*>(&list[constructed])) T;
+          }
+        }
+      }
+    }
+    for (int index = 0; index < num; ++index) {
+      list[index] = other.list[index];
+    }
     return *this;
   }
 #if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_DTOR_ABI)
@@ -306,6 +345,9 @@ public:
 private:
   // Recovered compilands explicitly instantiate Resize for selected
   // element/tag combinations; private access is part of its MSVC ABI name.
+#if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_RESIZE_ABI)
+  bool Resize(int newSize);
+#else
 #if defined(WOLFTNO_RETAIL_IDLIST_NOINLINE_RESIZE_ABI)
   __declspec(noinline)
 #endif
@@ -354,6 +396,7 @@ private:
     listStatic = 0;
     return true;
   }
+#endif
 };
 
 static_assert(sizeof(idList<int>) == 24, "idList ABI drift");
