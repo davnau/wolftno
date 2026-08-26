@@ -62,7 +62,6 @@ struct serializedBind_t {
   std::uint16_t keyNum{};
   std::uint8_t bindSet{};
   std::uint8_t modifierMask{};
-  std::uint32_t padding{};
   idStr bindStr;
 };
 
@@ -73,8 +72,11 @@ public:
   idList<T> values;
 
   explicit idHashMap(memTag_t tag=TAG_IDLIST) : hash(1024,1024) {
-    usedValues.memTag=static_cast<std::uint8_t>(tag);
-    values.memTag=static_cast<std::uint8_t>(tag);
+    (void)tag;
+    hash.memTag=TAG_HASHINDEX;
+    usedValues.SetNum(hash.indexSize);
+    values.SetNum(hash.indexSize);
+    for(int index=0;index<usedValues.size;++index) usedValues.list[index]=nullptr;
   }
   void Add(int hashValue, const T& value) {
     int index=-1;
@@ -114,11 +116,9 @@ public:
   idStr binding;
   cmdGenButton_t usercmdAction;
   std::uint16_t hashKey;
-  std::uint16_t padding;
   int hashBind;
   bool hasCompoundBind;
   std::uint8_t modifierMask;
-  std::uint16_t tailPadding;
 
   static idHashMap<int> keyBindingHash;
   static idHashIndex keyActionsHash;

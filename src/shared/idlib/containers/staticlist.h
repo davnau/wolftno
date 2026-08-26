@@ -5,7 +5,7 @@
 template <typename T, int Capacity>
 class idStaticList : public idList<T, 5> {
 public:
-  idStaticList() {
+  idStaticList() noexcept {
     this->list = staticList;
     this->num = 0;
     this->size = Capacity;

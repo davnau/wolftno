@@ -584,7 +584,8 @@ const idEventDef FSMEvent_MeleeBlocked{7, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_CrouchToStandEnter{1, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_StandToCrouchEnter{2, idEventDef::EVENT_FSMEVENT};
 const idEventDef ACTION_PlayOverrideAnimEnter{3,
-                                              idEventDef::EVENT_FSMEVENT};
+                                               idEventDef::EVENT_FSMEVENT};
+const idEventDef ACTION_ReloadWeaponEnter{8, idEventDef::EVENT_FSMEVENT};
 
 idRecoveredValue idAI2::RecordCoreCall(const char* methodName) {
   const std::string_view call = methodName != nullptr ? methodName : "";
@@ -716,6 +717,15 @@ void idAI2::ConfigureDeathInfoForTest(const idEntity* attacker,
                               deathFlags);
 }
 
+void idAI2::ConfigureOnlineLootState(int disassembleLootBoxCountValue,
+                                     bool lootedValue,
+                                     int deathStartTimeValue) {
+  disassembleLootBoxCount = disassembleLootBoxCountValue;
+  looted = lootedValue;
+  deathStartTime = deathStartTimeValue;
+  deathInfo->SetStartDeathTime(deathStartTimeValue);
+}
+
 void idAI2::ConfigureDeathSpawnDefinitionsForTest(
     const idDeclEntityDef* focusDefinition,
     std::initializer_list<const char*> focusRequirements,
@@ -795,6 +805,16 @@ bool idAI2::IsAnimWebEventPendingForTest(aiAnimWeb_t web,
                                          animWebEvent_t eventType) const {
   return animWebAnimators[static_cast<std::size_t>(web)]->IsEventPending(
       eventType);
+}
+
+void idAI2::SetAnimWebEventPending(bool value) {
+  idAnimator_AnimWeb* const bodyAnimator =
+      animWebAnimators[AIANIMWEB_BODY].get();
+  if (value) {
+    bodyAnimator->SetEvent(ANIMWEB_EVENT_START_BLEND_IN);
+  } else {
+    bodyAnimator->ClearEvent(ANIMWEB_EVENT_START_BLEND_IN);
+  }
 }
 
 idAnimator_AnimWeb* idAI2::GetAnimWebAnimatorForTest(aiAnimWeb_t web) {
@@ -2204,9 +2224,9 @@ idClipModel* idAI2::ActivateExtendedClipModel(
         !deathJointExtendedClipAvailable) {
       return nullptr;
     }
-    extendedClipModelStorage = std::make_unique<unsigned char>(0);
-    extendedClipModel =
-        reinterpret_cast<idClipModel*>(extendedClipModelStorage.get());
+    extendedClipModelStorage = std::make_unique<idClipModel>();
+    extendedClipModelStorage->axis = mat3_identity;
+    extendedClipModel = extendedClipModelStorage.get();
   }
 
   extendedClipModelAuxiliaryStatus = GetEndTimeByFrames(frameCount);
@@ -4234,19 +4254,173 @@ void idAI2::CheckDeathCollision() {
 bool idAI2::DoMeleeDamage(idIndex<short, invalidJointIndex_t> jointIndex,
                           const idBounds& bounds,
                           const idDeclDamage* damageDefinition,
-                          const impact* impactInfo,
-                          const idVec3& impactEffectDirection) {
-  (void)jointIndex;
-  (void)bounds;
-  (void)damageDefinition;
-  (void)impactInfo;
-  (void)impactEffectDirection;
-  return false;
+                          const idDeclProjectileImpactEffect* impactEffect,
+                          const idVec3& overrideDirection) {
+  if (cutNextMeleeDamage) {
+    cutNextMeleeDamage = false;
+    return false;
+  }
+
+  idTreeAnimator* treeAnimator = nullptr;
+  if (presentable != nullptr &&
+      presentable->GetAnimatedEntityInterface() != nullptr) {
+    idPresentable* const animatedPresentable =
+        presentable->GetAnimatedEntityInterface();
+    if (animatedPresentable != nullptr) {
+      treeAnimator = static_cast<idTreeAnimator*>(
+          animatedPresentable->GetAnimatedTreeAnimator());
+    }
+  }
+
+  idVec3 jointPosition{};
+  if (treeAnimator != nullptr) {
+    (void)treeAnimator->GetWorldSpaceJointPositionForAI(
+        jointIndex.value, jointPosition);
+  }
+
+  idBounds jointBounds = bounds;
+  jointBounds[0] += jointPosition;
+  jointBounds[1] += jointPosition;
+
+  std::array<int, 8> touchingEntities{};
+  const int entityCount = gameLocal->GetEntitiesTouchingBounds(
+      jointBounds, 33792, touchingEntities.data(),
+      static_cast<int>(touchingEntities.size()), GetName());
+
+  auto getMeleeDirection = [this, &jointPosition,
+                            &overrideDirection]() {
+    idVec3 direction = overrideDirection;
+    if (overrideDirection.x == 0.0F &&
+        overrideDirection.y == 0.0F &&
+        overrideDirection.z == 0.0F) {
+      direction = jointPosition - GetPhysics()->GetOrigin();
+      const float inverseLength =
+          1.0F /
+          std::sqrt((std::max)(direction.LengthSqr(), 1.17549435e-38F));
+      direction *= inverseLength;
+      const idVec3& gravityNormal = GetPhysics()->GetGravityNormal();
+      direction -= gravityNormal * (direction * gravityNormal);
+    } else {
+      const float inverseLength =
+          1.0F /
+          std::sqrt((std::max)(direction.LengthSqr(), 1.17549435e-38F));
+      direction *= inverseLength;
+    }
+    return direction;
+  };
+
+  if (ai_debugmelee.GetInteger() != 0) {
+    const idColor& meleeBoxColor =
+        entityCount > 0 ? idColor::colorRed : idColor::colorGreen;
+    idRenderDebug* const renderDebug =
+        gameLocal->GetRenderWorld()->GetRenderDebug();
+    renderDebug->DebugBounds(meleeBoxColor, jointBounds, idVec3{}, 1000,
+                             false);
+    const idVec3 direction = getMeleeDirection();
+    const idVec3 center = (jointBounds[0] + jointBounds[1]) * 0.5F;
+    renderDebug->DebugArrow(meleeBoxColor, center,
+                            center + direction * 100.0F, 10.0F, 1000,
+                            false);
+  }
+
+  if (entityCount > 0) {
+    const idVec3 direction = getMeleeDirection();
+    for (int index = 0; index < entityCount; ++index) {
+      idEntity* const target =
+          gameLocal->GetEntityByNumber(touchingEntities[index]);
+      const idVec3 impactEffectDirection = -direction;
+      (void)DoMeleeDamage(jointPosition, direction, target,
+                          damageDefinition, impactEffect,
+                          impactEffectDirection);
+    }
+  }
+  return entityCount > 0;
 }
 // DIA: idAI2::GetMeleeDirection
-idRecoveredValue idAI2::GetMeleeDirection(...) { return RecordCoreCall("GetMeleeDirection"); }
+aiDirection_t idAI2::GetMeleeDirection(const idVec3& target,
+                                       const idVec3& velocity,
+                                       bool& narrowFront,
+                                       const bool debug) const {
+  narrowFront = false;
+
+  const idVec3 origin = GetPhysics()->GetOrigin();
+  const idVec3 extrapolatedTarget =
+      target + velocity * behaviorDeclaration->meleeExtrapolate;
+  const idVec3 extrapolatedDelta = extrapolatedTarget - origin;
+  const float inverseExtrapolatedHorizontalLength =
+      1.0F /
+      std::sqrt((std::max)(extrapolatedDelta.x * extrapolatedDelta.x +
+                               extrapolatedDelta.y * extrapolatedDelta.y,
+                           std::numeric_limits<float>::min()));
+  idVec3 meleeDirection{
+      extrapolatedDelta.x * inverseExtrapolatedHorizontalLength,
+      extrapolatedDelta.y * inverseExtrapolatedHorizontalLength, 0.0F};
+
+  const idVec3 trueDelta = target - origin;
+  const float inverseTrueDeltaLength =
+      1.0F /
+      std::sqrt((std::max)(trueDelta.LengthSqr(),
+                           std::numeric_limits<float>::min()));
+  const idVec3 trueDeltaDirection = trueDelta * inverseTrueDeltaLength;
+  if (trueDeltaDirection.x * trueDeltaDirection.x +
+          trueDeltaDirection.y * trueDeltaDirection.y <
+      0.89999998F) {
+    return AIDIR_FRONT;
+  }
+
+  if (meleeDirection * trueDeltaDirection < -0.5F) {
+    meleeDirection = trueDeltaDirection;
+  }
+
+  const idMat3& bodyAxis = bodyOrientation->GetAxis();
+  const float forwardDot = bodyAxis[0] * meleeDirection;
+  const float leftDot = bodyAxis[1] * meleeDirection;
+
+  aiDirection_t direction;
+  if (leftDot >= 0.70710671F) {
+    direction = AIDIR_LEFT;
+  } else if (leftDot < -0.70710671F) {
+    direction = AIDIR_RIGHT;
+  } else if (forwardDot <= 0.0F) {
+    direction = AIDIR_BEHIND;
+  } else {
+    direction = AIDIR_FRONT;
+    if (forwardDot > 0.9238795F) narrowFront = true;
+  }
+
+  if (debug) {
+    idAI2* mutableThis = const_cast<idAI2*>(this);
+    idPresentable* debugPresentable = mutableThis->presentable;
+    if (debugPresentable == nullptr) {
+      debugPresentable = mutableThis->ownedEffectsPresentable.get();
+      mutableThis->presentable = debugPresentable;
+      debugPresentable->SetOrigin(origin);
+      debugPresentable->SetAxis(*GetPresentableAxis());
+    }
+
+    idRenderDebug* renderDebug =
+        gameLocal->GetRenderWorld()->GetRenderDebug();
+    renderDebug->DebugArrow(
+        idColor::colorGreen, origin,
+        origin + debugPresentable->GetAxis()[0] * 200.0F, 2.0F, 3000,
+        false);
+
+    const bool usesTrueDirection =
+        meleeDirection.x == trueDeltaDirection.x &&
+        meleeDirection.y == trueDeltaDirection.y &&
+        meleeDirection.z == trueDeltaDirection.z;
+    renderDebug->DebugArrow(
+        usesTrueDirection ? idColor::colorMagenta : idColor::colorRed,
+        origin, extrapolatedTarget, 2.0F, 3000, false);
+    renderDebug->DebugArrow(idColor::colorOrange, target,
+                            extrapolatedTarget, 2.0F, 3000, false);
+  }
+
+  return direction;
+}
 // DIA: idAI2::IsFacingMe
-bool idAI2::IsFacingMe(const idEntity* entity, float dotThreshold) {
+bool idAI2::IsFacingMe(const idEntity* entity,
+                       const float dotThreshold) const {
   idAIEntityState* entityState = worldState->StateForEntity(entity);
   if (entity == nullptr || entityState == nullptr) return false;
 
@@ -4263,35 +4437,159 @@ bool idAI2::IsFacingMe(const idEntity* entity, float dotThreshold) {
   return physical->viewfwd * direction > dotThreshold;
 }
 // DIA: idAI2::StartReloading
-idRecoveredValue idAI2::StartReloading(...) { return RecordCoreCall("StartReloading"); }
+bool idAI2::StartReloading(idAIFSM* fsm, idAIState* state, int curTime,
+                           equipSlot_t reloadSlot) {
+  (void)curTime;
+
+  idInventoryCollection* const inventory = GetInventoryCollection();
+  const idDeclAmmo* selectedAmmo = nullptr;
+
+  if (reloadSlot != EQUIP_NONE) {
+    idWeapon* const weapon = GetEquippedWeapon(
+        static_cast<unsigned int>(reloadSlot));
+    if (weapon == nullptr) {
+      idLib::Warning("idAI2::StartReloading - slot '%s' has not weapon",
+                     idDeclInventory::equipSlotTagNames[reloadSlot]);
+      return false;
+    }
+
+    const idAmmoItem* const ammoClip = weapon->GetLoadedAmmo(false);
+    selectedAmmo = ammoClip != nullptr ? ammoClip->resourceError : nullptr;
+    if (selectedAmmo == nullptr ||
+        !weapon->CanReload(inventory, selectedAmmo, false)) {
+      selectedAmmo =
+          weapon->FindNextLoadableAmmo(inventory, ammoClip, false);
+      if (selectedAmmo == nullptr) {
+        idLib::Warning(
+            "idAI2::StartReloading - slot '%s', weapon '%s' can't reload",
+            idDeclInventory::equipSlotTagNames[reloadSlot],
+            weapon->GetDeclarationNameForAI());
+        return false;
+      }
+    }
+  } else {
+    float bestLoadedFraction = (std::numeric_limits<float>::max)();
+    for (int slot = 0; slot < EQUIP_MAX; ++slot) {
+      idWeapon* const weapon =
+          GetEquippedWeapon(static_cast<unsigned int>(slot));
+      if (weapon == nullptr) {
+        continue;
+      }
+
+      const idAmmoItem* const ammoClip = weapon->GetLoadedAmmo(false);
+      const idDeclAmmo* candidateAmmo =
+          ammoClip != nullptr ? ammoClip->resourceError : nullptr;
+      if ((candidateAmmo != nullptr &&
+           weapon->CanReload(inventory, candidateAmmo, false)) ||
+          (candidateAmmo = weapon->FindNextLoadableAmmo(
+               inventory, ammoClip, false)) != nullptr) {
+        const float loadedFraction =
+            static_cast<float>(weapon->AmmoInClip(false)) /
+            static_cast<float>(weapon->GetClipSize(
+                candidateAmmo, weapon->IsWeaponUpgradedForClipSize(), false));
+        if (bestLoadedFraction > loadedFraction) {
+          bestLoadedFraction = loadedFraction;
+          reloadSlot = static_cast<equipSlot_t>(slot);
+          selectedAmmo = candidateAmmo;
+        }
+      }
+    }
+
+    if (reloadSlot == EQUIP_NONE) {
+      idLib::Warning("idAI2::StartReloading - no weapons need reloading");
+      return false;
+    }
+  }
+
+  if (componentTimeLine->NumScriptActions(this) <= 0) {
+    componentTimeLine->ClearActionScript(this);
+  }
+
+  idFiniteStateMachine* const actionFSM =
+      reinterpret_cast<idFiniteStateMachine*>(fsm);
+  actionFSM->SetActionCallerState(state);
+
+  idEventArg ownerArgument{};
+  ownerArgument.type = static_cast<unsigned char>('e');
+  ownerArgument.value.pointer = this;
+  idEventArg slotArgument{};
+  slotArgument.type = static_cast<unsigned char>('i');
+  slotArgument.value.i = static_cast<int>(reloadSlot);
+  idEventArg ammoArgument{};
+  ammoArgument.type = static_cast<unsigned char>('d');
+  ammoArgument.value.pointer = selectedAmmo;
+  (void)actionFSM->ProcessEvent(&ACTION_ReloadWeaponEnter, ownerArgument,
+                                slotArgument, ammoArgument);
+  return true;
+}
 // DIA: `idAI2::StartReloading'::`1'::dtor$0
 // DIA: `idAI2::StartReloading'::`1'::dtor$1
 // DIA: idAI2::IsDowned
 bool idAI2::IsDowned(float delay) const {
-  return GetPosture() == 2 &&
+  return GetPosture() == POSTURE_CROUCHED &&
          animWebState.subWeb == aiSubWeb_t::combat &&
          currentRunIndexType == ANIMWEBAI_RUNINDEXTYPE_INJURED &&
-         aiEvaluationTime - injuredTime >=
+         gameLocal->GetGameTimeMs() - injuredTime >=
              static_cast<int>(delay * 1000.0F);
 }
 // DIA: idAI2::CanBeTakenDown
-idRecoveredValue idAI2::CanBeTakenDown(...) { return RecordCoreCall("CanBeTakenDown"); }
+takedownMode_t idAI2::CanBeTakenDown(const idEntity* activator) const {
+  if (IsDead() || IsDying() || takedownDeathRuntimeBlocked ||
+      (deathInfo->GetDeathFlags() & 0x20U) != 0U) {
+    return TAKEDOWNMODE_NONE;
+  }
+
+  if (useCustomTakedown) return TAKEDOWNMODE_CUSTOM;
+  if (isHeavy || (isKampHund && !coreState.sleeping)) {
+    return TAKEDOWNMODE_NONE;
+  }
+
+  idRelationship::attitude_t attitude = idRelationship::ATTITUDE_DISLIKE;
+  if (const idFaction* faction = GetFaction()) {
+    attitude = faction->GetAttitudeTowards(activator);
+  }
+
+  if (takeDownType == idAIEditable::idInteractions::TAKEDOWNTYPE_NOTAKEDOWN ||
+      (takeDownType !=
+           idAIEditable::idInteractions::TAKEDOWNTYPE_FORCEFRIENDLYTAKEDOWN &&
+       attitude > idRelationship::ATTITUDE_DISLIKE)) {
+    return TAKEDOWNMODE_NONE;
+  }
+
+  if (IsDowned(1.0F) || coreState.sleeping) return TAKEDOWNMODE_GROUND;
+
+  bool aware = false;
+  const idAIEntityState* state = worldState->StateForEntity(activator);
+  if (state != nullptr && state->active) {
+    const aiSenseState_t* sight = state->senses[AISENSE_SIGHT];
+    if (sight->lastUnconfirmedStimTime >= 0) {
+      aware = gameLocal->GetGameTimeMs() - sight->lastConfirmedStimTime < 5000;
+    }
+  }
+
+  if (usesDrone) return TAKEDOWNMODE_NONE;
+  if (!aware) return TAKEDOWNMODE_STEALTH;
+  if (!TakedownWindoIsOpen(activator)) return TAKEDOWNMODE_NONE;
+  return static_cast<takedownMode_t>(TAKEDOWNMODE_COMBAT +
+                                     (stunnedByPlayerBlock ? 1 : 0));
+}
 // DIA: idAI2::SetTakeDownWindow
 void idAI2::SetTakeDownWindow(bool open) {
-  const int currentTime = gameLocal->GetGameTimeMs();
   if (open) {
     ++stackedTakedownWindows;
-    takedownWindowClosed = takedownWindoMaxTime.GetInteger() + currentTime;
+    takedownWindowClosed = takedownWindoMaxTime.GetInteger() +
+                           gameLocal->GetGameTimeMs();
   } else if (--stackedTakedownWindows <= 0) {
     stackedTakedownWindows = 0;
     stunnedByPlayerBlock = false;
     takedownWindowClosed = -1;
   }
-  counterBlockedUntil = counterBlockTime.GetInteger() + currentTime;
+  counterBlockedUntil = counterBlockTime.GetInteger() +
+                        gameLocal->GetGameTimeMs();
 }
 // DIA: idAI2::GetUsableState
-int idAI2::GetUsableState(const idEntity* activator,
-                          const idFocusTrace* focusTrace) {
+usableState_t idAI2::GetUsableState(const idEntity* activator,
+                                    const idFocusTrace* focusTrace) {
   (void)focusTrace;
   if (disassembleLootBoxCount > 0) return USABLE_DISASSEMBLE;
 
@@ -4302,20 +4600,21 @@ int idAI2::GetUsableState(const idEntity* activator,
     }
   } else {
     const auto* player = dynamic_cast<const idPlayer*>(activator);
+    const int focusState =
+        player != nullptr ? player->GetTakedownFocusState() : 0;
     if (player != nullptr &&
-        !player->PlayerBehavior_Takedown_IsInTakedown()) {
-      const int focusState = player->GetTakedownFocusState();
-      if (focusState == 1 || focusState == 6) return USABLE_INFO;
-    }
+        !player->PlayerBehavior_Takedown_IsInTakedown() &&
+        (focusState == 1 || focusState == 6))
+      return USABLE_INFO;
   }
   return USABLE_NONE;
 }
 // DIA: idAI2::GetOnlineUsableState
-int idAI2::GetOnlineUsableState() {
+usableState_t idAI2::GetOnlineUsableState() {
   if (disassembleLootBoxCount > 0) return USABLE_DISASSEMBLE;
   if (IsDead() && IsLootable() && (!looted || HasLootableItems())) {
     if (gameLocal->GetGameTimeMs() >
-        deathStartTime -
+        deathInfo->GetStartDeathTime() -
             static_cast<int>(ai_lootDelay.valueFloat * -1000.0F)) {
       return USABLE_LOOT;
     }
@@ -4323,14 +4622,75 @@ int idAI2::GetOnlineUsableState() {
   return USABLE_NONE;
 }
 // DIA: idAI2::UpdateEnemyInAAS
-idRecoveredValue idAI2::UpdateEnemyInAAS(...) { return RecordCoreCall("UpdateEnemyInAAS"); }
+void idAI2::UpdateEnemyInAAS(const idEntity* entity) {
+  constexpr int kPhysicsBoundaryFree = 0;
+  constexpr float kAASPushIntoRange = 52.0F;
+
+  const idVec3 realOrigin = entity->GetPhysics()->GetOrigin();
+  idVec3 modifiedOrigin = realOrigin;
+  if (skipTargetAASChecks) {
+    memory->SetLastSafeEnemyPos(realOrigin);
+    memory->SetEnemyPosInsideAASForTest(true);
+    return;
+  }
+
+  if (entity->GetPhysics()->GetBoundaryType() == kPhysicsBoundaryFree) return;
+
+  const int currentTime = gameLocal->GetGameTimeMs();
+  if (currentTime <
+      memory->GetBoundsReachableAreaNumCallTimeForTest()) {
+    return;
+  }
+
+  memory->SetBoundsReachableAreaNumCallTimeForTest(
+      currentTime -
+          static_cast<int>(RandomFloat(0.5F, 1.5F) * -1000.0F) +
+      1000);
+
+  int areaNum = 0;
+  const bool pushedIntoArea =
+      GetAAS()->PushPointIntoNearestAreaNum(&areaNum, modifiedOrigin);
+  if (!pushedIntoArea) {
+    if (areaNum != 0 &&
+        entity->GetPhysics()->GetBoundaryType() != kPhysicsBoundaryFree) {
+      memory->SetLastSafeEnemyPos(modifiedOrigin);
+      memory->SetEnemyPosInsideAASForTest(true);
+      return;
+    }
+    memory->SetEnemyPosInsideAASForTest(false);
+    return;
+  }
+
+  if (entity->GetPhysics()->GetBoundaryType() == kPhysicsBoundaryFree) {
+    memory->SetEnemyPosInsideAASForTest(false);
+    return;
+  }
+
+  if (dynamic_cast<const idPlayer*>(entity) != nullptr) {
+    const float deltaX = modifiedOrigin.x - realOrigin.x;
+    const float deltaY = modifiedOrigin.y - realOrigin.y;
+    const float horizontalDistance = std::sqrt((std::max)(
+        deltaX * deltaX + deltaY * deltaY,
+        std::numeric_limits<float>::min()));
+    if (horizontalDistance > kAASPushIntoRange) {
+      (void)gameLocal->GetTrackAASPos(GetAAS(), modifiedOrigin);
+    }
+  }
+
+  memory->SetLastSafeEnemyPos(modifiedOrigin);
+  memory->SetEnemyPosInsideAASForTest(false);
+}
 // DIA: idAI2::SetAnimWebEvent
 void idAI2::SetAnimWebEvent(aiAnimWeb_t web,
                             idAnimWebEvent::priority_t priority,
-                            idAnimWebIndex subWebIndex,
-                            idAnimWebIndex stateIndex,
+                            idIndex<short,
+                                    idDeclAnimWeb::invalidSubWebIndex_t>
+                                subWebIndex,
+                            idIndex<short,
+                                    idDeclAnimWeb::invalidStateIndex_t>
+                                stateIndex,
                             animWebEvent_t eventType,
-                            const idEventDef* eventDefinition) {
+                            const idEventDef& eventDefinition) {
   animWebAnimators[static_cast<std::size_t>(web)]->SetEvent(
       eventType, subWebIndex, stateIndex, eventDefinition, priority);
 }
@@ -4357,12 +4717,13 @@ void idAI2::ClearAllAnimWebEvents(aiAnimWeb_t web,
 // DIA: idAI2::ClearWaitForOverrideAnim
 void idAI2::ClearWaitForOverrideAnim(idAnimWebEvent::priority_t priority) {
   (void)priority;
-  animWebEventPending = false;
+  animWebAnimators[AIANIMWEB_BODY]->ClearEvent(
+      ANIMWEB_EVENT_START_BLEND_IN);
 }
 // DIA: idAI2::AnimEventReceived
 bool idAI2::AnimEventReceived(idAnimWebEvent::priority_t priority) const {
   (void)priority;
-  return !animWebEventPending;
+  return !animWebAnimators[AIANIMWEB_BODY]->IsAnyEventPending();
 }
 // DIA: idAI2::WaitForAnimToEnd
 bool idAI2::WaitForAnimToEnd(
@@ -4370,14 +4731,19 @@ bool idAI2::WaitForAnimToEnd(
     const char* stateName, const animWebEvent_t eventType) {
   idAnimator_AnimWeb* bodyAnimator =
       animWebAnimators[AIANIMWEB_BODY].get();
-  const idAnimWebIndex currentSubWeb =
-      bodyAnimator->GetCurrentSubWebIndex();
-  const idAnimWebIndex currentState = bodyAnimator->GetCurrentStateIndex();
+  const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> currentSubWeb =
+      bodyAnimator->GetCurSubWebIndex();
+  const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> currentState =
+      bodyAnimator->GetCurStateIndex();
   const idDeclAnimWeb* declaration = bodyAnimator->GetDeclaration();
-  const animWebSubWebIndex_t requestedSubWeb =
+  const animWebSubWebIndex_t requestedSubWebLookup =
       declaration->GetSubWebIndexForName(subWebName);
-  const animWebStateIndex_t requestedState =
+  const animWebStateIndex_t requestedStateLookup =
       declaration->GetStateIndexForName(stateName);
+  const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> requestedSubWeb{
+      requestedSubWebLookup.value};
+  const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> requestedState{
+      requestedStateLookup.value};
   if (requestedSubWeb.value < 0) {
     idLib::Warning(
         "idAI2::WaitForAnimToEnd - subweb '%s' not found in animWeb '%s'",
@@ -4391,14 +4757,13 @@ bool idAI2::WaitForAnimToEnd(
     return false;
   }
 
-  const idAnimWebIndex viaSubWeb{requestedSubWeb.value};
-  const idAnimWebIndex viaState{requestedState.value};
-  const int pathResult = bodyAnimator->ChangeStateVia(
-      currentSubWeb, currentState, viaSubWeb, viaState, 1, 0, 0);
-  if (pathResult < 0) return false;
-  if (pathResult == 0) {
-    bodyAnimator->SetEvent(eventType, viaSubWeb, viaState,
-                           &EV_AnimWeb_Wait, priority);
+  const awPathResult_t pathResult = ChangeAnimStateVia(
+      AIANIMWEB_BODY, currentSubWeb, currentState, requestedSubWeb,
+      requestedState, INTR_PATH_YES, INTR_BLEND_NO);
+  if (pathResult < AWPATH_OK) return false;
+  if (pathResult == AWPATH_OK) {
+    bodyAnimator->SetEvent(eventType, requestedSubWeb, requestedState,
+                           EV_AnimWeb_Wait, priority);
   }
   return true;
 }
@@ -4415,31 +4780,36 @@ bool idAI2::WaitForAnimToStart(
       declaration->GetStateIndexForName(stateName);
   idAnimator_AnimWeb* bodyAnimator =
       animWebAnimators[AIANIMWEB_BODY].get();
-  const idAnimWebIndex destinationSubWeb{subWebIndex.value};
-  const idAnimWebIndex destinationState{stateIndex.value};
-  const int pathResult = bodyAnimator->ChangeState(
-      destinationSubWeb, destinationState, 1, 0, 0);
-  if (pathResult < 0) return false;
-  if (pathResult == 0) {
+  const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>
+      destinationSubWeb{subWebIndex.value};
+  const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> destinationState{
+      stateIndex.value};
+  const awPathResult_t pathResult =
+      ChangeAnimState(AIANIMWEB_BODY, destinationSubWeb, destinationState,
+                      INTR_PATH_YES, INTR_BLEND_NO);
+  if (pathResult < AWPATH_OK) return false;
+  if (pathResult == AWPATH_OK) {
     bodyAnimator->SetEvent(eventType, destinationSubWeb, destinationState,
-                           &EV_AnimWeb_Wait, priority);
+                           EV_AnimWeb_Wait, priority);
   }
   return true;
 }
 // DIA: idAI2::WaitForAnimToStartVia
 bool idAI2::WaitForAnimToStartVia(
     const aiAnimWeb_t web, const idAnimWebEvent::priority_t priority,
-    const idAnimWebIndex destinationSubWeb,
-    const idAnimWebIndex destinationState, const idAnimWebIndex viaSubWeb,
-    const idAnimWebIndex viaState, const animWebEvent_t eventType) {
-  const int pathResult = animWebAnimators[static_cast<std::size_t>(web)]
-                             ->ChangeStateVia(
-                                 destinationSubWeb, destinationState,
-                                 viaSubWeb, viaState, 1, 0, 0);
-  if (pathResult < 0) return false;
-  if (pathResult == 0) {
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>
+        destinationSubWeb,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> destinationState,
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> viaSubWeb,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> viaState,
+    const animWebEvent_t eventType) {
+  const awPathResult_t pathResult =
+      ChangeAnimStateVia(web, destinationSubWeb, destinationState, viaSubWeb,
+                         viaState, INTR_PATH_YES, INTR_BLEND_NO);
+  if (pathResult < AWPATH_OK) return false;
+  if (pathResult == AWPATH_OK) {
     animWebAnimators[AIANIMWEB_BODY]->SetEvent(
-        eventType, destinationSubWeb, destinationState, &EV_AnimWeb_Wait,
+        eventType, destinationSubWeb, destinationState, EV_AnimWeb_Wait,
         priority);
   }
   return true;
@@ -4461,36 +4831,142 @@ bool idAI2::WaitForAnimToStartVia(
   const animWebStateIndex_t destinationStateIndex =
       declaration->GetStateIndexForName(destinationStateName);
   return WaitForAnimToStartVia(
-      web, priority, idAnimWebIndex{destinationSubWebIndex.value},
-      idAnimWebIndex{destinationStateIndex.value},
-      idAnimWebIndex{viaSubWebIndex.value},
-      idAnimWebIndex{viaStateIndex.value}, ANIMWEB_EVENT_START_BLEND_IN);
+      web, priority,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>{
+          destinationSubWebIndex.value},
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t>{
+          destinationStateIndex.value},
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>{
+          viaSubWebIndex.value},
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t>{
+          viaStateIndex.value},
+      ANIMWEB_EVENT_START_BLEND_IN);
 }
 // DIA: idAI2::UpdateExtendedClipModel
-idRecoveredValue idAI2::UpdateExtendedClipModel(...) { return RecordCoreCall("UpdateExtendedClipModel"); }
+bool idAI2::UpdateExtendedClipModel() {
+  if (extendedClipModel == nullptr) return true;
+
+  if (extendedClipModelAuxiliaryStatus != 0 &&
+      gameLocal->GetGameTimeMs() >= extendedClipModelAuxiliaryStatus) {
+    DeactivateExtendedClipModel();
+    return true;
+  }
+
+  idVec3 newOrigin{};
+  if (extendedClipModelStatus == AIEXTENDEDCLIPMODELSTATUS_HIPS) {
+    idTreeAnimator* const treeAnimator = effectsTreeAnimator;
+    if (presentable == nullptr) presentable = ownedEffectsPresentable.get();
+    presentable->UpdateModelTransform();
+
+    const short hipsJoint =
+        treeAnimator != nullptr ? treeAnimator->FindJointIndexForAI("hips")
+                                : static_cast<short>(-1);
+    if (treeAnimator != nullptr) {
+      (void)treeAnimator->GetWorldSpaceJointPositionForAI(hipsJoint,
+                                                          newOrigin);
+    }
+    newOrigin.z = GetPhysics()->GetOrigin().z;
+  } else if (extendedClipModelStatus ==
+             AIEXTENDEDCLIPMODELSTATUS_DEATHJOINTS) {
+    newOrigin = GetPhysics()->GetOrigin();
+  } else {
+    return false;
+  }
+
+  const idVec3 oldOrigin = extendedClipModel->origin;
+  trace_t trace{};
+  trace.endpos = newOrigin;
+  gameLocal->TranslateClipModel(
+      trace, oldOrigin, newOrigin, extendedClipModel,
+      extendedClipModel->axis, 33792, GetEntityNumber(), false, nullptr);
+  extendedClipModel->SetLinkedPosition(trace.endpos, mat3_identity);
+  return true;
+}
 // DIA: idAI2::GetVoiceController
 idAIVoiceController* idAI2::GetVoiceController(
     voiceController_t controller) {
-  if (controller == VC_LOCAL) {
+  if (controller == VC_SELF) {
     return localVoiceController.get();
   }
   if (controller == VC_GROUP) {
-    return voiceGroupController;
+    if (encounterGroupHandle != -1) {
+      idEncounterGroupManager* const manager =
+          gameLocal->GetEncounterGroupManager();
+      idEncounterGroup* const group =
+          manager != nullptr
+              ? manager->GroupForHandle(
+                    encounterGroupHandle_t{encounterGroupHandle})
+              : nullptr;
+      if (group != nullptr) return group->GetVoiceController();
+    }
+    return nullptr;
   }
   if (controller == VC_GLOBAL) {
-    return idAIVoiceController::GetGlobalController();
+    return gameLocal->GetGlobalVoiceController();
   }
   return nullptr;
 }
 // DIA: idAI2::GetDefaultSpeedByCurrentWalkState
 float idAI2::GetDefaultSpeedByCurrentWalkState() const {
-  return GetWalkState() == WALKSTATE_RUNNING ? maximumMovementSpeed
-                                              : minimumMovementSpeed;
+  return GetWalkState() == WALKSTATE_RUNNING
+             ? aiConstants->movement.moveSpeed.maximum
+             : aiConstants->movement.moveSpeed.minimum;
 }
 // DIA: idAI2::DormantBegin
-idRecoveredValue idAI2::DormantBegin(...) { return RecordCoreCall("DormantBegin"); }
+void idAI2::DormantBegin() {
+  gameLocal->RemoveAIEventReceiver(this);
+  gameLocal->RemoveActiveAI(this);
+  gameLocal->RemoveAIWorldStateUser(this);
+}
 // DIA: idAI2::FinishFireWeapon
-idRecoveredValue idAI2::FinishFireWeapon(...) { return RecordCoreCall("FinishFireWeapon"); }
+bool idAI2::FinishFireWeapon(idWeapon* weapon,
+                             const idFireParms* fireParms,
+                             idTestFireResults* testFireResults,
+                             idFinishFireResults* finishFireResults) {
+  const bool secondaryAmmo =
+      weapon->weaponState == idWeapon::WEAPONSTATE_SECONDARY;
+  idFXManager* const effects = GetFXMgrForAttachment();
+  if (!weapon->FinishFire(*fireParms, *testFireResults,
+                          *finishFireResults, effects, secondaryAmmo,
+                          false)) {
+    return false;
+  }
+
+  const idDeclInventory* const declaration = weapon->decl;
+  if (ai_weaponKick.valueInteger != 0) {
+    targetKickOffset.pitch += declaration->aiWeaponKick.pitch;
+    targetKickOffset.yaw += declaration->aiWeaponKick.yaw;
+    targetKickOffset.roll += declaration->aiWeaponKick.roll;
+  }
+
+  const int skill = static_cast<int>(coreState.modifiedSkill);
+  const int minimumDelay = declaration->aiFireDelay[skill].minimum;
+  const int delayRange =
+      declaration->aiFireDelay[skill].maximum - minimumDelay;
+  int randomDelay = 0;
+  if (delayRange != 0) {
+    const std::uint32_t seed =
+        1664525U * gameLocal->GetRandomSeed() + 1013904223U;
+    gameLocal->SetRandomSeed(seed);
+    randomDelay =
+        static_cast<int>((seed >> 10U) & 0x7FFFU) % delayRange;
+  }
+  weapon->AddFireDelay(minimumDelay + randomDelay);
+
+  if (ai_debugAim.valueInteger >= 3 && GetDebugLevel() > 0) {
+    for (int traceIndex = 0; traceIndex < testFireResults->numTraces;
+         ++traceIndex) {
+      const multiHitTrace_t& multiTrace =
+          testFireResults->multiTraces[traceIndex];
+      for (int hitIndex = 0; hitIndex < multiTrace.numHits; ++hitIndex) {
+        gameLocal->GetRenderWorld()->GetRenderDebug()->DebugLine(
+            idColor::colorRed, fireParms->start,
+            multiTrace.hits[hitIndex].endpos, 1000, true);
+      }
+    }
+  }
+  return true;
+}
 // DIA: idAI2::GetSpotLostFireTime
 float idAI2::GetSpotLostFireTime() const {
   const int blindedTimeRemaining = endBlindedTime - aiEvaluationTime;

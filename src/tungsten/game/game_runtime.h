@@ -16,8 +16,9 @@ class idDeclEntityDef;
 class idDeclDamage;
 class idFaction;
 class idAI2;
+class idAIVoiceController;
 class idTarget_AITensionManager;
-struct idEventDef;
+class idEventDef;
 class idEntity;
 class idPlayer;
 class idWaypoint;
@@ -25,6 +26,7 @@ enum aimPoint_t : int;
 enum usableState_t : int;
 class idFocusTrace {};
 class idCrosshairInfo;
+class idClipModel;
 class idRenderModel;
 struct trace_t;
 
@@ -497,6 +499,22 @@ public:
     (void)debugName;
     return 0;
   }
+  virtual void TranslateClipModel(trace_t& result, const idVec3& start,
+                                  const idVec3& end,
+                                  const idClipModel* clipModel,
+                                  const idMat3& startAxis, int clipMask,
+                                  int passEntityNumber, bool moveClipModel,
+                                  const char* userName) {
+    (void)result;
+    (void)start;
+    (void)end;
+    (void)clipModel;
+    (void)startAxis;
+    (void)clipMask;
+    (void)passEntityNumber;
+    (void)moveClipModel;
+    (void)userName;
+  }
   virtual bool GetStepMoveQueryResult(std::uint64_t queryIndex,
                                       trace_t& result, bool peek) {
     (void)queryIndex;
@@ -519,6 +537,18 @@ public:
     (void)contactPoints;
     (void)peek;
     return false;
+  }
+  virtual int GetEntitiesTouchingBounds(const idBounds& bounds,
+                                        int contentsMask,
+                                        int* entityNumbers,
+                                        int maximumEntities,
+                                        const char* debugName) {
+    (void)bounds;
+    (void)contentsMask;
+    (void)entityNumbers;
+    (void)maximumEntities;
+    (void)debugName;
+    return 0;
   }
   virtual bool AcquireRecycledTraceModel() { return false; }
   virtual std::uint64_t SubmitClipQuery(
@@ -556,6 +586,9 @@ public:
     (void)clear;
   }
   virtual idEncounterGroupManager* GetEncounterGroupManager() {
+    return nullptr;
+  }
+  virtual idAIVoiceController* GetGlobalVoiceController() {
     return nullptr;
   }
   virtual int GetCurrentCheckpoint() const { return -1; }
@@ -629,8 +662,7 @@ public:
     (void)fadeEnd;
   }
   virtual void StopGlobalLensFlare(int handle) { (void)handle; }
-  virtual bool GetTrackAASPos(const idAAS2* aas,
-                              const idVec3& position) const {
+  virtual bool GetTrackAASPos(const idAAS2* aas, idVec3& position) const {
     (void)aas;
     (void)position;
     return false;

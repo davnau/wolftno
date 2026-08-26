@@ -80,6 +80,12 @@ public:
   idFile* OpenFileRead(const char* path, bool, bool) {
     return OpenFileRead(path);
   }
+  // NEEDS_WORK(shared/idlib/filesystem): retail exposes this renderer-facing
+  // read/write opener.  Keep the exact call boundary here until the filesystem
+  // compiland supplies its path policy and permanent-file implementation.
+  virtual idFile* OpenFileReadWrite(const char* path, bool, fsPath_t) {
+    return OpenFileWrite(path);
+  }
   idFile* OpenFileWrite(const char* path, fsPath_t) {
     return OpenFileWrite(path);
   }
@@ -91,6 +97,9 @@ public:
     idStr::Copynz(output, relativePath != nullptr ? relativePath : "",
                   outputLength);
   }
+  // NEEDS_WORK(shared/idlib/filesystem): exact search-path selection belongs
+  // to the filesystem recovery pass.
+  virtual const char* GetBasePathStr(fsPath_t) const { return ""; }
   // NEEDS_WORK(shared/idlib/filesystem): exact numbering/search policy belongs
   // to filesystem. This boundary preserves the retail signature for renderer
   // screenshot commands until that compiland is recovered.
@@ -119,6 +128,9 @@ public:
   idFileList* ListFiles(const char* directory, const char* extension,
                         bool recursive = false) const override;
   idStr BuildOSPath(const char* path) const;
+  const char* GetBasePathStr(fsPath_t) const override {
+    return rootPath.data;
+  }
 
 private:
   idStr rootPath;

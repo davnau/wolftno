@@ -79,6 +79,9 @@ public:
   float GetModelFadeForTest() const { return modelFade; }
   int GetModelFadeSetCountForTest() const { return modelFadeSetCount; }
   int GetUpdateFXCountForTest() const { return updateFXCount; }
+  int GetUpdateModelTransformCountForTest() const {
+    return updateModelTransformCount;
+  }
   int GetRenderParmSetCountForTest() const { return renderParmSetCount; }
   const idDeclRenderParm* GetLastRenderParmForTest() const {
     return lastRenderParm;
@@ -103,7 +106,7 @@ private:
   struct Sound { std::string shader; float volume{1}; float pitch{1}; bool playing{true}; };
   std::unordered_map<int,Sound> sounds; std::vector<std::string> effects; std::unordered_map<std::string,float> floatParms; std::unordered_map<std::string,idVec3> vectorParms;
   idClipModelInfo clipInfo; idPresentable* parent{nullptr}; idPresentable* groupMaster{nullptr}; idEntity* playerEntity{nullptr}; idRenderModel* sourceRenderModel{nullptr}; std::string renderModel; std::string customMaterial;
-  idVec3 origin{}; idMat3 axis{}; int entityNumber{-1}; int team{0}; int ownerPlayerIndex{-1}; int presentCount{0}; float volumeAdjustment{1}; float aiRobotGlow{0.0F}; float modelFade{1.0F}; int modelFadeSetCount{0}; int updateFXCount{0}; int renderParmSetCount{0}; const idDeclRenderParm* lastRenderParm{nullptr}; float lastRenderParmValue{0.0F}; std::uint32_t aiSphereModelContents{0}; bool aiSphereModelAvailable{true}; bool clearVolumeAdjustment{false}; bool hidden{false}; bool deleted{false}; bool replicated{false}; bool inEntityLUT{false}; bool fxInitialized{false}; bool targetLockable{false}; bool aiLootable{false}; bool aiDeathInitialized{false};
+  idVec3 origin{}; idMat3 axis{}; int entityNumber{-1}; int team{0}; int ownerPlayerIndex{-1}; int presentCount{0}; float volumeAdjustment{1}; float aiRobotGlow{0.0F}; float modelFade{1.0F}; int modelFadeSetCount{0}; int updateFXCount{0}; int updateModelTransformCount{0}; int renderParmSetCount{0}; const idDeclRenderParm* lastRenderParm{nullptr}; float lastRenderParmValue{0.0F}; std::uint32_t aiSphereModelContents{0}; bool aiSphereModelAvailable{true}; bool clearVolumeAdjustment{false}; bool hidden{false}; bool deleted{false}; bool replicated{false}; bool inEntityLUT{false}; bool fxInitialized{false}; bool targetLockable{false}; bool aiLootable{false}; bool aiDeathInitialized{false};
 };
 
 class idPresentableVehicle;

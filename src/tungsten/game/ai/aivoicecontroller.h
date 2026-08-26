@@ -6,7 +6,8 @@
 #include <cstdint>
 
 enum voiceController_t : int {
-  VC_LOCAL = 0,
+  VC_SELF = 0,
+  VC_LOCAL = VC_SELF,
   VC_GROUP = 1,
   VC_GLOBAL = 2,
   VC_NONE = 3,

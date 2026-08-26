@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-class idRenderFrameInfo;
+struct idRenderFrameInfo;
 class idRenderModel;
 class idRenderVideoOverlay;
 class idRenderWorld;

@@ -436,6 +436,20 @@ public:
     lastPriority = priority;
     ++setEventCount;
   }
+  void SetEvent(
+      animWebEvent_t eventType,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+      const idEventDef& eventDefinition,
+      idAnimWebEvent::priority_t priority) {
+    pendingEvents[static_cast<std::size_t>(eventType)] = true;
+    lastEventType = eventType;
+    lastSubWebIndex = idAnimWebIndex{subWebIndex.value};
+    lastStateIndex = idAnimWebIndex{stateIndex.value};
+    lastEventDefinition = &eventDefinition;
+    lastPriority = priority;
+    ++setEventCount;
+  }
   void ClearEvent(animWebEvent_t eventType) {
     pendingEvents[static_cast<std::size_t>(eventType)] = false;
   }
@@ -516,6 +530,19 @@ public:
     ++changeStateViaCount;
     return changeStateViaResult;
   }
+  awPathResult_t ChangeStateVia(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> destinationSubWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> destinationState,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> viaSubWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> viaState,
+      interruptPath_t interruptPath, interruptBlend_t interruptBlend,
+      int flags) {
+    return static_cast<awPathResult_t>(ChangeStateVia(
+        idAnimWebIndex{destinationSubWeb.value},
+        idAnimWebIndex{destinationState.value}, idAnimWebIndex{viaSubWeb.value},
+        idAnimWebIndex{viaState.value}, static_cast<int>(interruptPath),
+        static_cast<int>(interruptBlend), flags));
+  }
   int ChangeState(idAnimWebIndex destinationSubWeb,
                   idAnimWebIndex destinationState, int interruptPath,
                   int interruptBlend, int flags) {
@@ -526,6 +553,17 @@ public:
     lastChangeFlags = flags;
     ++changeStateCount;
     return changeStateResult;
+  }
+  awPathResult_t ChangeState(
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> destinationSubWeb,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> destinationState,
+      interruptPath_t interruptPath, interruptBlend_t interruptBlend,
+      int flags) {
+    return static_cast<awPathResult_t>(ChangeState(
+        idAnimWebIndex{destinationSubWeb.value},
+        idAnimWebIndex{destinationState.value},
+        static_cast<int>(interruptPath), static_cast<int>(interruptBlend),
+        flags));
   }
   void SetDestinationIndicesForTest(idAnimWebIndex subWebIndex,
                                     idAnimWebIndex stateIndex,
@@ -560,6 +598,15 @@ public:
     return currentSubWebIndex;
   }
   idAnimWebIndex GetCurrentStateIndex() const { return currentStateIndex; }
+  idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> GetCurSubWebIndex()
+      const {
+    return idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t>{
+        currentSubWebIndex.value};
+  }
+  idIndex<short, idDeclAnimWeb::invalidStateIndex_t> GetCurStateIndex() const {
+    return idIndex<short, idDeclAnimWeb::invalidStateIndex_t>{
+        currentStateIndex.value};
+  }
   void SetFindPathResultForTest(bool value) { findPathResult = value; }
   void SetChangeStateViaResultForTest(int value) {
     changeStateViaResult = value;
@@ -830,6 +877,15 @@ public:
     ~idAISpawn();
   };
   struct idInteractions {
+    using takeDownType_t = ::takeDownType_t;
+    inline static constexpr takeDownType_t TAKEDOWNTYPE_NORMAL =
+        ::TAKEDOWNTYPE_NORMAL;
+    inline static constexpr takeDownType_t TAKEDOWNTYPE_NOTAKEDOWN =
+        ::TAKEDOWNTYPE_NOTAKEDOWN;
+    inline static constexpr takeDownType_t
+        TAKEDOWNTYPE_FORCEFRIENDLYTAKEDOWN =
+            ::TAKEDOWNTYPE_FORCEFRIENDLYTAKEDOWN;
+
     idInteractions();
     ~idInteractions();
 
@@ -848,11 +904,13 @@ public:
       return interactiveCameraVars;
     }
     const idStr& GetActionNodeGroup() const { return actionNodeGroup; }
+    takeDownType_t GetTakeDownType() const { return takeDownType; }
 
   private:
     idList<idEntityPtr<idInteractionCamera>, 5> interactionCameras;
     interactiveCameraVars_t interactiveCameraVars;
     idStr actionNodeGroup;
+    takeDownType_t takeDownType{TAKEDOWNTYPE_NOTAKEDOWN};
   };
   struct idAIDeath {
     idAIDeath();

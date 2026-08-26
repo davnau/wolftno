@@ -45,6 +45,12 @@ public:
   idCVar(const char* name, const char* value, int flags,
          const char* description, const char** values,
          argCompletion_t completion);
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, const char** values,
+         argCompletionRef_t completion);
+  idCVar(const char* name, const char* value, int flags,
+         const char* description, float minimum, float maximum,
+         const char** values, argCompletionRef_t completion);
   void Init(const char* name, const char* value, int flags, const char* description,
             float minimum = 0.0f, float maximum = 0.0f, const char** values = nullptr,
             argCompletion_t completion = nullptr);

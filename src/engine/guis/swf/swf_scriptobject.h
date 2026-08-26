@@ -4,6 +4,7 @@
 #include "shared/idlib/containers/list.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/text/atomicstring.h"
+#include "shared/idlib/sys/sys_alloc.h"
 
 class idSWFScriptNativeVariable {
 public:
@@ -131,6 +132,23 @@ public:
   virtual idSWFScriptVar Call(idSWFScriptObject* thisObject, idSWFParmList& parameters) = 0;
 };
 
+class idSWFScriptFunction_RefCounted : public idSWFScriptFunction {
+public:
+  idSWFScriptFunction_RefCounted() { refCount = 0; }
+  static void* operator new(std::size_t size) {
+    return idMem::Singleton()->AllocWithLocation(
+        "w:\\build\\tech5\\shared\\idlib\\Heap.h(95) : tag",size,
+        TAG_NEW,false,ALIGN_16,HEAP_DEFAULTHEAP);
+  }
+  static void operator delete(void* pointer) noexcept {
+    if (pointer != nullptr)
+      idMem::Singleton()->Free(pointer,ALIGN_16);
+  }
+  static void operator delete(void* pointer,std::size_t) noexcept {
+    operator delete(pointer);
+  }
+};
+
 static_assert(sizeof(idSWFScriptObject::swfNamedVar_t) == 48,
               "idSWFScriptObject::swfNamedVar_t ABI drift");
 static_assert(sizeof(idSWFScriptObject) == 112, "idSWFScriptObject ABI drift");
@@ -138,5 +156,6 @@ static_assert(sizeof(idSWFScriptArray) == 168, "idSWFScriptArray ABI drift");
 static_assert(sizeof(idSWFScriptSprite) == 120, "idSWFScriptSprite ABI drift");
 static_assert(sizeof(idSWFScriptText) == 120, "idSWFScriptText ABI drift");
 static_assert(sizeof(idSWFScriptFunction) == 112, "idSWFScriptFunction ABI drift");
+static_assert(sizeof(idSWFScriptFunction_RefCounted) == 112,
+              "reference-counted SWF function ABI drift");
 static_assert(sizeof(idSWFParmList) == 280, "idSWFParmList ABI drift");
-

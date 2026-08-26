@@ -287,7 +287,7 @@ template <typename T> T* lwAllocArray(int count);
 
 void lwFree(void* pointer);
 int compare_keys(st_lwKey* first, st_lwKey* second);
-void lwListFree(void** list, void (*freeNode)(void*));
+void lwListFree(void* list, void (*freeNode)(void*));
 void lwListInsert(void** list, void* item, int (*compare)(void*, void*));
 unsigned char getU1(idFile* file);
 int getVX(idFile* file);
@@ -312,7 +312,7 @@ char* sgetS0(unsigned char** bytes);
 int add_clip(char* text, st_lwClip** clips, int* clipCount);
 int add_tvel(float position[3], float velocity[3], st_lwEnvelope** envelopes,
              int* envelopeCount);
-st_lwTexture* get_texture(idFile* file, int blockSize, unsigned int type);
+st_lwTexture* get_texture(char* text);
 st_lwSurface* lwGetSurface5(idFile* file, int chunkSize, st_lwObject* object);
 void lwFreePoints(st_lwPointList* points);
 int lwAllocPolygons(st_lwPolygonList* polygons, int polygonCount,
@@ -347,10 +347,10 @@ int lwGetPolygons5(idFile* file, int chunkSize, st_lwPolygonList* polygons,
 int lwGetPoints(idFile* file, int chunkSize, st_lwPointList* points);
 int lwResolvePolySurfaces(st_lwPolygonList* polygons, st_lwTagList* tags,
                           st_lwSurface** surfaces, int* surfaceCount);
-st_lwObject* lwGetObject5(const char* filename, unsigned int* failId,
-                          int* failPosition);
-st_lwObject* lwGetObject(const char* filename, unsigned int* failId,
-                         int* failPosition);
+st_lwObject* lwGetObject5(const char* filename, float forceSmooth,
+                          unsigned int* failId, int* failPosition);
+st_lwObject* lwGetObject(const char* filename, float forceSmooth,
+                         unsigned int* failId, int* failPosition);
 
 static_assert(sizeof(st_lwKey) == 0x38, "st_lwKey ABI drift");
 static_assert(sizeof(st_lwPlugin) == 0x30, "st_lwPlugin ABI drift");

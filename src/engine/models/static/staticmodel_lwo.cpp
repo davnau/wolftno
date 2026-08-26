@@ -1,6 +1,7 @@
 #include "engine/models/static/staticmodel_lwo.h"
 
 #include "shared/idlib/filesystem/file.h"
+#include "shared/idlib/filesystem/filesystemlocal.h"
 #include "shared/idlib/sys/sys_alloc.h"
 #include "shared/idlib/text/str.h"
 
@@ -24,6 +25,33 @@ constexpr unsigned int ID_ISEQ = LWID('I', 'S', 'E', 'Q');
 constexpr unsigned int ID_ANIM = LWID('A', 'N', 'I', 'M');
 constexpr unsigned int ID_XREF = LWID('X', 'R', 'E', 'F');
 constexpr unsigned int ID_STCC = LWID('S', 'T', 'C', 'C');
+constexpr unsigned int ID_ADTR = LWID('A', 'D', 'T', 'R');
+constexpr unsigned int ID_ALPH = LWID('A', 'L', 'P', 'H');
+constexpr unsigned int ID_AVAL = LWID('A', 'V', 'A', 'L');
+constexpr unsigned int ID_BLOK = LWID('B', 'L', 'O', 'K');
+constexpr unsigned int ID_BUMP = LWID('B', 'U', 'M', 'P');
+constexpr unsigned int ID_CLRF = LWID('C', 'L', 'R', 'F');
+constexpr unsigned int ID_CLRH = LWID('C', 'L', 'R', 'H');
+constexpr unsigned int ID_COLR = LWID('C', 'O', 'L', 'R');
+constexpr unsigned int ID_DIFF = LWID('D', 'I', 'F', 'F');
+constexpr unsigned int ID_GLOS = LWID('G', 'L', 'O', 'S');
+constexpr unsigned int ID_GVAL = LWID('G', 'V', 'A', 'L');
+constexpr unsigned int ID_LINE = LWID('L', 'I', 'N', 'E');
+constexpr unsigned int ID_LUMI = LWID('L', 'U', 'M', 'I');
+constexpr unsigned int ID_REFL = LWID('R', 'E', 'F', 'L');
+constexpr unsigned int ID_RFOP = LWID('R', 'F', 'O', 'P');
+constexpr unsigned int ID_RIMG = LWID('R', 'I', 'M', 'G');
+constexpr unsigned int ID_RIND = LWID('R', 'I', 'N', 'D');
+constexpr unsigned int ID_RSAN = LWID('R', 'S', 'A', 'N');
+constexpr unsigned int ID_SHDR = LWID('S', 'H', 'D', 'R');
+constexpr unsigned int ID_SHRP = LWID('S', 'H', 'R', 'P');
+constexpr unsigned int ID_SIDE = LWID('S', 'I', 'D', 'E');
+constexpr unsigned int ID_SMAN = LWID('S', 'M', 'A', 'N');
+constexpr unsigned int ID_SPEC = LWID('S', 'P', 'E', 'C');
+constexpr unsigned int ID_TIMG = LWID('T', 'I', 'M', 'G');
+constexpr unsigned int ID_TRAN = LWID('T', 'R', 'A', 'N');
+constexpr unsigned int ID_TRNL = LWID('T', 'R', 'N', 'L');
+constexpr unsigned int ID_TROP = LWID('T', 'R', 'O', 'P');
 
 int flen = 0;
 
@@ -41,6 +69,18 @@ void FreeTextureList(st_lwTexture* texture) {
     lwFreeTexture(texture);
     texture = next;
   }
+}
+
+template <typename T> __forceinline void AppendNode(T** list, T* node) {
+  if (*list == nullptr) {
+    *list = node;
+    return;
+  }
+  T* tail = *list;
+  while (tail->next != nullptr)
+    tail = tail->next;
+  tail->next = node;
+  node->prev = tail;
 }
 
 std::uint16_t ByteSwap16(std::uint16_t value) {
@@ -82,9 +122,9 @@ int compare_keys(st_lwKey* first, st_lwKey* second) {
   return 0;
 }
 
-void lwListFree(void** list, void (*freeNode)(void*)) {
+void lwListFree(void* list, void (*freeNode)(void*)) {
   while (list != nullptr) {
-    void** next = static_cast<void**>(*list);
+    void* next = *static_cast<void**>(list);
     freeNode(list);
     list = next;
   }
@@ -255,8 +295,6 @@ void lwFreeSurface(st_lwSurface* surface) {
 }
 
 int compare_shaders(st_lwPlugin* first, st_lwPlugin* second) {
-  if (first->ord == nullptr || second->ord == nullptr)
-    return 1;
   return std::strcmp(first->ord, second->ord);
 }
 
@@ -275,8 +313,27 @@ int add_texture(st_lwSurface* surface, st_lwTexture* texture) {
   case LWID('B', 'U', 'M', 'P'): destination = &surface->bump.tex; break;
   default: return 0;
   }
-  lwListInsert(reinterpret_cast<void**>(destination), texture,
-               reinterpret_cast<int (*)(void*, void*)>(compare_shaders));
+  st_lwTexture* current = *destination;
+  st_lwTexture* previous = nullptr;
+  while (current != nullptr) {
+    if (current->ord == nullptr || texture->ord == nullptr ||
+        std::strcmp(current->ord, texture->ord) > 0)
+      break;
+    previous = current;
+    current = current->next;
+  }
+  if (previous == nullptr) {
+    *destination = texture;
+    texture->next = current;
+    if (current != nullptr)
+      current->prev = texture;
+  } else {
+    previous->next = texture;
+    texture->prev = previous;
+    texture->next = current;
+    if (current != nullptr)
+      current->prev = texture;
+  }
   return 1;
 }
 
@@ -429,6 +486,101 @@ char* sgetS0(unsigned char** bytes) {
   *bytes += padded;
   flen += padded;
   return text;
+}
+
+int add_clip(char* text, st_lwClip** clips, int* clipCount) {
+  auto* clip = static_cast<st_lwClip*>(LwoAlloc(sizeof(st_lwClip), true));
+  if (clip == nullptr)
+    return 0;
+  clip->contrast.val = 1.0f;
+  clip->brightness.val = 1.0f;
+  clip->saturation.val = 1.0f;
+  clip->gamma.val = 1.0f;
+  if (char* sequence = std::strstr(text, "(sequence)")) {
+    sequence[-1] = '\0';
+    clip->type = ID_ISEQ;
+    clip->source.seq.prefix = text;
+    clip->source.seq.digits = 3;
+  } else {
+    clip->type = ID_STIL;
+    clip->source.still.name = text;
+  }
+  clip->index = ++*clipCount;
+  if (*clips == nullptr) {
+    *clips = clip;
+  } else {
+    st_lwClip* tail = *clips;
+    while (tail->next != nullptr)
+      tail = tail->next;
+    tail->next = clip;
+    clip->prev = tail;
+  }
+  return clip->index;
+}
+
+int add_tvel(float position[3], float velocity[3], st_lwEnvelope** envelopes,
+             int* envelopeCount) {
+  st_lwEnvelope* last = nullptr;
+  for (int axis = 0; axis < 3; ++axis) {
+    auto* envelope = static_cast<st_lwEnvelope*>(LwoAlloc(sizeof(st_lwEnvelope), true));
+    auto* key0 = static_cast<st_lwKey*>(LwoAlloc(sizeof(st_lwKey), true));
+    auto* key1 = static_cast<st_lwKey*>(LwoAlloc(sizeof(st_lwKey), true));
+    if (envelope == nullptr || key0 == nullptr || key1 == nullptr)
+      return 0;
+    key0->next = key1;
+    key0->value = position[axis];
+    key1->prev = key0;
+    key1->value = position[axis] + velocity[axis] * 30.0f;
+    key1->time = 1.0f;
+    key0->shape = key1->shape = LWID('L', 'I', 'N', 'E');
+    envelope->index = *envelopeCount + axis + 1;
+    envelope->type = 0x0301 + axis;
+    envelope->name = static_cast<char*>(LwoAlloc(11, true));
+    if (envelope->name != nullptr) {
+      std::memcpy(envelope->name, "Position.X", 11);
+      envelope->name[9] = static_cast<char>(envelope->name[9] + axis);
+    }
+    envelope->key = key0;
+    envelope->nkeys = 2;
+    envelope->behavior[0] = envelope->behavior[1] = 5;
+    if (*envelopes == nullptr) {
+      *envelopes = envelope;
+    } else {
+      st_lwEnvelope* tail = *envelopes;
+      while (tail->next != nullptr)
+        tail = tail->next;
+      tail->next = envelope;
+      envelope->prev = tail;
+    }
+    last = envelope;
+  }
+  *envelopeCount += 3;
+  return last->index - 2;
+}
+
+st_lwTexture* get_texture(char* text) {
+  auto* texture = static_cast<st_lwTexture*>(LwoAlloc(sizeof(st_lwTexture), true));
+  if (texture == nullptr)
+    return nullptr;
+  texture->tmap.size.val[0] = texture->tmap.size.val[1] =
+      texture->tmap.size.val[2] = 1.0f;
+  texture->opacity.val = 1.0f;
+  texture->enabled = 1;
+  if (std::strstr(text, "Image Map") != nullptr) {
+    texture->type = ID_IMAP;
+    if (std::strstr(text, "Planar") != nullptr) texture->param.imap.projection = 0;
+    else if (std::strstr(text, "Cylindrical") != nullptr) texture->param.imap.projection = 1;
+    else if (std::strstr(text, "Spherical") != nullptr) texture->param.imap.projection = 2;
+    else if (std::strstr(text, "Cubic") != nullptr) texture->param.imap.projection = 3;
+    else if (std::strstr(text, "Front") != nullptr) texture->param.imap.projection = 4;
+    texture->param.imap.aa_strength = 1.0f;
+    texture->param.imap.amplitude.val = 1.0f;
+    lwFree(text);
+  } else {
+    texture->type = ID_PROC;
+    texture->param.proc.name = text;
+  }
+  return texture;
 }
 
 void lwFreePoints(st_lwPointList* points) {
@@ -655,6 +807,58 @@ int lwGetPolygons(idFile* file, int chunkSize, st_lwPolygonList* polygons,
   }
   lwFree(buffer);
   return 1;
+}
+
+int lwGetPolygons5(idFile* file, int chunkSize, st_lwPolygonList* polygons,
+                   int pointOffset) {
+  if (chunkSize == 0)
+    return 1;
+  flen = 0;
+  auto* buffer = static_cast<unsigned char*>(getbytes(file, chunkSize));
+  if (buffer == nullptr)
+    goto fail;
+  {
+    unsigned char* cursor = buffer;
+    unsigned char* end = buffer + chunkSize;
+    int polygonCount = 0;
+    int vertexCount = 0;
+    while (cursor < end) {
+      const int count = BufferU2(&cursor);
+      vertexCount += count;
+      ++polygonCount;
+      cursor += 2 * count;
+      const int surface = static_cast<short>(BufferU2(&cursor));
+      if (surface < 0)
+        cursor += 2;
+    }
+    if (!lwAllocPolygons(polygons, polygonCount, vertexCount))
+      goto fail;
+    cursor = buffer;
+    int vertexOffset = polygons->voffset;
+    for (int index = 0; index < polygonCount; ++index) {
+      st_lwPolygon& polygon = polygons->pol[polygons->offset + index];
+      polygon.nverts = BufferU2(&cursor);
+      polygon.type = LWID('F', 'A', 'C', 'E');
+      polygon.vindex = vertexOffset;
+      for (int vertex = 0; vertex < polygon.nverts; ++vertex)
+        polygons->polVerts[vertexOffset + vertex].index =
+            BufferU2(&cursor) + pointOffset;
+      int surface = static_cast<short>(BufferU2(&cursor));
+      if (surface < 0) {
+        surface = -surface;
+        cursor += 2;
+      }
+      polygon.surf = reinterpret_cast<st_lwSurface*>(
+          static_cast<std::intptr_t>(surface - 1));
+      vertexOffset += polygon.nverts;
+    }
+  }
+  lwFree(buffer);
+  return 1;
+fail:
+  lwFree(buffer);
+  lwFreePolygons(polygons);
+  return 0;
 }
 
 int lwGetPoints(idFile* file, int chunkSize, st_lwPointList* points) {
@@ -1049,6 +1253,63 @@ constexpr unsigned int ID_GREN = LWID('G', 'R', 'E', 'N');
 constexpr unsigned int ID_GRPT = LWID('G', 'R', 'P', 'T');
 constexpr unsigned int ID_FKEY = LWID('F', 'K', 'E', 'Y');
 constexpr unsigned int ID_IKEY = LWID('I', 'K', 'E', 'Y');
+constexpr unsigned int ID_TIME = LWID('T', 'I', 'M', 'E');
+constexpr unsigned int ID_CONT = LWID('C', 'O', 'N', 'T');
+constexpr unsigned int ID_BRIT = LWID('B', 'R', 'I', 'T');
+constexpr unsigned int ID_SATR = LWID('S', 'A', 'T', 'R');
+constexpr unsigned int ID_HUE = LWID('H', 'U', 'E', ' ');
+constexpr unsigned int ID_GAMM = LWID('G', 'A', 'M', 'M');
+constexpr unsigned int ID_IFLT = LWID('I', 'F', 'L', 'T');
+constexpr unsigned int ID_PFLT = LWID('P', 'F', 'L', 'T');
+constexpr unsigned int ID_TYPE = LWID('T', 'Y', 'P', 'E');
+constexpr unsigned int ID_NAME = LWID('N', 'A', 'M', 'E');
+constexpr unsigned int ID_PRE = LWID('P', 'R', 'E', ' ');
+constexpr unsigned int ID_POST = LWID('P', 'O', 'S', 'T');
+constexpr unsigned int ID_KEY = LWID('K', 'E', 'Y', ' ');
+constexpr unsigned int ID_SPAN = LWID('S', 'P', 'A', 'N');
+constexpr unsigned int ID_TCB = LWID('T', 'C', 'B', ' ');
+constexpr unsigned int ID_BEZI = LWID('B', 'E', 'Z', 'I');
+constexpr unsigned int ID_HERM = LWID('H', 'E', 'R', 'M');
+constexpr unsigned int ID_BEZ2 = LWID('B', 'E', 'Z', '2');
+constexpr unsigned int ID_FLAG = LWID('F', 'L', 'A', 'G');
+constexpr unsigned int ID_VLUM = LWID('V', 'L', 'U', 'M');
+constexpr unsigned int ID_VDIF = LWID('V', 'D', 'I', 'F');
+constexpr unsigned int ID_VSPC = LWID('V', 'S', 'P', 'C');
+constexpr unsigned int ID_RFLT = LWID('R', 'F', 'L', 'T');
+constexpr unsigned int ID_BTEX = LWID('B', 'T', 'E', 'X');
+constexpr unsigned int ID_CTEX = LWID('C', 'T', 'E', 'X');
+constexpr unsigned int ID_DTEX = LWID('D', 'T', 'E', 'X');
+constexpr unsigned int ID_LTEX = LWID('L', 'T', 'E', 'X');
+constexpr unsigned int ID_RTEX = LWID('R', 'T', 'E', 'X');
+constexpr unsigned int ID_STEX = LWID('S', 'T', 'E', 'X');
+constexpr unsigned int ID_TTEX = LWID('T', 'T', 'E', 'X');
+constexpr unsigned int ID_TFLG = LWID('T', 'F', 'L', 'G');
+constexpr unsigned int ID_TSIZ = LWID('T', 'S', 'I', 'Z');
+constexpr unsigned int ID_TCTR = LWID('T', 'C', 'T', 'R');
+constexpr unsigned int ID_TFAL = LWID('T', 'F', 'A', 'L');
+constexpr unsigned int ID_TVEL = LWID('T', 'V', 'E', 'L');
+constexpr unsigned int ID_TCLR = LWID('T', 'C', 'L', 'R');
+constexpr unsigned int ID_TVAL = LWID('T', 'V', 'A', 'L');
+constexpr unsigned int ID_TAAS = LWID('T', 'A', 'A', 'S');
+constexpr unsigned int ID_TREF = LWID('T', 'R', 'E', 'F');
+constexpr unsigned int ID_TOPC = LWID('T', 'O', 'P', 'C');
+constexpr unsigned int ID_SDAT = LWID('S', 'D', 'A', 'T');
+constexpr unsigned int ID_TFP0 = LWID('T', 'F', 'P', '0');
+constexpr unsigned int ID_TFP1 = LWID('T', 'F', 'P', '1');
+constexpr unsigned int ID_FORM = LWID('F', 'O', 'R', 'M');
+constexpr unsigned int ID_LWO2 = LWID('L', 'W', 'O', '2');
+constexpr unsigned int ID_LWOB = LWID('L', 'W', 'O', 'B');
+constexpr unsigned int ID_LAYR = LWID('L', 'A', 'Y', 'R');
+constexpr unsigned int ID_PNTS = LWID('P', 'N', 'T', 'S');
+constexpr unsigned int ID_POLS = LWID('P', 'O', 'L', 'S');
+constexpr unsigned int ID_VMAD = LWID('V', 'M', 'A', 'D');
+constexpr unsigned int ID_PTAG = LWID('P', 'T', 'A', 'G');
+constexpr unsigned int ID_BBOX = LWID('B', 'B', 'O', 'X');
+constexpr unsigned int ID_TAGS = LWID('T', 'A', 'G', 'S');
+constexpr unsigned int ID_ENVL = LWID('E', 'N', 'V', 'L');
+constexpr unsigned int ID_CLIP = LWID('C', 'L', 'I', 'P');
+constexpr unsigned int ID_SURF = LWID('S', 'U', 'R', 'F');
+constexpr unsigned int ID_SRFS = LWID('S', 'R', 'F', 'S');
 
 unsigned int GetU4(idFile* file) { return static_cast<unsigned int>(getI4(file)); }
 unsigned short GetU2(idFile* file) { return static_cast<unsigned short>(getI2(file)); }
@@ -1281,4 +1542,691 @@ st_lwTexture* lwGetTexture(idFile* file, int blockSize, unsigned int type) {
   }
   flen = blockSize;
   return texture;
+}
+
+st_lwPlugin* lwGetShader(idFile* file, int blockSize) {
+  auto* shader = static_cast<st_lwPlugin*>(LwoAlloc(sizeof(st_lwPlugin), true));
+  if (shader == nullptr)
+    return nullptr;
+  const std::int64_t start = file->Tell();
+  flen = 0;
+  int headerSize = GetU2(file);
+  shader->ord = getS0(file);
+  unsigned int id = GetU4(file);
+  unsigned short size = GetU2(file);
+  if (flen < 0)
+    goto fail;
+  while (headerSize > 0) {
+    const int padded = size + (size & 1);
+    headerSize -= padded;
+    if (id == ID_ENAB) {
+      shader->flags = GetU2(file);
+      break;
+    }
+    if (file->Seek(padded, FS_SEEK_CUR) != 0)
+      goto fail;
+    id = GetU4(file);
+    size = GetU2(file);
+  }
+  id = GetU4(file);
+  size = GetU2(file);
+  if (flen < 0)
+    goto fail;
+  while (true) {
+    const int padded = size + (size & 1);
+    flen = 0;
+    if (id == ID_FUNC) {
+      shader->name = getS0(file);
+      shader->data = getbytes(file, padded - flen);
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+    if (file->Tell() - start >= blockSize) {
+      flen = static_cast<int>(file->Tell() - start);
+      return shader;
+    }
+    flen = 0;
+    id = GetU4(file);
+    size = GetU2(file);
+    if (flen != 6)
+      goto fail;
+  }
+fail:
+  lwFreePlugin(shader);
+  return nullptr;
+}
+
+st_lwSurface* lwGetSurface(idFile* file, int chunkSize) {
+  st_lwSurface* surface = lwDefaultSurface();
+  if (surface == nullptr)
+    return nullptr;
+  const std::int64_t start = file->Tell();
+  flen = 0;
+  surface->name = getS0(file);
+  surface->srcname = getS0(file);
+  unsigned int id = GetU4(file);
+  unsigned short size = GetU2(file);
+  if (flen < 0)
+    goto fail;
+  while (true) {
+    const int padded = size + (size & 1);
+    flen = 0;
+    switch (id) {
+    case ID_COLR:
+      for (float& value : surface->color.rgb) value = getF4(file);
+      surface->color.eindex = getVX(file); break;
+    case ID_LUMI: surface->luminosity.val = getF4(file); surface->luminosity.eindex = getVX(file); break;
+    case ID_DIFF: surface->diffuse.val = getF4(file); surface->diffuse.eindex = getVX(file); break;
+    case ID_SPEC: surface->specularity.val = getF4(file); surface->specularity.eindex = getVX(file); break;
+    case ID_GLOS: surface->glossiness.val = getF4(file); surface->glossiness.eindex = getVX(file); break;
+    case ID_REFL: surface->reflection.val.val = getF4(file); surface->reflection.val.eindex = getVX(file); break;
+    case ID_RFOP: surface->reflection.options = GetU2(file); break;
+    case ID_RIMG: surface->reflection.cindex = getVX(file); break;
+    case ID_RSAN: surface->reflection.seam_angle = getF4(file); break;
+    case ID_TRAN: surface->transparency.val.val = getF4(file); surface->transparency.val.eindex = getVX(file); break;
+    case ID_TROP: surface->transparency.options = GetU2(file); break;
+    case ID_TIMG: surface->transparency.cindex = getVX(file); break;
+    case ID_RIND: surface->eta.val = getF4(file); surface->eta.eindex = getVX(file); break;
+    case ID_TRNL: surface->translucency.val = getF4(file); surface->translucency.eindex = getVX(file); break;
+    case ID_BUMP: surface->bump.val = getF4(file); surface->bump.eindex = getVX(file); break;
+    case ID_SMAN: surface->smooth = getF4(file); break;
+    case ID_SIDE: surface->sideflags = GetU2(file); break;
+    case ID_CLRH: surface->color_hilite.val = getF4(file); surface->color_hilite.eindex = getVX(file); break;
+    case ID_CLRF: surface->color_filter.val = getF4(file); surface->color_filter.eindex = getVX(file); break;
+    case ID_ADTR: surface->add_trans.val = getF4(file); surface->add_trans.eindex = getVX(file); break;
+    case ID_SHRP: surface->dif_sharp.val = getF4(file); surface->dif_sharp.eindex = getVX(file); break;
+    case ID_GVAL: surface->glow.val = getF4(file); surface->glow.eindex = getVX(file); break;
+    case ID_LINE:
+      surface->line.enabled = 1;
+      if (padded >= 2) surface->line.flags = GetU2(file);
+      if (padded >= 6) surface->line.size.val = getF4(file);
+      if (padded >= 8) surface->line.size.eindex = getVX(file);
+      break;
+    case ID_ALPH: surface->alpha_mode = GetU2(file); surface->alpha = getF4(file); break;
+    case ID_AVAL: surface->alpha = getF4(file); break;
+    case ID_BLOK: {
+      const unsigned int type = GetU4(file);
+      if (type == ID_IMAP || type == ID_PROC || type == ID_GRAD) {
+        st_lwTexture* texture = lwGetTexture(file, padded - 4, type);
+        if (texture == nullptr) goto fail;
+        if (!add_texture(surface, texture)) lwFreeTexture(texture);
+        flen += 4;
+      } else if (type == ID_SHDR) {
+        st_lwPlugin* shader = lwGetShader(file, padded - 4);
+        if (shader == nullptr) goto fail;
+        lwListInsert(reinterpret_cast<void**>(&surface->shader), shader,
+                     reinterpret_cast<int (*)(void*, void*)>(compare_shaders));
+        ++surface->nshaders;
+        flen += 4;
+      }
+      break;
+    }
+    default: break;
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+    if (file->Tell() - start >= chunkSize) {
+      surface->smoothCos = std::cos(surface->smooth);
+      return surface;
+    }
+    flen = 0;
+    id = GetU4(file);
+    size = GetU2(file);
+    if (flen != 6)
+      goto fail;
+  }
+fail:
+  lwFreeSurface(surface);
+  return nullptr;
+}
+
+st_lwClip* lwGetClip(idFile* file, int chunkSize) {
+  auto* clip = static_cast<st_lwClip*>(LwoAlloc(sizeof(st_lwClip), true));
+  if (clip == nullptr)
+    return nullptr;
+  clip->contrast.val = clip->brightness.val = clip->saturation.val =
+      clip->gamma.val = 1.0f;
+  const std::int64_t start = file->Tell();
+  flen = 0;
+  clip->index = getI4(file);
+  clip->type = GetU4(file);
+  unsigned short size = GetU2(file);
+  if (flen < 0)
+    goto fail;
+  {
+    const int padded = size + (size & 1);
+    flen = 0;
+    switch (clip->type) {
+    case ID_STIL: clip->source.still.name = getS0(file); break;
+    case ID_ISEQ:
+      clip->source.seq.digits = getU1(file);
+      clip->source.seq.flags = getU1(file);
+      clip->source.seq.offset = getI2(file);
+      clip->source.seq.start = getI2(file);
+      clip->source.seq.end = getI2(file);
+      clip->source.seq.prefix = getS0(file);
+      clip->source.seq.suffix = getS0(file);
+      break;
+    case ID_ANIM:
+      clip->source.anim.name = getS0(file);
+      clip->source.anim.server = getS0(file);
+      clip->source.anim.data = getbytes(file, padded - flen);
+      break;
+    case ID_XREF:
+      clip->source.xref.index = getI4(file);
+      clip->source.xref.string = getS0(file);
+      break;
+    case ID_STCC:
+      clip->source.cycle.lo = getI2(file);
+      clip->source.cycle.hi = getI2(file);
+      clip->source.cycle.name = getS0(file);
+      break;
+    default: break;
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+  }
+  if (file->Tell() - start > chunkSize)
+    goto fail;
+  if (file->Tell() - start == chunkSize)
+    return clip;
+  while (file->Tell() - start < chunkSize) {
+    flen = 0;
+    const unsigned int id = GetU4(file);
+    size = GetU2(file);
+    if (flen != 6)
+      goto fail;
+    const int padded = size + (size & 1);
+    flen = 0;
+    switch (id) {
+    case ID_TIME:
+      clip->start_time = getF4(file); clip->duration = getF4(file);
+      clip->frame_rate = getF4(file); break;
+    case ID_CONT: clip->contrast.val = getF4(file); clip->contrast.eindex = getVX(file); break;
+    case ID_BRIT: clip->brightness.val = getF4(file); clip->brightness.eindex = getVX(file); break;
+    case ID_SATR: clip->saturation.val = getF4(file); clip->saturation.eindex = getVX(file); break;
+    case ID_HUE: clip->hue.val = getF4(file); clip->hue.eindex = getVX(file); break;
+    case ID_GAMM: clip->gamma.val = getF4(file); clip->gamma.eindex = getVX(file); break;
+    case ID_NEGA: clip->negative = GetU2(file); break;
+    case ID_IFLT:
+    case ID_PFLT: {
+      auto* filter = static_cast<st_lwPlugin*>(LwoAlloc(sizeof(st_lwPlugin), true));
+      if (filter == nullptr) goto fail;
+      filter->name = getS0(file);
+      filter->flags = GetU2(file);
+      filter->data = getbytes(file, padded - flen);
+      st_lwPlugin** list = id == ID_IFLT ? &clip->ifilter : &clip->pfilter;
+      if (*list == nullptr) *list = filter;
+      else { st_lwPlugin* tail = *list; while (tail->next != nullptr) tail = tail->next;
+        tail->next = filter; filter->prev = tail; }
+      if (id == ID_IFLT) ++clip->nifilters; else ++clip->npfilters;
+      break;
+    }
+    default: break;
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+    if (file->Tell() - start > chunkSize)
+      goto fail;
+  }
+  return clip;
+fail:
+  lwFreeClip(clip);
+  return nullptr;
+}
+
+st_lwEnvelope* lwGetEnvelope(idFile* file, int chunkSize) {
+  auto* envelope = static_cast<st_lwEnvelope*>(LwoAlloc(sizeof(st_lwEnvelope), true));
+  if (envelope == nullptr)
+    return nullptr;
+  st_lwKey* key = nullptr;
+  const std::int64_t start = file->Tell();
+  flen = 0;
+  envelope->index = getVX(file);
+  while (file->Tell() - start < chunkSize) {
+    flen = 0;
+    const unsigned int id = GetU4(file);
+    unsigned short size = GetU2(file);
+    if (flen != 6)
+      goto fail;
+    const int padded = size + (size & 1);
+    flen = 0;
+    switch (id) {
+    case ID_TYPE: envelope->type = GetU2(file); break;
+    case ID_NAME: envelope->name = getS0(file); break;
+    case ID_PRE: envelope->behavior[0] = GetU2(file); break;
+    case ID_POST: envelope->behavior[1] = GetU2(file); break;
+    case ID_KEY:
+      key = static_cast<st_lwKey*>(LwoAlloc(sizeof(st_lwKey), true));
+      if (key == nullptr) goto fail;
+      key->time = getF4(file);
+      key->value = getF4(file);
+      lwListInsert(reinterpret_cast<void**>(&envelope->key), key,
+                   reinterpret_cast<int (*)(void*, void*)>(compare_keys));
+      ++envelope->nkeys;
+      break;
+    case ID_SPAN: {
+      if (key == nullptr) goto fail;
+      key->shape = GetU4(file);
+      float values[4]{};
+      const int count = std::min((padded - 4) / 4, 4);
+      for (int index = 0; index < count; ++index) values[index] = getF4(file);
+      if (key->shape == ID_TCB) {
+        key->tension = values[0]; key->continuity = values[1]; key->bias = values[2];
+      } else if (key->shape == ID_BEZI || key->shape == ID_HERM || key->shape == ID_BEZ2) {
+        for (int index = 0; index < count; ++index) key->param[index] = values[index];
+      }
+      break;
+    }
+    case ID_CHAN: {
+      auto* plugin = static_cast<st_lwPlugin*>(LwoAlloc(sizeof(st_lwPlugin), true));
+      if (plugin == nullptr) goto fail;
+      plugin->name = getS0(file);
+      plugin->flags = GetU2(file);
+      plugin->data = getbytes(file, padded - flen);
+      if (envelope->cfilter == nullptr) envelope->cfilter = plugin;
+      else { st_lwPlugin* tail = envelope->cfilter; while (tail->next != nullptr) tail = tail->next;
+        tail->next = plugin; plugin->prev = tail; }
+      ++envelope->ncfilters;
+      break;
+    }
+    default: break;
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+    if (file->Tell() - start > chunkSize)
+      goto fail;
+  }
+  return envelope;
+fail:
+  lwFreeEnvelope(envelope);
+  return nullptr;
+}
+
+st_lwSurface* lwGetSurface5(idFile* file, int chunkSize, st_lwObject* object) {
+  st_lwSurface* surface = lwDefaultSurface();
+  if (surface == nullptr)
+    return nullptr;
+  st_lwTexture* texture = nullptr;
+  st_lwPlugin* shader = nullptr;
+  const std::int64_t start = file->Tell();
+  flen = 0;
+  surface->name = getS0(file);
+  unsigned int id = GetU4(file);
+  unsigned short size = GetU2(file);
+  if (flen < 0)
+    goto fail;
+  while (true) {
+    const int padded = size + (size & 1);
+    flen = 0;
+    switch (id) {
+    case ID_COLR:
+      for (float& value : surface->color.rgb) value = getU1(file) / 255.0f;
+      break;
+    case ID_FLAG: {
+      const unsigned int flags = GetU2(file);
+      if (flags & 4) surface->smooth = 1.56207f;
+      if (flags & 8) surface->color_hilite.val = 1.0f;
+      if (flags & 16) surface->color_filter.val = 1.0f;
+      if (flags & 128) surface->dif_sharp.val = 0.5f;
+      if (flags & 256) surface->sideflags = 3;
+      if (flags & 512) surface->add_trans.val = 1.0f;
+      break;
+    }
+    case ID_LUMI: surface->luminosity.val = getI2(file) / 256.0f; break;
+    case ID_VLUM: surface->luminosity.val = getF4(file); break;
+    case ID_DIFF: surface->diffuse.val = getI2(file) / 256.0f; break;
+    case ID_VDIF: surface->diffuse.val = getF4(file); break;
+    case ID_SPEC: surface->specularity.val = getI2(file) / 256.0f; break;
+    case ID_VSPC: surface->specularity.val = getF4(file); break;
+    case ID_GLOS: surface->glossiness.val = std::log(static_cast<float>(GetU2(file))) / 20.7944f; break;
+    case ID_SMAN: surface->smooth = getF4(file); break;
+    case ID_REFL: surface->reflection.val.val = getI2(file) / 256.0f; break;
+    case ID_RFLT: surface->reflection.options = GetU2(file); break;
+    case ID_RIMG: {
+      char* text = getS0(file);
+      surface->reflection.cindex = add_clip(text, &object->clip, &object->nclips);
+      surface->reflection.options = 3;
+      break;
+    }
+    case ID_RSAN: surface->reflection.seam_angle = getF4(file); break;
+    case ID_TRAN: surface->transparency.val.val = getI2(file) / 256.0f; break;
+    case ID_RIND: surface->eta.val = getF4(file); break;
+    case ID_BTEX: case ID_CTEX: case ID_DTEX: case ID_LTEX:
+    case ID_RTEX: case ID_STEX: case ID_TTEX: {
+      texture = get_texture(static_cast<char*>(getbytes(file, padded)));
+      if (texture == nullptr) goto fail;
+      st_lwTexture** list = nullptr;
+      if (id == ID_BTEX) list = &surface->bump.tex;
+      else if (id == ID_CTEX) list = &surface->color.tex;
+      else if (id == ID_DTEX) list = &surface->diffuse.tex;
+      else if (id == ID_LTEX) list = &surface->luminosity.tex;
+      else if (id == ID_RTEX) list = &surface->reflection.val.tex;
+      else if (id == ID_STEX) list = &surface->specularity.tex;
+      else list = &surface->transparency.val.tex;
+      AppendNode(list, texture);
+      break;
+    }
+    case ID_TFLG: {
+      if (texture == nullptr) goto fail;
+      const unsigned int flags = GetU2(file);
+      int axis = 0;
+      if (flags & 2) axis = 1;
+      if (flags & 4) axis = 2;
+      texture->axis = static_cast<short>(axis);
+      if (texture->type == ID_IMAP) texture->param.imap.axis = axis;
+      else texture->param.proc.axis = axis;
+      if (flags & 8) texture->tmap.coord_sys = 1;
+      if (flags & 16) texture->negative = 1;
+      if (flags & 32) texture->param.imap.pblend = 1;
+      if (flags & 64) { texture->param.imap.aa_strength = 1.0f; texture->param.imap.aas_flags = 1; }
+      break;
+    }
+    case ID_TSIZ: case ID_TCTR: case ID_TFAL: {
+      if (texture == nullptr) goto fail;
+      st_lwVParam* parameter = id == ID_TSIZ ? &texture->tmap.size :
+          (id == ID_TCTR ? &texture->tmap.center : &texture->tmap.falloff);
+      for (float& value : parameter->val) value = getF4(file);
+      break;
+    }
+    case ID_TVEL: {
+      if (texture == nullptr) goto fail;
+      float velocity[3];
+      for (float& value : velocity) value = getF4(file);
+      texture->tmap.center.eindex = add_tvel(texture->tmap.center.val, velocity,
+                                             &object->env, &object->nenvs);
+      break;
+    }
+    case ID_TCLR:
+      if (texture == nullptr) goto fail;
+      if (texture->type == ID_PROC)
+        for (float& value : texture->param.proc.value) value = getU1(file) / 255.0f;
+      break;
+    case ID_TVAL:
+      if (texture == nullptr) goto fail;
+      texture->param.proc.value[0] = getI2(file) / 256.0f; break;
+    case ID_TAMP:
+      if (texture == nullptr) goto fail;
+      if (texture->type == ID_IMAP) texture->param.imap.amplitude.val = getF4(file);
+      break;
+    case ID_TIMG:
+      if (texture == nullptr) goto fail;
+      texture->param.imap.cindex = add_clip(getS0(file), &object->clip, &object->nclips); break;
+    case ID_TAAS:
+      if (texture == nullptr) goto fail;
+      texture->param.imap.aa_strength = getF4(file); texture->param.imap.aas_flags = 1; break;
+    case ID_TREF:
+      if (texture == nullptr) goto fail;
+      texture->tmap.ref_object = static_cast<char*>(getbytes(file, padded)); break;
+    case ID_TOPC:
+      if (texture == nullptr) goto fail;
+      texture->opacity.val = getF4(file); break;
+    case ID_TFP0:
+      if (texture == nullptr) goto fail;
+      if (texture->type == ID_IMAP) texture->param.imap.wrapw.val = getF4(file); break;
+    case ID_TFP1:
+      if (texture == nullptr) goto fail;
+      if (texture->type == ID_IMAP) texture->param.imap.wraph.val = getF4(file); break;
+    case ID_SHDR:
+      shader = static_cast<st_lwPlugin*>(LwoAlloc(sizeof(st_lwPlugin), true));
+      if (shader == nullptr) goto fail;
+      shader->name = static_cast<char*>(getbytes(file, padded));
+      AppendNode(&surface->shader, shader);
+      ++surface->nshaders;
+      break;
+    case ID_SDAT:
+      if (shader == nullptr) goto fail;
+      shader->data = getbytes(file, padded); break;
+    default: break;
+    }
+    if (!FinishSubchunk(file, padded))
+      goto fail;
+    if (file->Tell() - start >= chunkSize) {
+      surface->smoothCos = std::cos(surface->smooth);
+      return surface;
+    }
+    flen = 0;
+    id = GetU4(file);
+    size = GetU2(file);
+    if (flen != 6)
+      goto fail;
+  }
+fail:
+  lwFreeSurface(surface);
+  return nullptr;
+}
+
+st_lwObject* lwGetObject5(const char* filename, float forceSmooth,
+                          unsigned int* failId, int* failPosition) {
+  idFile* file = fileSystem != nullptr ? fileSystem->OpenFileRead(filename) : nullptr;
+  if (file == nullptr)
+    return nullptr;
+  st_lwObject* object = nullptr;
+  st_lwLayer* layer = nullptr;
+  unsigned int id = 0;
+  flen = 0;
+  id = GetU4(file);
+  const unsigned int formSize = GetU4(file);
+  const unsigned int type = GetU4(file);
+  if (flen != 12) {
+    delete file;
+    return nullptr;
+  }
+  if (id != ID_FORM || type != ID_LWOB) {
+    delete file;
+    if (failPosition != nullptr) *failPosition = 12;
+    return nullptr;
+  }
+  object = lwAlloc<st_lwObject>();
+  if (object == nullptr)
+    goto fail;
+  layer = lwAlloc<st_lwLayer>();
+  if (layer == nullptr)
+    goto fail;
+  object->layer = layer;
+  object->nlayers = 1;
+  flen = 0;
+  id = GetU4(file);
+  unsigned int chunkSize = GetU4(file);
+  if (flen != 8)
+    goto fail;
+  while (true) {
+    const int padded = static_cast<int>(chunkSize + (chunkSize & 1));
+    if (id == ID_PNTS) {
+      if (!lwGetPoints(file, padded, &layer->point)) goto fail;
+    } else if (id == ID_POLS) {
+      if (!lwGetPolygons5(file, padded, &layer->polygon, layer->point.offset)) goto fail;
+    } else if (id == ID_SRFS) {
+      if (!lwGetTags(file, padded, &object->taglist)) goto fail;
+    } else if (id == ID_SURF) {
+      st_lwSurface* surface = lwGetSurface5(file, padded, object);
+      if (surface == nullptr) goto fail;
+      AppendNode(&object->surf, surface);
+      ++object->nsurfs;
+    } else if (file->Seek(padded, FS_SEEK_CUR) != 0) {
+      goto fail;
+    }
+    if (formSize <= file->Tell() - 8)
+      break;
+    flen = 0;
+    id = GetU4(file);
+    chunkSize = GetU4(file);
+    if (flen != 8)
+      goto fail;
+  }
+  delete file;
+  file = nullptr;
+  lwForceSmoothSurfaces(object->surf, forceSmooth);
+  lwGetBoundingBox(&layer->point, layer->bbox);
+  if (!lwResolvePolySurfaces(&layer->polygon, &object->taglist,
+                             &object->surf, &object->nsurfs) ||
+      !lwGetPointPolygons(&layer->point, &layer->polygon))
+    goto fail;
+  lwGetPolyNormals(&layer->point, &layer->polygon);
+  lwGetVertNormals(&layer->point, &layer->polygon);
+  lwFreePointPolygons(&layer->point);
+  return object;
+fail:
+  if (failId != nullptr) *failId = id;
+  if (file != nullptr) {
+    if (failPosition != nullptr) *failPosition = static_cast<int>(file->Tell());
+    delete file;
+  }
+  lwFreeObject(object);
+  return nullptr;
+}
+
+st_lwObject* lwGetObject(const char* filename, float forceSmooth,
+                         unsigned int* failId, int* failPosition) {
+  idFile* source = fileSystem != nullptr ? fileSystem->OpenFileRead(filename) : nullptr;
+  if (source == nullptr)
+    return nullptr;
+  const std::int64_t sourceLength = source->Length();
+  if (sourceLength <= 0) {
+    delete source;
+    return nullptr;
+  }
+  char* fileData = static_cast<char*>(LwoAlloc(static_cast<std::size_t>(sourceLength), false));
+  if (fileData == nullptr || source->Read(fileData, static_cast<std::size_t>(sourceLength)) !=
+                                 static_cast<std::size_t>(sourceLength)) {
+    delete source;
+    lwFree(fileData);
+    return nullptr;
+  }
+  const std::uint32_t timestamp = source->Timestamp();
+  delete source;
+  idFile_Memory* file = new idFile_Memory(filename);
+  file->SetReadOnlyData(fileData, static_cast<std::uint64_t>(sourceLength));
+  file->timestamp = timestamp;
+  st_lwObject* object = nullptr;
+  st_lwLayer* layer = nullptr;
+  unsigned int id = 0;
+  flen = 0;
+  id = GetU4(file);
+  const unsigned int formSize = GetU4(file);
+  const unsigned int type = GetU4(file);
+  if (flen != 12) {
+    delete file;
+    lwFree(fileData);
+    return nullptr;
+  }
+  if (id != ID_FORM) {
+    delete file;
+    lwFree(fileData);
+    if (failPosition != nullptr) *failPosition = 12;
+    return nullptr;
+  }
+  if (type != ID_LWO2) {
+    delete file;
+    lwFree(fileData);
+    if (type == ID_LWOB)
+      return lwGetObject5(filename, forceSmooth, failId, failPosition);
+    if (failPosition != nullptr) *failPosition = 12;
+    return nullptr;
+  }
+  object = lwAlloc<st_lwObject>();
+  if (object == nullptr)
+    goto fail;
+  layer = lwAlloc<st_lwLayer>();
+  if (layer == nullptr)
+    goto fail;
+  object->layer = layer;
+  object->timeStamp = file->Timestamp();
+  flen = 0;
+  id = GetU4(file);
+  unsigned int chunkSize = GetU4(file);
+  if (flen != 8)
+    goto fail;
+  while (true) {
+    const int padded = static_cast<int>(chunkSize + (chunkSize & 1));
+    if (id == ID_LAYR) {
+      if (object->nlayers > 0) {
+        layer = lwAlloc<st_lwLayer>();
+        if (layer == nullptr) goto fail;
+        AppendNode(&object->layer, layer);
+      }
+      ++object->nlayers;
+      flen = 0;
+      layer->index = GetU2(file);
+      layer->flags = GetU2(file);
+      for (float& value : layer->pivot) value = getF4(file);
+      layer->name = getS0(file);
+      if (flen < 0 || flen > padded) goto fail;
+      if (flen <= padded - 2) layer->parent = GetU2(file);
+      if (flen < padded && file->Seek(padded - flen, FS_SEEK_CUR) != 0) goto fail;
+    } else if (id == ID_PNTS) {
+      if (!lwGetPoints(file, padded, &layer->point)) goto fail;
+    } else if (id == ID_POLS) {
+      if (!lwGetPolygons(file, padded, &layer->polygon, layer->point.offset)) goto fail;
+    } else if (id == ID_VMAP || id == ID_VMAD) {
+      st_lwVMap* map = lwGetVMap(file, padded, layer->point.offset,
+                                 layer->polygon.offset, id == ID_VMAD);
+      if (map == nullptr) goto fail;
+      AppendNode(&layer->vmap, map);
+      ++layer->nvmaps;
+    } else if (id == ID_PTAG) {
+      if (!lwGetPolygonTags(file, padded, &object->taglist, &layer->polygon)) goto fail;
+    } else if (id == ID_BBOX) {
+      flen = 0;
+      for (float& value : layer->bbox) value = getF4(file);
+      if (flen < 0 || flen > padded) goto fail;
+      if (flen < padded && file->Seek(padded - flen, FS_SEEK_CUR) != 0) goto fail;
+    } else if (id == ID_TAGS) {
+      if (!lwGetTags(file, padded, &object->taglist)) goto fail;
+    } else if (id == ID_ENVL) {
+      st_lwEnvelope* envelope = lwGetEnvelope(file, padded);
+      if (envelope == nullptr) goto fail;
+      AppendNode(&object->env, envelope);
+      ++object->nenvs;
+    } else if (id == ID_CLIP) {
+      st_lwClip* clip = lwGetClip(file, padded);
+      if (clip == nullptr) goto fail;
+      AppendNode(&object->clip, clip);
+      ++object->nclips;
+    } else if (id == ID_SURF) {
+      st_lwSurface* surface = lwGetSurface(file, padded);
+      if (surface == nullptr) goto fail;
+      AppendNode(&object->surf, surface);
+      ++object->nsurfs;
+    } else if (file->Seek(padded, FS_SEEK_CUR) != 0) {
+      goto fail;
+    }
+    if (formSize <= file->Tell() - 8)
+      break;
+    flen = 0;
+    id = GetU4(file);
+    chunkSize = GetU4(file);
+    if (flen != 8)
+      goto fail;
+  }
+  delete file;
+  file = nullptr;
+  lwFree(fileData);
+  fileData = nullptr;
+  if (object->nlayers == 0)
+    object->nlayers = 1;
+  lwForceSmoothSurfaces(object->surf, forceSmooth);
+  for (layer = object->layer; layer != nullptr; layer = layer->next) {
+    lwGetBoundingBox(&layer->point, layer->bbox);
+    if (!lwResolvePolySurfaces(&layer->polygon, &object->taglist,
+                               &object->surf, &object->nsurfs) ||
+        !lwGetPointPolygons(&layer->point, &layer->polygon))
+      goto fail;
+    lwGetPolyNormals(&layer->point, &layer->polygon);
+    lwGetVertNormals(&layer->point, &layer->polygon);
+    lwFreePointPolygons(&layer->point);
+    if (!lwGetPointVMaps(&layer->point, layer->vmap) ||
+        !lwGetPolyVMaps(&layer->polygon, layer->vmap))
+      goto fail;
+  }
+  return object;
+fail:
+  if (failId != nullptr) *failId = id;
+  if (file != nullptr) {
+    if (failPosition != nullptr) *failPosition = static_cast<int>(file->Tell());
+    delete file;
+  }
+  lwFree(fileData);
+  lwFreeObject(object);
+  return nullptr;
 }

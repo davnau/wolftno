@@ -7,6 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 
+class idASEModel;
+class idOBJModel;
+struct st_lwLayer;
+struct st_lwObject;
+
 struct sourceSurface_t {
   const idMaterial* mtr{};
   int mtrChecksum{};
@@ -27,14 +32,35 @@ public:
   idStaticModel();
   ~idStaticModel() override;
   idResourceList* GetResourceList() const override;
+  void LoadResource() override;
+  bool ReloadIfStale() override;
+  void Print() override { static_cast<const idStaticModel*>(this)->Print(); }
+  void Print() const;
   void PristineLoadResource();
+  void FreeCPUData();
+  void FreeSurfaces();
+  void PostLoadSurface(int surfaceIndex, const idDeclSkins* skins);
   void MakeDefaultModel(float minimum, float maximum);
   void MakeSimpleCube(float minimum, float maximum);
   void MakeExtrudeBox();
+  void FinishStaticModel(bool cleanup);
   void AddSurface(const idStaticModelSurface& surface);
+  bool GenerateStaticModel(const char* sourceFile);
+  void WriteStaticBModel(const char* fileName, fsPath_t basePath) const;
+  static void WriteStaticBModel(
+      const char* fileName, std::uint32_t sourceTimeStamp,
+      const idList<idStaticModelSurface, 5>& surfaces,
+      const idList<sourceSurface_t, 5>& sourceSurfaces,
+      const idVec3& referencePosition, fsPath_t basePath);
   int CPUMemory() const;
   int GPUMemory() const;
   void List() const override;
+
+  // Implemented by staticmodelgenerator.cpp.  Keeping the retail member
+  // boundary here lets LoadResource retain its recovered control flow while
+  // that compiland is ported independently.
+  bool GenerateBinaryModelFile(const char* sourceFile,
+                               const char* binaryFile);
 
   bool pristine{};
   bool cmodel{};
@@ -55,6 +81,26 @@ public:
   idList<idStaticModelSurface, 84> surfaces;
   idList<sourceSurface_t, 5> sourceSurfaces;
   idList<const idMaterial*, 5> materials;
+
+private:
+  friend struct StaticModelGeneratorValidationAccess;
+  void UpdateBuffers();
+  bool ReadStaticBModel(const char* fileName, bool allowPreviousVersion);
+  void BuildAutospriteData();
+  void ConvertToTriStrips();
+  void MergeSurfacesAndBuildSourceSurfaces();
+  void BuildMergeList(const idList<idStr, 5>& materialNames,
+                      idList<const idMaterial*, 5>& materials,
+                      idList<int, 5>& mergeTo,
+                      idList<const idMaterial*, 5>& uniqueMaterials,
+                      idList<int, 5>& uniqueMaterialNums);
+  bool ConvertASEToModelSurfaces(const idASEModel* model);
+  bool ConvertLWOToModelSurfaces(const st_lwObject* object,
+                                 const st_lwLayer* layer,
+                                 float vertexEpsilon,
+                                 float texCoordEpsilon,
+                                 float normalEpsilon);
+  bool ConvertOBJToModelSurfaces(const idOBJModel* model);
 };
 
 class idStaticModelManager {

@@ -13,7 +13,7 @@ void idTargetCache::RemoveBySpawnId(const idSpawnId& spawnId) {
 }
 
 // DIA: idStaticList<idTargetInfo,8>::idStaticList<idTargetInfo,8>
-template idStaticList<idTargetInfo, 8>::idStaticList();
+template idStaticList<idTargetInfo, 8>::idStaticList() noexcept;
 
 // DIA: idList<idTargetInfo,5>::Resize
 template bool idList<idTargetInfo, 5>::Resize(int);

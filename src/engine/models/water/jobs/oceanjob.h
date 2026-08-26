@@ -16,6 +16,8 @@ struct COceanVertex {
 
 struct idRenderModelOcean_WaveParams {
   struct CWave {
+    CWave();
+
     idVec2 m_WaveVec;
     float m_WaveVecMag;
     float m_Amp;
@@ -53,6 +55,9 @@ struct idRenderModelOcean_WaveParams {
     const float* m_pLodFadeNearOfs_n;
     const float* m_pLodFadeFarOfs_n;
   };
+
+  idRenderModelOcean_WaveParams();
+  ~idRenderModelOcean_WaveParams();
 
   idVec3 m_TilesOrigin;
   idVec2 m_NormalMapSizeInv;

@@ -113,7 +113,7 @@ userCmdString_t userCmdStrings[] = {
 };
 #undef UC
 
-idHashMap<int> idKeyAction::keyBindingHash;
+idHashMap<int> idKeyAction::keyBindingHash(TAG_HASHINDEX);
 idHashIndex idKeyAction::keyActionsHash(1024,1024);
 idList<idKeyAction*> idKeyAction::keyActionsList;
 
@@ -153,8 +153,8 @@ inputType_t TypeForKey(keyNum_t key) {
 }
 
 idKeyAction::idKeyAction(std::uint16_t keyHash)
-  : nextAction(nullptr),binding(),usercmdAction(UB_NONE),hashKey(keyHash),padding(0),
-    hashBind(0),hasCompoundBind(false),modifierMask(0),tailPadding(0) {}
+  : nextAction(nullptr),binding(),usercmdAction(UB_NONE),hashKey(keyHash),
+    hashBind(0),hasCompoundBind(false),modifierMask(0) {}
 
 int idKeyAction::GetKeyActionIndex(int device,bindSet_t bindSet,keyNum_t keyNum) {
   const auto hashKey=GetKeyHash(device,bindSet,keyNum);
@@ -346,8 +346,10 @@ bool idKeyInput::ExecKeyBinding(int device,bindSet_t bindSet,keyNum_t key,std::u
 idStr idKeyInput::KeysFromBinding(int device,bindSet_t bindSet,const char* binding,bool firstOnly) {
   idStr result;
   if(!binding||!*binding) return result;
-  for(int i=0;i<idKeyAction::keyActionsList.num;++i) {
-    auto* action=idKeyAction::keyActionsList.list[i];
+  const int hash=idStr::Hash(binding);
+  for(int node=idKeyAction::keyBindingHash.hash.First(hash);node!=-1;
+      node=idKeyAction::keyBindingHash.hash.Next(node)) {
+    auto* action=idKeyAction::keyActionsList.list[idKeyAction::keyBindingHash.values.list[node]];
     if(action&&action->GetDevice()==device&&action->GetBindSet()==bindSet&&Same(action->binding.data,binding)) {
       if(!result.IsEmpty()&&!firstOnly) result.Append(" or ");
       KeyNumToKeyNames(action->GetKeyNum(),result,firstOnly);
@@ -359,8 +361,10 @@ idStr idKeyInput::KeysFromBinding(int device,bindSet_t bindSet,const char* bindi
 keyNum_t idKeyInput::GetLastBoundKeyboardKey(int device,bindSet_t bindSet,const char* binding) {
   keyNum_t result=K_NONE;
   if(!binding||!*binding) return result;
-  for(int i=0;i<idKeyAction::keyActionsList.num;++i) {
-    auto* action=idKeyAction::keyActionsList.list[i];
+  const int hash=idStr::Hash(binding);
+  for(int node=idKeyAction::keyBindingHash.hash.First(hash);node!=-1;
+      node=idKeyAction::keyBindingHash.hash.Next(node)) {
+    auto* action=idKeyAction::keyActionsList.list[idKeyAction::keyBindingHash.values.list[node]];
     if(action&&action->GetDevice()==device&&action->GetBindSet()==bindSet&&
        action->GetKeyNum()<K_JOY1&&Same(action->binding.data,binding)) result=action->GetKeyNum();
   }
@@ -370,13 +374,15 @@ keyNum_t idKeyInput::GetLastBoundKeyboardKey(int device,bindSet_t bindSet,const 
 keyBindings_t idKeyInput::KeyBindingsFromBinding(int device,bindSet_t bindSet,const char* binding) {
   keyBindings_t result;
   if(!binding||!*binding) return result;
-  for(int i=0;i<idKeyAction::keyActionsList.num;++i) {
-    auto* action=idKeyAction::keyActionsList.list[i];
+  const int hash=idStr::Hash(binding);
+  for(int node=idKeyAction::keyBindingHash.hash.First(hash);node!=-1;
+      node=idKeyAction::keyBindingHash.hash.Next(node)) {
+    auto* action=idKeyAction::keyActionsList.list[idKeyAction::keyBindingHash.values.list[node]];
     if(!action||action->GetDevice()!=device||action->GetBindSet()!=bindSet||!Same(action->binding.data,binding)) continue;
     const keyNum_t key=action->GetKeyNum(); const char* localized=LocalizedKeyName(key);
-    if(TypeForKey(key)==INPUT_TYPE_GAMEPAD) {if(!Same(localized,"????"))AppendCommaSeparated(localized,result.gamepad);KeyNumToKeyNames(key,result.gamepadKey,true);}
-    else if(TypeForKey(key)==INPUT_TYPE_MOUSE) {if(!Same(localized,"????"))AppendCommaSeparated(localized,result.mouse);KeyNumToKeyNames(key,result.mouseKey,true);}
-    else {if(!Same(localized,"????"))AppendCommaSeparated(localized,result.keyboard);KeyNumToKeyNames(key,result.keyboardKey,true);}
+    if(TypeForKey(key)==INPUT_TYPE_GAMEPAD) {if(*localized)AppendCommaSeparated(localized,result.gamepad);KeyNumToKeyNames(key,result.gamepadKey,true);}
+    else if(TypeForKey(key)==INPUT_TYPE_MOUSE) {if(*localized)AppendCommaSeparated(localized,result.mouse);KeyNumToKeyNames(key,result.mouseKey,true);}
+    else {if(*localized&&!Same(localized,result.keyboard.data))AppendCommaSeparated(localized,result.keyboard);KeyNumToKeyNames(key,result.keyboardKey,true);}
   }
   return result;
 }
@@ -384,10 +390,13 @@ keyBindings_t idKeyInput::KeyBindingsFromBinding(int device,bindSet_t bindSet,co
 bool idKeyInput::UnbindBinding(int device,bindSet_t bindSet,const char* binding) {
   if(!binding||!*binding) return false; bool removed=false;
   struct KeyMask {keyNum_t key;std::uint8_t mask;}; std::vector<KeyMask> matches;
-  for(int i=0;i<idKeyAction::keyActionsList.num;++i)
-    for(auto* a=idKeyAction::keyActionsList.list[i];a;a=a->nextAction)
-      if(a->GetDevice()==device&&a->GetBindSet()==bindSet&&Same(a->binding.data,binding))
-        matches.push_back({a->GetKeyNum(),a->modifierMask});
+  const int hash=idStr::Hash(binding);
+  for(int node=idKeyAction::keyBindingHash.hash.First(hash);node!=-1;
+      node=idKeyAction::keyBindingHash.hash.Next(node)) {
+    auto* a=idKeyAction::keyActionsList.list[idKeyAction::keyBindingHash.values.list[node]];
+    if(a&&a->GetDevice()==device&&a->GetBindSet()==bindSet&&Same(a->binding.data,binding))
+      matches.push_back({a->GetKeyNum(),a->modifierMask});
+  }
   for(const auto& match:matches){SetBinding(device,bindSet,match.key,match.mask,"");removed=true;}
   return removed;
 }
@@ -402,11 +411,15 @@ void idKeyInput::UnbindBinding(int device,bindSet_t bindSet,const char* binding,
 
 void idKeyInput::WriteBindings(idFile* file) {
   if(!file) return;
+  int device=userDeviceNum;
+#ifndef WOLF_KEYINPUT_VALIDATION
+  if(key_deviceBindOverride.valueInteger>=0) device=key_deviceBindOverride.valueInteger;
+#endif
   for(int bindSet=BIND_VEHICLE_PASSENGER;bindSet>=BIND_DEFAULT;--bindSet) {
     file->Printf("//========================================\n");
     file->Printf("bindset %d\n",bindSet); file->Printf("unbindall\n");
     for(int key=K_NONE;key<K_LAST_KEY;++key) {
-      const int index=idKeyAction::GetKeyActionIndex(userDeviceNum,static_cast<bindSet_t>(bindSet),static_cast<keyNum_t>(key));
+      const int index=idKeyAction::GetKeyActionIndex(device,static_cast<bindSet_t>(bindSet),static_cast<keyNum_t>(key));
       if(index<0) continue;
       for(auto* action=idKeyAction::keyActionsList.list[index];action;action=action->nextAction) {
         idStr combo;
@@ -435,16 +448,21 @@ void idKeyInput::SerializeBindings(int device,idSerializer& serializer) {
       }
     }
   } else {
-    const int count=serializer.msg->ReadBits(32); std::vector<serializedBind_t> bindings(count);
-    for(auto& bind:bindings) {
+    const int count=serializer.msg->ReadBits(32); idList<serializedBind_t,5> bindings;
+    bindings.SetNum(count);
+    for(int index=0;index<bindings.num;++index) {
+      auto& bind=bindings[index];
       bind.bindSet=static_cast<std::uint8_t>(serializer.msg->ReadBits(8));
       bind.keyNum=static_cast<std::uint16_t>(serializer.msg->ReadBits(16));
       bind.modifierMask=static_cast<std::uint8_t>(serializer.msg->ReadBits(8));
       serializer.msg->ReadString(bind.bindStr);
       UnbindBinding(device,static_cast<bindSet_t>(bind.bindSet),bind.bindStr.data);
     }
-    for(const auto& bind:bindings) SetBinding(device,static_cast<bindSet_t>(bind.bindSet),
-      static_cast<keyNum_t>(bind.keyNum),bind.modifierMask,bind.bindStr.data);
+    for(int index=0;index<bindings.num;++index) {
+      const auto& bind=bindings[index];
+      SetBinding(device,static_cast<bindSet_t>(bind.bindSet),
+        static_cast<keyNum_t>(bind.keyNum),bind.modifierMask,bind.bindStr.data);
+    }
   }
 }
 

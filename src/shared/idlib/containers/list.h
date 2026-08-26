@@ -166,7 +166,11 @@ public:
         break;
       }
     }
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem* memory = &idMem::Singleton();
+#else
     idMem* memory = idMem::Singleton();
+#endif
     T* replacement = static_cast<T*>(memory->AllocWithLocation(
         "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag",
         sizeof(T) * static_cast<std::size_t>(newSize),
@@ -209,7 +213,11 @@ private:
     if (newSize == size || listStatic != 0) {
       return true;
     }
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem* memory = &idMem::Singleton();
+#else
     idMem* memory = idMem::Singleton();
+#endif
     T* replacement = static_cast<T*>(memory->AllocWithLocation(
         "w:\\build\\tech5\\shared\\idlib\\containers/List.h(29) : tag",
         sizeof(T) * static_cast<std::size_t>(newSize),

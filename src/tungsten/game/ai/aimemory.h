@@ -97,6 +97,7 @@ struct idDeclAIBehavior {
   float longMeleeDist{0.0F};
   float movingMeleeDist{0.0F};
   float meleeHeight{0.0F};
+  float meleeExtrapolate{0.0F};
   float aimOffset{0.0F};
   bool canGreetHumans{false};
   bool canGreetPlayers{false};
@@ -346,6 +347,12 @@ public:
     enemyPosInsideAAS = value;
   }
   bool IsEnemyPosInsideAASForTest() const { return enemyPosInsideAAS; }
+  void SetBoundsReachableAreaNumCallTimeForTest(int value) {
+    boundsReachableAreaNumCallTime = value;
+  }
+  int GetBoundsReachableAreaNumCallTimeForTest() const {
+    return boundsReachableAreaNumCallTime;
+  }
   void SetCurrentFriendlyBlockerTimeForTest(int value) {
     currentFriendlyBlockerTime = value;
   }
@@ -533,6 +540,7 @@ private:
   int triggeredInteractionNumber{-1};
   bool interactionIsUsable{false};
   bool enemyPosInsideAAS{false};
+  int boundsReachableAreaNumCallTime{0};
   int currentFriendlyBlockerTime{-1};
   bool currentFriendlyLOSBlocker{false};
   idAIPos currentEnemySuspectedPos{};

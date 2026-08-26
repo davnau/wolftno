@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/cm/collisionmodel.h"
+#include "shared/idlib/containers/list.h"
 
 #include <cstdint>
 
@@ -12,7 +13,8 @@ public:
   std::uint64_t index;
 };
 
-class idClipModel;
+class idClip;
+class idTraceModelCache;
 
 class idCollisionQuery {
 public:
@@ -20,6 +22,37 @@ public:
 
   static const std::uint64_t finalResultsFirstSubmittedOffset;
   static const std::uint64_t finalResultsLastSubmittedOffset;
+};
+
+class idClipModel {
+public:
+  idCollisionModel* NoTraceModelWarning() const;
+  void SetLinkedPosition(const idVec3& linkedOrigin,
+                         const idMat3& linkedAxis) {
+    origin = linkedOrigin;
+    axis = linkedAxis;
+  }
+
+  const void* const* vtable;
+  std::uint32_t flags;
+  int physicsId;
+  int bodyId;
+  int bodyMask;
+  int touchCount;
+  int contents;
+  idVec3 origin;
+  idMat3 axis;
+  idBounds absBounds;
+  idBounds bounds;
+  idCollisionModel* collisionModel;
+  idList<int, 13> traceModels;
+  idList<idClipModel*, 13> children;
+  void* sphereFeatures;
+  idClip* clip;
+  void* clipLinks;
+  idCollisionQuery collisionQuery;
+  idClipModel* nextDeleted;
+  std::uint8_t aasLinks[0x58];
 };
 
 class idClip {
@@ -39,8 +72,13 @@ public:
 
   bool TracePoint(trace_t& result, const idVec3& start, const idVec3& end,
                   int clipMask, int passEntityNumber, const char* userName);
+  int GetClipModelsTouchingBounds(const idBounds& bounds, int clipMask,
+                                  idClipModel** clipModelList,
+                                  int maxCount) const;
 
-  std::uint8_t recoveredPrefix[0x5C288];
+  std::uint8_t recoveredPrefix[0x400F8];
+  idTraceModelCache* traceModelCache;
+  std::uint8_t recoveredQueryPrefix[0x1C188];
   idClipCollisionQuery collisionQueries[4096];
   std::uint64_t collisionQueryFirstSubmittedIndex;
   std::uint64_t collisionQueryLastSubmittedIndex;
@@ -52,6 +90,19 @@ static_assert(sizeof(idCollisionQuery) == 8,
               "idCollisionQuery ABI drift");
 static_assert(sizeof(idClip::idClipCollisionQuery) == 0x18,
               "idClip collision-query ABI drift");
+static_assert(sizeof(idClipModel) == 0x138, "idClipModel ABI drift");
+static_assert(offsetof(idClipModel, physicsId) == 0x0C,
+              "idClipModel physics offset drift");
+static_assert(offsetof(idClipModel, origin) == 0x20,
+              "idClipModel origin offset drift");
+static_assert(offsetof(idClipModel, collisionModel) == 0x80,
+              "idClipModel collision-model offset drift");
+static_assert(offsetof(idClipModel, traceModels) == 0x88,
+              "idClipModel trace-model offset drift");
+static_assert(offsetof(idClipModel, clip) == 0xC0,
+              "idClipModel owner offset drift");
+static_assert(offsetof(idClip, traceModelCache) == 0x400F8,
+              "idClip trace-model cache offset drift");
 static_assert(offsetof(idClip, collisionQueries) == 0x5C288,
               "idClip collision-query array offset drift");
 static_assert(offsetof(idClip, collisionQueryFirstSubmittedIndex) == 0x74288,

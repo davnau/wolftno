@@ -14,7 +14,8 @@ enum xthreadPriority : int {
   THREAD_HIGHEST
 };
 
-struct idSysMutex {
+class idSysMutex {
+public:
   void* handle{};
   idSysMutex();
   ~idSysMutex();
@@ -22,7 +23,8 @@ struct idSysMutex {
   void Unlock();
 };
 
-struct idSysSignal {
+class idSysSignal {
+public:
   void* handle{};
   explicit idSysSignal(bool manualReset = false);
   ~idSysSignal();

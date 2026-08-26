@@ -168,6 +168,7 @@ public:
   void ExtractFileName(idStr& destination) const;
   void ExtractFileExtension(idStr& destination) const;
   idStr GetFilePath() const;
+  idStr GetFileBase() const;
   idStr GetWithoutExtension() const;
   std::intptr_t GetFileName(...) const;
   void MakeNameCanonical();

@@ -10,6 +10,7 @@
 #include "tungsten/game/game_runtime.h"
 #include "tungsten/game/declvoiceover.h"
 #include "engine/cm/collisionmodel.h"
+#include "engine/gamelib/physics/clip.h"
 #include "engine/animation/md6.h"
 #include "engine/decls/animwebs/declanimweb.h"
 #include "shared/idlib/containers/list.h"
@@ -32,6 +33,8 @@ class idScriptAction;
 enum fxCondition_t : int;
 class idAIVoiceController;
 class idAI2;
+class idAIFSM;
+class idAIState;
 class idAIOrientation;
 class idFaction;
 class idFaceMgr;
@@ -57,7 +60,6 @@ class idAIEventSound;
 class idAIEventVoice;
 class idDeclAiEvent;
 class idFiniteStateMachine;
-struct idClipModel;
 class idFSMManager;
 class idAIActionManager;
 class idAIFSMCallback;
@@ -135,6 +137,7 @@ extern idCVar ai_debugLevel;
 extern idCVar ai_debugPain;
 extern idCVar ai_debugPushFromCollision;
 extern idCVar ai_debugDeath;
+extern idCVar ai_debugmelee;
 extern idCVar ai_allowStaggerPain;
 extern idCVar ai_forceInjury;
 extern idCVar ai_searchToStimDist;
@@ -147,6 +150,7 @@ extern idCVar ai_useAimTracker;
 extern idCVar ai_useLookTracker;
 extern idCVar ai_debugHealth;
 extern idCVar ai_debugArmorPopOff;
+extern idCVar ai_weaponKick;
 class idRagdollInfo {
 public:
   int velocityTime{0};
@@ -311,8 +315,22 @@ private:
 
 class idDeclInventory {
 public:
+  struct aiFireDelay_t {
+    int minimum{0};
+    int maximum{0};
+  };
+
+  inline static constexpr const char* equipSlotTagNames[15] = {
+      "< none >",          "left_hand",          "right_hand",
+      "head",              "torso",              "holster_hip_left",
+      "holster_hip_right", "holster_back",       "holster_shoulder",
+      "holster_belt_left", "holster_belt_right", "holster_belt_back",
+      "holster_belt_front", "vehicle",            "vehicle_ram",
+  };
   const char* declTypeName{"inventoryItem"};
   bool resourceValid{true};
+  idAngles aiWeaponKick{};
+  std::array<aiFireDelay_t, 5> aiFireDelay{};
 };
 
 class idDisassembleLoot {};
@@ -535,7 +553,27 @@ enum weaponReadyState_t {
   WEAPON_READY_LOWERED = 1,
   WEAPON_READY_RAISED = 2,
 };
-enum equipSlot_t : int { EQUIPSLOT_PRIMARY = 0, EQUIPSLOT_SECONDARY = 1 };
+enum equipSlot_t : int {
+  EQUIP_NONE = 0,
+  EQUIP_LEFT_HAND = 1,
+  EQUIP_RIGHT_HAND = 2,
+  EQUIP_HEAD = 3,
+  EQUIP_TORSO = 4,
+  EQUIP_HOLSTER_HIP_LEFT = 5,
+  EQUIP_HOLSTER_HIP_RIGHT = 6,
+  EQUIP_HOLSTER_BACK = 7,
+  EQUIP_HOLSTER_SHOULDER = 8,
+  EQUIP_HOLSTER_BELT_LEFT = 9,
+  EQUIP_HOLSTER_BELT_RIGHT = 10,
+  EQUIP_HOLSTER_BELT_BACK = 11,
+  EQUIP_HOLSTER_BELT_FRONT = 12,
+  EQUIP_VEHICLE = 13,
+  EQUIP_VEHICLE_RAM = 14,
+  EQUIP_MAX = 15,
+
+  EQUIPSLOT_PRIMARY = EQUIP_RIGHT_HAND,
+  EQUIPSLOT_SECONDARY = EQUIP_LEFT_HAND,
+};
 enum handHideReason_t : int {
   HAND_HIDE_GENERIC = 0,
   HAND_HIDE_VEHICLE = 1,
@@ -625,6 +663,11 @@ enum takedownMode_t {
   TAKEDOWNMODE_COUNTER = 5,
   TAKEDOWNMODE_GROUND = 6,
 };
+enum takeDownType_t : int {
+  TAKEDOWNTYPE_NORMAL = 0,
+  TAKEDOWNTYPE_NOTAKEDOWN = 1,
+  TAKEDOWNTYPE_FORCEFRIENDLYTAKEDOWN = 2,
+};
 struct takedownTypes_t {
   idList<idStr, 5> stealthSWFWD;
   idList<idStr, 5> stealthSWREV;
@@ -659,6 +702,16 @@ struct idAnimWebEvent {
   enum priority_t { PRIORITY_LOW = 0, PRIORITY_NORMAL = 1, PRIORITY_HIGH = 2 };
 };
 enum aiAnimWeb_t { AIANIMWEB_BODY = 0, AIANIMWEB_HEAD = 1 };
+enum awPathResult_t {
+  AWPATH_FAILED = -1,
+  AWPATH_OK = 0,
+  AWPATH_ALREADY_AT_DESTINATION = 1,
+};
+enum interruptPath_t { INTR_PATH_NO = 0, INTR_PATH_YES = 1 };
+enum interruptBlend_t {
+  INTR_BLEND_NO = 0,
+  INTR_BLEND_MULTI = 1,
+};
 enum animWebEvent_t {
   ANIMWEB_EVENT_DEST_CLAMPED = 0,
   ANIMWEB_EVENT_START_BLEND_IN = 1,
@@ -1035,9 +1088,23 @@ public:
     takedownFocusState = focusState;
     takedownInProgress = inTakedown;
   }
-  int GetTakedownFocusState() const { return takedownFocusState; }
+  int GetTakedownFocusState() const {
+    ++takedownFocusStateQueryCount;
+    return takedownFocusState;
+  }
   bool PlayerBehavior_Takedown_IsInTakedown() const {
+    ++takedownInProgressQueryCount;
     return takedownInProgress;
+  }
+  void ResetTakedownUsableQueryCountsForTest() const {
+    takedownFocusStateQueryCount = 0;
+    takedownInProgressQueryCount = 0;
+  }
+  int GetTakedownFocusStateQueryCountForTest() const {
+    return takedownFocusStateQueryCount;
+  }
+  int GetTakedownInProgressQueryCountForTest() const {
+    return takedownInProgressQueryCount;
   }
   void StartPerfectOrigin(const idQuat& rotation, const idVec3& origin,
                           int duration) {
@@ -1259,6 +1326,8 @@ private:
   bool dyingForTest{false};
   int takedownFocusState{0};
   bool takedownInProgress{false};
+  mutable int takedownFocusStateQueryCount{0};
+  mutable int takedownInProgressQueryCount{0};
   float fieldOfView{90.0F};
   float weaponFieldOfView{90.0F};
   idEntity* vehicle{nullptr};
@@ -1375,6 +1444,8 @@ public:
     return "";
   }
   short FindJointIndexForAI(const char* jointName) const {
+    ++jointNameIndexQueryCount;
+    lastJointName = jointName != nullptr ? jointName : "";
     if (jointName == nullptr) return -1;
     for (const auto& joint : jointNames) {
       if (joint.name == jointName) return joint.index;
@@ -1487,6 +1558,15 @@ public:
   }
   int GetJointIndexQueryCountForTest() const {
     return jointIndexQueryCount;
+  }
+  int GetJointNameIndexQueryCountForTest() const {
+    return jointNameIndexQueryCount;
+  }
+  const char* GetLastJointNameForTest() const {
+    return lastJointName.c_str();
+  }
+  short GetLastWorldSpaceJointIndexForTest() const {
+    return lastJointIndex;
   }
   int GetWorldSpaceJointPositionCountForTest() const {
     return worldSpaceJointPositionCount;
@@ -1603,6 +1683,8 @@ private:
   mutable unsigned short lastJointHandle{0xFFFFU};
   mutable short lastJointIndex{-1};
   mutable int jointIndexQueryCount{0};
+  mutable int jointNameIndexQueryCount{0};
+  mutable std::string lastJointName;
   mutable int worldSpaceJointPositionCount{0};
   int twitchPainStrongLoadCount{0};
   bool walkIKEnabled{false};
@@ -1962,6 +2044,12 @@ public:
     return groupEnemyUpdateTimeStamp;
   }
   const idEntity* GetGroupEnemyForTest() const { return groupEnemy; }
+  void SetVoiceControllerForTest(idAIVoiceController* value) {
+    voiceController = value;
+  }
+  idAIVoiceController* GetVoiceController() const {
+    return voiceController;
+  }
 
   idStr groupName;
   std::int16_t handle{-1};
@@ -1989,6 +2077,7 @@ public:
   mutable int highestAlertCycleQueryCount{0};
   int groupEnemyUpdateTimeStamp{-1};
   const idEntity* groupEnemy{nullptr};
+  idAIVoiceController* voiceController{nullptr};
   int curCombatStage{-1};
   int pendingCombatStage{-1};
   int pendingCombatStageTime{-1};
@@ -2015,7 +2104,8 @@ struct idAIProjectileInfo {
 
 class idAIMemory;
 
-struct idEventDef {
+class idEventDef {
+public:
   enum type_t { EVENT_NONE = 0, EVENT_FSMEVENT = 1 };
   int eventnum{0};
   type_t type{EVENT_NONE};
@@ -2051,6 +2141,7 @@ extern const idEventDef FSMEvent_Reaction;
 extern const idEventDef ACTION_CrouchToStandEnter;
 extern const idEventDef ACTION_StandToCrouchEnter;
 extern const idEventDef ACTION_PlayOverrideAnimEnter;
+extern const idEventDef ACTION_ReloadWeaponEnter;
 extern idCVar ai_syncAF;
 
 class idFiniteStateMachine {
@@ -2267,6 +2358,7 @@ struct idAIPos {
 
 struct idAmmoItem {
   idStr animationPrefix;
+  const idDeclAmmo* resourceError{nullptr};
 };
 
 class idDeclDamage {
@@ -2369,6 +2461,8 @@ public:
   int hitEntity{-1};
   bool hit{false};
 };
+
+class idFinishFireResults {};
 
 class idFireParms {
 public:
@@ -2502,13 +2596,81 @@ public:
     primaryNeedsReload = primary;
     secondaryNeedsReload = secondary;
   }
-  bool CanReload(idInventoryCollection* inventory,
+  bool CanReload(const idInventoryCollection* inventory,
                  const idDeclAmmo* ammo, bool force) const {
-    (void)inventory;
-    (void)force;
+    lastCanReloadInventory = inventory;
+    lastCanReloadAmmo = ammo;
+    lastCanReloadForce = force;
+    ++canReloadCallCount;
     return reloadAllowed && ammo != nullptr;
   }
   void SetReloadAllowed(bool value) { reloadAllowed = value; }
+  const idDeclAmmo* FindNextLoadableAmmo(
+      idInventoryCollection* inventory, const idAmmoItem* currentAmmo,
+      bool secondaryAmmo) const {
+    lastFindNextLoadableInventory = inventory;
+    lastFindNextLoadableCurrentAmmo = currentAmmo;
+    lastFindNextLoadableSecondary = secondaryAmmo;
+    ++findNextLoadableAmmoCallCount;
+    return nextLoadableAmmo;
+  }
+  int AmmoInClip(bool secondaryAmmo) const {
+    ++ammoInClipCallCount;
+    lastAmmoInClipSecondary = secondaryAmmo;
+    return secondaryAmmo ? secondaryAmmoInClip : primaryAmmoInClip;
+  }
+  int GetClipSize(const idDeclAmmo* ammo, bool weaponUpgraded,
+                  bool secondaryAmmo) {
+    ++getClipSizeCallCount;
+    lastClipSizeAmmo = ammo;
+    lastClipSizeWeaponUpgraded = weaponUpgraded;
+    lastClipSizeSecondary = secondaryAmmo;
+    return secondaryAmmo ? secondaryClipSize : primaryClipSize;
+  }
+  void ConfigureReloadSelectionForTest(const idDeclAmmo* nextAmmo,
+                                       int ammoCount, int clipCapacity,
+                                       bool upgraded = false) {
+    nextLoadableAmmo = nextAmmo;
+    primaryAmmoInClip = ammoCount;
+    primaryClipSize = clipCapacity;
+    weaponUpgradedForClipSize = upgraded;
+  }
+  void SetSecondaryReloadSelectionForTest(int ammoCount, int clipCapacity) {
+    secondaryAmmoInClip = ammoCount;
+    secondaryClipSize = clipCapacity;
+  }
+  bool IsWeaponUpgradedForClipSize() const {
+    return weaponUpgradedForClipSize;
+  }
+  void SetDeclarationNameForTest(const char* value) {
+    declarationName = value != nullptr ? value : "";
+  }
+  const char* GetDeclarationNameForAI() const { return declarationName.data; }
+  int GetCanReloadCallCountForTest() const { return canReloadCallCount; }
+  const idInventoryCollection* GetLastCanReloadInventoryForTest() const {
+    return lastCanReloadInventory;
+  }
+  const idDeclAmmo* GetLastCanReloadAmmoForTest() const {
+    return lastCanReloadAmmo;
+  }
+  bool GetLastCanReloadForceForTest() const { return lastCanReloadForce; }
+  int GetFindNextLoadableAmmoCallCountForTest() const {
+    return findNextLoadableAmmoCallCount;
+  }
+  const idAmmoItem* GetLastFindNextLoadableCurrentAmmoForTest() const {
+    return lastFindNextLoadableCurrentAmmo;
+  }
+  int GetAmmoInClipCallCountForTest() const { return ammoInClipCallCount; }
+  int GetClipSizeCallCountForTest() const { return getClipSizeCallCount; }
+  const idDeclAmmo* GetLastClipSizeAmmoForTest() const {
+    return lastClipSizeAmmo;
+  }
+  bool GetLastClipSizeWeaponUpgradedForTest() const {
+    return lastClipSizeWeaponUpgraded;
+  }
+  bool GetLastClipSizeSecondaryForTest() const {
+    return lastClipSizeSecondary;
+  }
   float GetLoadedFraction(bool secondary) const {
     return secondary ? secondaryLoadedFraction : primaryLoadedFraction;
   }
@@ -2584,6 +2746,58 @@ public:
     lastSpreadModifier = modifier;
     outputAxis = hasSpreadOutput ? spreadOutputAxis : inputAxis;
   }
+  virtual bool FinishFire(const idFireParms& fireParms,
+                          idTestFireResults& testFireResults,
+                          idFinishFireResults& finishFireResults,
+                          idFXManager* effects, bool secondaryAmmo,
+                          bool blockSounds) {
+    ++finishFireCount;
+    lastFinishFireParms = &fireParms;
+    lastFinishTestFireResults = &testFireResults;
+    lastFinishFireResults = &finishFireResults;
+    lastFinishFireEffects = effects;
+    lastFinishFireSecondary = secondaryAmmo;
+    lastFinishFireBlockSounds = blockSounds;
+    return finishFireResult;
+  }
+  void AddFireDelay(const int delayMS) {
+    ++addFireDelayCount;
+    lastAddedFireDelay = delayMS;
+    const int adjustedDelay = delayMS - rofVsFPSCompensation;
+    rofVsFPSCompensation = 0;
+    nextFireTime += adjustedDelay;
+  }
+  void SetFinishFireResultForTest(bool value) { finishFireResult = value; }
+  void SetDeclarationForTest(const idDeclInventory* value) { decl = value; }
+  void ConfigureFireDelayStateForTest(int nextTime, int compensation) {
+    nextFireTime = nextTime;
+    rofVsFPSCompensation = compensation;
+  }
+  int GetFinishFireCountForTest() const { return finishFireCount; }
+  const idFireParms* GetLastFinishFireParmsForTest() const {
+    return lastFinishFireParms;
+  }
+  idTestFireResults* GetLastFinishTestFireResultsForTest() const {
+    return lastFinishTestFireResults;
+  }
+  idFinishFireResults* GetLastFinishFireResultsForTest() const {
+    return lastFinishFireResults;
+  }
+  idFXManager* GetLastFinishFireEffectsForTest() const {
+    return lastFinishFireEffects;
+  }
+  bool GetLastFinishFireSecondaryForTest() const {
+    return lastFinishFireSecondary;
+  }
+  bool GetLastFinishFireBlockSoundsForTest() const {
+    return lastFinishFireBlockSounds;
+  }
+  int GetAddFireDelayCountForTest() const { return addFireDelayCount; }
+  int GetLastAddedFireDelayForTest() const { return lastAddedFireDelay; }
+  int GetNextFireTimeForTest() const { return nextFireTime; }
+  int GetROFVsFPSCompensationForTest() const {
+    return rofVsFPSCompensation;
+  }
   virtual void DeferredFire(idPresentable* ownerPresentable,
                             const idPresentable* sourcePresentable,
                             const idVec3& muzzleWorldPosition,
@@ -2642,6 +2856,7 @@ public:
   bool firingEffectsStopped{false};
   int stopAllFXCount{0};
   idFXManager* lastStopAllFXManager{nullptr};
+  const idDeclInventory* decl{nullptr};
 
 private:
   const idDeclDamage* currentDamageDecl{nullptr};
@@ -2668,6 +2883,27 @@ private:
   bool primaryNeedsReload{false};
   bool secondaryNeedsReload{false};
   bool reloadAllowed{true};
+  const idDeclAmmo* nextLoadableAmmo{nullptr};
+  int primaryAmmoInClip{0};
+  int secondaryAmmoInClip{0};
+  int primaryClipSize{0};
+  int secondaryClipSize{0};
+  bool weaponUpgradedForClipSize{false};
+  idStr declarationName;
+  mutable const idInventoryCollection* lastCanReloadInventory{nullptr};
+  mutable const idDeclAmmo* lastCanReloadAmmo{nullptr};
+  mutable bool lastCanReloadForce{false};
+  mutable int canReloadCallCount{0};
+  mutable idInventoryCollection* lastFindNextLoadableInventory{nullptr};
+  mutable const idAmmoItem* lastFindNextLoadableCurrentAmmo{nullptr};
+  mutable bool lastFindNextLoadableSecondary{false};
+  mutable int findNextLoadableAmmoCallCount{0};
+  mutable bool lastAmmoInClipSecondary{false};
+  mutable int ammoInClipCallCount{0};
+  const idDeclAmmo* lastClipSizeAmmo{nullptr};
+  bool lastClipSizeWeaponUpgraded{false};
+  bool lastClipSizeSecondary{false};
+  int getClipSizeCallCount{0};
   int equipSlot{0};
   float aimKickback{0.02F};
   float aimWanderScale{0.005F};
@@ -2697,6 +2933,18 @@ private:
   idMat3 lastDeferredFireAxis{};
   idFireParms* lastDeferredFireParms{nullptr};
   bool lastDeferredSecondary{false};
+  bool finishFireResult{true};
+  int finishFireCount{0};
+  const idFireParms* lastFinishFireParms{nullptr};
+  idTestFireResults* lastFinishTestFireResults{nullptr};
+  idFinishFireResults* lastFinishFireResults{nullptr};
+  idFXManager* lastFinishFireEffects{nullptr};
+  bool lastFinishFireSecondary{false};
+  bool lastFinishFireBlockSounds{false};
+  int addFireDelayCount{0};
+  int lastAddedFireDelay{0};
+  int nextFireTime{0};
+  int rofVsFPSCompensation{0};
 };
 
 enum class aiSubWeb_t : int {
@@ -4079,6 +4327,11 @@ public:
                             const char* baseTurnName, idStr* output);
   int ChangeAnimState(int web, int subWebIndex, int stateIndex,
                       int interruptPath, int interruptBlend);
+  awPathResult_t ChangeAnimState(
+      aiAnimWeb_t web,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+      interruptPath_t interruptPath, interruptBlend_t interruptBlend);
   std::int64_t ChangeAnimState(int web, aiSubWeb_t subWeb, int stateIndex,
                                int interruptPath, int interruptBlend,
                                idAnimWebIndex* subWebIndex);
@@ -4093,6 +4346,13 @@ public:
   int ChangeAnimStateVia(int web, int subWebIndex, int stateIndex,
                          int viaSubWebIndex, int viaStateIndex,
                          int interruptPath, int interruptBlend);
+  awPathResult_t ChangeAnimStateVia(
+      aiAnimWeb_t web,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+      idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> viaSubWebIndex,
+      idIndex<short, idDeclAnimWeb::invalidStateIndex_t> viaStateIndex,
+      interruptPath_t interruptPath, interruptBlend_t interruptBlend);
   std::int64_t ChangeAnimStateVia(int web, aiSubWeb_t subWeb, int stateIndex,
                                   aiSubWeb_t viaSubWeb, int viaStateIndex,
                                   int interruptPath, int interruptBlend,
@@ -4304,7 +4564,7 @@ public:
   float CalcMovementTurnRate(const idVec3* idealDirection,
                              const idVec3* currentDirection);
   float CalcTurnRadius(float speed, float turnRate) const;
-  idRecoveredValue CanBeTakenDown(...);
+  takedownMode_t CanBeTakenDown(const idEntity* activator) const;
   bool CanFireRobot(int currentTime);
   virtual bool CanReceiveAIEvents(int currentTime) const;
   bool CanTeslaBlindFire(idAIEntityState* enemyState, int duration);
@@ -4365,9 +4625,9 @@ public:
   bool DoMeleeDamage(idIndex<short, invalidJointIndex_t> jointIndex,
                      const idBounds& bounds,
                      const idDeclDamage* damageDefinition,
-                     const impact* impactInfo,
-                     const idVec3& impactEffectDirection);
-  idRecoveredValue DormantBegin(...);
+                     const idDeclProjectileImpactEffect* impactEffect,
+                     const idVec3& overrideDirection);
+  void DormantBegin();
   idRecoveredValue DormantEnd(...);
   void DoSpawnSettings();
   virtual bool Draw(idPlayer* player);
@@ -4381,7 +4641,9 @@ public:
   void FindAutoFocus();
   float FindAutoFocusEntity(idEntity** bestEntity);
   const idWeapon* FindWeaponToDraw() const;
-  idRecoveredValue FinishFireWeapon(...);
+  bool FinishFireWeapon(idWeapon* weapon, const idFireParms* fireParms,
+                        idTestFireResults* testFireResults,
+                        idFinishFireResults* finishFireResults);
   idRecoveredValue FirstThink(...);
   void ForceStopOverrideAnim(idAnimWebEvent::priority_t priority,
                              int blendDurationMs);
@@ -4451,7 +4713,10 @@ public:
   inputSettings_t* GetInputSettings(inputSettings_t* result,
                                     idPlayer* player);
   virtual idJointIndex GetJointIndexFromTrace(trace_t trace);
-  idRecoveredValue GetMeleeDirection(...);
+  aiDirection_t GetMeleeDirection(const idVec3& target,
+                                  const idVec3& velocity,
+                                  bool& narrowFront,
+                                  bool debug) const;
   int GetMeleeInterval(aiMelee_t meleeType) const;
   idRecoveredValue GetMeleeTypeForTarget(...);
   idVec3 GetMissTimeAimPosition(const idEntity* target, idVec3 fireOrigin,
@@ -4464,7 +4729,7 @@ public:
   idAIMoveInterface& GetMoveInterface();
   idAIMoveState* GetMoveStateForTest() const { return moveState.get(); }
   idAIOrientation& GetMoveOrientation();
-  int GetOnlineUsableState();
+  usableState_t GetOnlineUsableState();
   float GetPlayerViewDataFitness();
 private:
   idCodeResource<idDeclRenderParm>* GetRenderParam(
@@ -4485,7 +4750,8 @@ public:
   bool GetSuspectedEnemyPos_PushedIntoAAS(idVec3* aiPosition);
   bool GetTakedownName(const idList<idStr, 5>& takedownList,
                        idStr& takedownName);
-  int GetUsableState(const idEntity* activator, const idFocusTrace* focusTrace);
+  usableState_t GetUsableState(const idEntity* activator,
+                               const idFocusTrace* focusTrace);
   idRecoveredValue GetViewTransform(...);
   idAIVoiceController* GetVoiceController(voiceController_t controller);
   int GetWeaponSlot() const;
@@ -4558,7 +4824,7 @@ public:
   bool IsDead() const;
   bool IsDowned(float delay) const;
   bool IsDying() const;
-  bool IsFacingMe(const idEntity* entity, float dotThreshold);
+  bool IsFacingMe(const idEntity* entity, float dotThreshold) const;
   bool IsIncapacitated() const;
   bool IsInCover() const;
   bool IsInsideTrailUpdateRange(idVec3 suspiciousPosition);
@@ -4688,10 +4954,12 @@ public:
   void SetAlertCycle(alertCycle_t alertCycle);
   void SetAnimWebEvent(aiAnimWeb_t web,
                        idAnimWebEvent::priority_t priority,
-                       idAnimWebIndex subWebIndex,
-                       idAnimWebIndex stateIndex,
+                       idIndex<short,
+                               idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+                       idIndex<short,
+                               idDeclAnimWeb::invalidStateIndex_t> stateIndex,
                        animWebEvent_t eventType,
-                       const idEventDef* eventDefinition);
+                       const idEventDef& eventDefinition);
   bool SetBlinded(bool state = true, bool forceForever = false,
                   int blindedOverrideTimeMilliseconds = -1);
   void SetBodyOrientation(const idMat3& axis);
@@ -4752,10 +5020,12 @@ public:
       const idRagdollInfo& info, const char* ragdollReason);
   idAnimator_AF::testSolidResult_t StartRagdoll(
       const idRagdollInfo* info) override;
-  idRecoveredValue StartReloading(...);
+  bool StartReloading(idAIFSM* fsm, idAIState* state, int curTime,
+                      equipSlot_t reloadSlot);
 protected:
   void StartDeathSystem(bool notCorpse);
   bool StartStaggeringPain(const idAIDamageInfo& info);
+  void UpdateEnemyInAAS(const idEntity* entity);
   void UpdateAvoidCharacter();
   void UpdateWorldState();
 public:
@@ -4800,8 +5070,7 @@ public:
   void UpdateDeathMovement();
   static void UpdateDeaths();
   void UpdateDrop();
-  idRecoveredValue UpdateEnemyInAAS(...);
-  idRecoveredValue UpdateExtendedClipModel(...);
+  bool UpdateExtendedClipModel();
   idRecoveredValue UpdateFSMs(...);
   idRecoveredValue UpdateGoreLevel(...);
   idRecoveredValue UpdateGrappleActivation(...);
@@ -4833,10 +5102,16 @@ public:
                           animWebEvent_t eventType);
   bool WaitForAnimToStartVia(aiAnimWeb_t web,
                              idAnimWebEvent::priority_t priority,
-                             idAnimWebIndex destinationSubWeb,
-                             idAnimWebIndex destinationState,
-                             idAnimWebIndex viaSubWeb,
-                             idAnimWebIndex viaState,
+                             idIndex<short,
+                                     idDeclAnimWeb::invalidSubWebIndex_t>
+                                 destinationSubWeb,
+                             idIndex<short, idDeclAnimWeb::invalidStateIndex_t>
+                                 destinationState,
+                             idIndex<short,
+                                     idDeclAnimWeb::invalidSubWebIndex_t>
+                                 viaSubWeb,
+                             idIndex<short, idDeclAnimWeb::invalidStateIndex_t>
+                                 viaState,
                              animWebEvent_t eventType);
   bool WaitForAnimToStartVia(aiAnimWeb_t web,
                              idAnimWebEvent::priority_t priority,
@@ -4930,6 +5205,9 @@ public:
   }
   void ResetTakedownObservationForTest() { takedownObservation.Reset(); }
   bool GetCutNextMeleeDamageForTest() const { return cutNextMeleeDamage; }
+  void SetCutNextMeleeDamageForTest(bool value) {
+    cutNextMeleeDamage = value;
+  }
   void SetMeleeTraceActiveForTakedownTest(bool value) {
     animEventState.meleeTraceActive = value;
   }
@@ -5809,6 +6087,12 @@ public:
     return worldStateLastAffirmativeVoice;
   }
   void SetAAS(const idAAS2* value) { aas = value; }
+  void SetSkipTargetAASChecksForTest(bool value) {
+    skipTargetAASChecks = value;
+  }
+  void UpdateEnemyInAASForTest(const idEntity* entity) {
+    UpdateEnemyInAAS(entity);
+  }
   const void* GetAIGroupIdentity() const override {
     return aiEventEncounterGroup;
   }
@@ -5839,6 +6123,17 @@ public:
   bool WasStunnedByPlayerBlock() const { return stunnedByPlayerBlock; }
   void SetStunnedByPlayerBlock(bool value) {
     stunnedByPlayerBlock = value;
+  }
+  void ConfigureCanBeTakenDownForTest(
+      bool custom, bool heavy, bool kampHund, bool sleeping, bool drone,
+      takeDownType_t type, bool deathRuntimeBlocked) {
+    useCustomTakedown = custom;
+    isHeavy = heavy;
+    isKampHund = kampHund;
+    coreState.sleeping = sleeping;
+    usesDrone = drone;
+    takeDownType = type;
+    takedownDeathRuntimeBlocked = deathRuntimeBlocked;
   }
   void ConfigureTaunt(int dodgeFlags, float minimumInterval,
                       float maximumInterval, int nextTauntTime) {
@@ -5987,7 +6282,7 @@ public:
     skipDamageTriggerOnFriendlyFire = skipFriendlyFire;
   }
   void SetNextAIEventTime(int value) { nextAIEventTime = value; }
-  void SetAnimWebEventPending(bool value) { animWebEventPending = value; }
+  void SetAnimWebEventPending(bool value);
   void ConfigureGrenadeThrowState(bool usesGrenadesValue,
                                   const void* itemDeclaration,
                                   int overrideAnimation) {
@@ -6001,8 +6296,7 @@ public:
     playerViewDot = dot;
   }
   void ConfigureDefaultMovementSpeeds(float minimum, float maximum) {
-    minimumMovementSpeed = minimum;
-    maximumMovementSpeed = maximum;
+    aiConstants->movement.moveSpeed = {minimum, maximum};
   }
   void ConfigureFireSpotTimes(float lost, float gained) {
     spotLostFireTime = lost;
@@ -6137,6 +6431,12 @@ public:
   idFXManager* GetFXMgrForAttachment() const {
     return attachmentFXManager;
   }
+  void SetTargetKickOffsetForTest(const idAngles& value) {
+    targetKickOffset = value;
+  }
+  const idAngles& GetTargetKickOffsetForTest() const {
+    return targetKickOffset;
+  }
   void SetRunIndexType(runIndexType_t value) { currentRunIndexType = value; }
   void SetInjuredTime(int value) { injuredTime = value; }
   void ConfigureFacialAnimationSets(
@@ -6266,10 +6566,16 @@ public:
   }
   void ConfigureExtendedClipModelForTest(bool active, int status,
                                          int auxiliaryStatus) {
-    extendedClipModel = active
-                            ? reinterpret_cast<idClipModel*>(
-                                  static_cast<std::uintptr_t>(1))
-                            : nullptr;
+    if (active) {
+      if (extendedClipModelStorage == nullptr) {
+        extendedClipModelStorage = std::make_unique<idClipModel>();
+        extendedClipModelStorage->axis = mat3_identity;
+      }
+      extendedClipModel = extendedClipModelStorage.get();
+    } else {
+      extendedClipModel = nullptr;
+      extendedClipModelStorage.reset();
+    }
     extendedClipModelStatus = status;
     extendedClipModelAuxiliaryStatus = auxiliaryStatus;
     coreState.extendedClipModel = active;
@@ -6279,6 +6585,12 @@ public:
   }
   bool HasExtendedClipModelForTest() const {
     return extendedClipModel != nullptr;
+  }
+  idClipModel* GetExtendedClipModelForTest() const {
+    return extendedClipModel;
+  }
+  void SetExtendedClipTreeAnimatorForTest(idTreeAnimator* animator) {
+    effectsTreeAnimator = animator;
   }
   int GetExtendedClipModelDeleteCountForTest() const {
     return extendedClipModelDeleteCount;
@@ -6300,11 +6612,7 @@ public:
   }
   bool HasInfluenceTrailForTest() const { return influenceTrailAllocated; }
   void ConfigureOnlineLootState(int disassembleLootBoxCountValue,
-                                bool lootedValue, int deathStartTimeValue) {
-    disassembleLootBoxCount = disassembleLootBoxCountValue;
-    looted = lootedValue;
-    deathStartTime = deathStartTimeValue;
-  }
+                                bool lootedValue, int deathStartTimeValue);
   void ConfigureUsableDeathFlags(bool forceDeathState,
                                  bool suppressLootWhenDead) {
     usableDeathState = forceDeathState;
@@ -6553,6 +6861,7 @@ private:
   int delayedVoiceType{30};
   int delayedVoiceTime{-1};
   const idAAS2* aas{nullptr};
+  bool skipTargetAASChecks{false};
   int behaviorWeaponSlot{0};
   bool behaviorHasSyncedWalks{false};
   float bodyFadeTime{0.0F};
@@ -6562,6 +6871,10 @@ private:
   int takedownWindowClosed{-1};
   int counterBlockedUntil{-1};
   bool stunnedByPlayerBlock{false};
+  bool useCustomTakedown{false};
+  bool isHeavy{false};
+  takeDownType_t takeDownType{TAKEDOWNTYPE_NOTAKEDOWN};
+  bool takedownDeathRuntimeBlocked{false};
   encounterGroupRole_t encounterRole{ROLE_NONE};
   bool encounterActive{true};
   idEncounterGroup* aiEventEncounterGroup{nullptr};
@@ -6654,6 +6967,7 @@ private:
   bool aasClipModelEnabled{false};
   float physicsMaxStepHeight{0.0F};
   int lastFireTime{-1};
+  idAngles targetKickOffset{};
   bool articulatedFigureLoaded{false};
   bool articulatedFigureActive{false};
   bool articulatedFigureClientActive{false};
@@ -6706,7 +7020,6 @@ private:
   aiMovePushStatus_t movePushStatus{AIMOVEPUSHSTATUS_PUSH_NONE};
   int movePushEndTime{0};
   int nextAIEventTime{0};
-  bool animWebEventPending{false};
   bool usesGrenades{false};
   bool detectGrenadesInAir{false};
   bool ignoreFriendlyVehicles{false};
@@ -6799,7 +7112,7 @@ private:
   idAIStaggerPainObservation staggerPainObservation;
   bool isPlayingEntranceAnim{false};
   idClipModel* extendedClipModel{nullptr};
-  std::unique_ptr<unsigned char> extendedClipModelStorage;
+  std::unique_ptr<idClipModel> extendedClipModelStorage;
   int extendedClipModelStatus{0};
   int extendedClipModelAuxiliaryStatus{0};
   int extendedClipModelDeleteCount{0};

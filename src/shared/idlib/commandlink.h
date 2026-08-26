@@ -5,6 +5,7 @@ class idAutoComplete;
 
 using commandFunction_t = void (*)(const idCmdArgs*);
 using argCompletion_t = void (*)(idAutoComplete*);
+using argCompletionRef_t = void (*)(idAutoComplete&);
 
 struct idCommandLink {
   idCommandLink* next;

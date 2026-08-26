@@ -8,6 +8,8 @@
 
 struct idColor;
 class idParallelJobList;
+class idDebugGraph;
+class idRenderModelGui;
 struct idConsole;
 
 struct idOverlayHandle {
@@ -61,6 +63,36 @@ struct idConsole {
 
   void BeginTimeRange(rangeId_t range, const idColor* color) {
     vtable->BeginTimeRange(this, range, color);
+  }
+
+  idRenderModelGui* Gui() {
+    using Fn=idRenderModelGui*(*)(idConsole*);
+    const auto slots=reinterpret_cast<const void* const*>(vtable);
+    return reinterpret_cast<Fn>(slots[15])(this);
+  }
+
+  idDebugGraph* CreateGraph(int count) {
+    using Fn=idDebugGraph*(*)(idConsole*,int);
+    const auto slots=reinterpret_cast<const void* const*>(vtable);
+    return reinterpret_cast<Fn>(slots[22])(this,count);
+  }
+
+  void DestroyGraph(idDebugGraph* graph) {
+    using Fn = void (*)(idConsole*, idDebugGraph*);
+    const auto slots = reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[23])(this, graph);
+  }
+
+  void AddSnapObject(const char* name,int size,int changed,float fraction) {
+    using Fn=void(*)(idConsole*,const char*,int,int,float);
+    const auto slots=reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[26])(this,name,size,changed,fraction);
+  }
+
+  void ClearSnapshots() {
+    using Fn=void(*)(idConsole*);
+    const auto slots=reinterpret_cast<const void* const*>(vtable);
+    reinterpret_cast<Fn>(slots[27])(this);
   }
 
   void Close(bool force) {

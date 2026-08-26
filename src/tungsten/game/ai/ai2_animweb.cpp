@@ -1,4 +1,5 @@
 #include "tungsten/game/ai/ai2_actions.h"
+#include "tungsten/game/ai/ai2_core_support.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -99,6 +100,17 @@ void idAI2::GetIdleTurnStateName(int turnDirection, float turnDeltaDot,
 }
 
 // DIA: idAI2::ChangeAnimState
+awPathResult_t idAI2::ChangeAnimState(
+    const aiAnimWeb_t web,
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+    const interruptPath_t interruptPath,
+    const interruptBlend_t interruptBlend) {
+  return animWebAnimators[static_cast<std::size_t>(web)]->ChangeState(
+      subWebIndex, stateIndex, interruptPath, interruptBlend, 0);
+}
+
+// DIA: idAI2::ChangeAnimState
 int idAI2::ChangeAnimState(int web, int subWebIndex, int stateIndex,
                            int interruptPath, int interruptBlend) {
   (void)web;
@@ -150,6 +162,20 @@ void idAI2::FindAnimWebAndStateIndices(int web, int subWeb,
     subWebIndex->value = static_cast<std::int16_t>(subWeb);
   }
   if (stateIndex != nullptr) stateIndex->value = NameIndex(stateName);
+}
+
+// DIA: idAI2::ChangeAnimStateVia
+awPathResult_t idAI2::ChangeAnimStateVia(
+    const aiAnimWeb_t web,
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> subWebIndex,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> stateIndex,
+    const idIndex<short, idDeclAnimWeb::invalidSubWebIndex_t> viaSubWebIndex,
+    const idIndex<short, idDeclAnimWeb::invalidStateIndex_t> viaStateIndex,
+    const interruptPath_t interruptPath,
+    const interruptBlend_t interruptBlend) {
+  return animWebAnimators[static_cast<std::size_t>(web)]->ChangeStateVia(
+      subWebIndex, stateIndex, viaSubWebIndex, viaStateIndex, interruptPath,
+      interruptBlend, 0);
 }
 
 // DIA: idAI2::ChangeAnimStateVia

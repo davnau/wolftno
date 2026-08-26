@@ -72,7 +72,7 @@ void idAIDamageInfo::EndFrame() {
 }
 
 // DIA: idStaticList<idDamageImpulse,8>::idStaticList<idDamageImpulse,8>
-template idStaticList<idDamageImpulse, 8>::idStaticList();
+template idStaticList<idDamageImpulse, 8>::idStaticList() noexcept;
 
 // DIA: idAIDamageInfo::idAIDamageInfo
 idAIDamageInfo::idAIDamageInfo() = default;

@@ -20,6 +20,9 @@ public:
   bool CheckOverflow(int numBits);
   void WriteBits(int value, int numBits);
   int ReadBits(int numBits);
+  // Retail serializer callers use the const-qualified ABI entry point. The
+  // non-const declaration remains for the current idlib implementation.
+  int ReadBits(int numBits) const;
   void WriteData(const void* data, int length);
   int ReadData(void* data, int length);
   void WriteDelta(int oldValue, int newValue, int numBits);

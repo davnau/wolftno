@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/framework/usercmd.h"
 #include "engine/renderer/renderview.h"
 #include "shared/idlib/containers/staticlist.h"
 #include "shared/idlib/geometry/screenrect.h"
@@ -16,22 +17,24 @@ struct idRenderModelCommitted;
 class idRenderWorld;
 class idRenderWorldCommitted;
 
-struct usercmd_t {
-  std::uint8_t bytes[76]{};
-};
-
 struct alignas(16) idScreenView {
+  idScreenView()
+      : viewIndex(-1), usePreviousRendering(false), world(nullptr), g(),
+        bypassUserCmd(), viewGuis(), guiOriginOffset(0.0f) {
+    screenRect.Clear();
+  }
+
   idScreenRect screenRect;
-  int viewIndex{};
-  bool usePreviousRendering{};
-  std::uint8_t alignmentBeforeWorld[3]{};
-  idRenderWorld* world{};
+  int viewIndex;
+  bool usePreviousRendering;
+  std::uint8_t alignmentBeforeWorld[3];
+  idRenderWorld* world;
   renderView_t g;
   usercmd_t bypassUserCmd;
-  std::uint8_t alignmentBeforeGuis[4]{};
+  std::uint8_t alignmentBeforeGuis[4];
   idStaticList<idRenderModel*, 16> viewGuis;
-  float guiOriginOffset{};
-  std::uint8_t alignmentTail[4]{};
+  float guiOriginOffset;
+  std::uint8_t alignmentTail[4];
 };
 
 struct idScreenViewCommitted {
@@ -60,17 +63,16 @@ struct idRenderFrameInfoCommitted {
 };
 
 struct alignas(16) idRenderFrameInfo {
+  idRenderFrameInfo();
+  ~idRenderFrameInfo();
+
   idStaticList<idScreenView, 3> screenViews;
   idStaticList<idScreenView, 2> worldViews;
-  bool captureFrame{};
-  std::uint8_t alignmentTail[15]{};
+  bool captureFrame;
+  std::uint8_t alignmentTail[15];
 
   void Commit(idRenderFrameInfoCommitted& committed) const;
-  void Clear() {
-    screenViews.Clear();
-    worldViews.Clear();
-    captureFrame = false;
-  }
+  void Clear();
 };
 
 template <typename T> struct idRenderStat {

@@ -78,6 +78,10 @@ struct contactInfo_t {
   std::uint8_t surfaceColor[3]{};
 };
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4201)
+#endif
 struct trace_t {
   float fraction{1.0f};
   idVec3 endpos{};
@@ -92,6 +96,9 @@ struct trace_t {
     };
   };
 };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 static_assert(sizeof(contactInfo_t) == 0x4C,
               "contactInfo_t ABI drift");

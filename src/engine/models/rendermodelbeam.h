@@ -59,6 +59,9 @@ public:
 
   void Update(int currTime);
   beam_t* DrawBeamAlloc();
+  // Retail gamelib ABI: single-node callers pass the node by reference.
+  void DrawBeam(beamNodeParms_t& node, const idMaterial* material,
+                beamOrientType_t orientType);
   void DrawBeam(beamNodeParms_t* node, const idMaterial* material,
                 beamOrientType_t orientType);
   // Retail ABI used by gamelib callers. Keep the unsigned declaration until

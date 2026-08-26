@@ -4,10 +4,14 @@
 
 #include <cstdint>
 
+#ifndef WOLFTNO_PFC_REQUEST_T_DEFINED
+#define WOLFTNO_PFC_REQUEST_T_DEFINED
 enum pfcRequest_t : int {
-  PFC_DEFAULT = 0,
+  PFC_TEXTURE = 0,
+  PFC_DEFAULT = PFC_TEXTURE,
   PFC_SOUND = 1,
 };
+#endif
 
 // NEEDS_WORK(shared/idlib/filesystem): declaration boundary required by Bink
 // network I/O. Its queueing/cache policy stays deferred to streamfilecache.cpp.

@@ -36,6 +36,17 @@ idCVar::idCVar(const char* n, const char* v, int f, const char* d,
                const char** values, argCompletion_t completion) {
   Init(n, v, f, d, 1.0f, -1.0f, values, completion);
 }
+idCVar::idCVar(const char* n, const char* v, int f, const char* d,
+               const char** values, argCompletionRef_t completion) {
+  Init(n, v, f, d, 1.0f, -1.0f, values,
+       reinterpret_cast<argCompletion_t>(completion));
+}
+idCVar::idCVar(const char* n, const char* v, int f, const char* d,
+               float min, float max, const char** values,
+               argCompletionRef_t completion) {
+  Init(n, v, f, d, min, max, values,
+       reinterpret_cast<argCompletion_t>(completion));
+}
 void idCVar::Init(const char* n, const char* v, int f, const char* d, float min, float max,
                   const char** values, argCompletion_t completion) {
   name = CopyText(n);
