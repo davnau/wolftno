@@ -21,6 +21,8 @@ class idPush;
 class idClass;
 class idEffectPhysicsPieceEmitter;
 class idDeferredVisCache;
+class idAnimator_DragJoints;
+class idRibbon;
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -48,6 +50,7 @@ public:
   friend class idClass;
   friend class idEffectPhysicsPieceEmitter;
   friend class idDeferredVisCache;
+  friend class idAnimator_DragJoints;
   T* list;
   int num;
   int size;
@@ -75,6 +78,18 @@ public:
     size = 0;
     ClearFree();
 #endif
+  }
+#if defined(WOLFTNO_RETAIL_STATICLIST_FORCEINLINE_CTOR_ABI)
+  __forceinline
+#endif
+  idList(T* staticStorage, int staticSize, int staticGranularity) {
+    idMem::Singleton();
+    size = staticSize;
+    num = 0;
+    list = staticStorage;
+    *reinterpret_cast<std::uint32_t*>(&granularity) =
+        static_cast<std::uint16_t>(staticGranularity) |
+        (static_cast<std::uint32_t>(DefaultTag) << 16) | 0x01000000u;
   }
   idList(const idList& other) : idList() { *this = other; }
   idList& operator=(const idList& other) {
@@ -161,6 +176,9 @@ public:
 #if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
           (DefaultTag == 5 && std::is_same_v<T, std::uint16_t>) ||
 #endif
+#if defined(WOLFTNO_RETAIL_RIBBON_ALLOC_REF_ABI)
+          std::is_same_v<T, int> || std::is_same_v<T, idRibbon*> ||
+#endif
           idListAllocReturnsReference<T>::value,
       T&, T*>;
 #if defined(WOLFTNO_RETAIL_IDLIST_NOINLINE_ALLOC_ABI)
@@ -175,6 +193,10 @@ public:
     if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
 #if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
                   (DefaultTag == 5 && std::is_same_v<T, std::uint16_t>) ||
+#endif
+#if defined(WOLFTNO_RETAIL_RIBBON_ALLOC_REF_ABI)
+                  std::is_same_v<T, int> ||
+                  std::is_same_v<T, idRibbon*> ||
 #endif
                   idListAllocReturnsReference<T>::value)
       return list[index];

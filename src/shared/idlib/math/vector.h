@@ -97,6 +97,7 @@ public:
     }
     return length;
   }
+  float NormalizeFast();
   bool FixDenormals();
   bool FixDegenerateNormal();
 

@@ -24,9 +24,15 @@ struct beamNodeParms_t {
   idVec3 orientVec;
   idVec2 sMinMax;
   idVec2 tMinMax;
+#if defined(WOLFTNO_RETAIL_BEAMNODE_TRIVIAL_DEFAULT_ABI)
+  float halfWidth;
+  std::uint8_t color[2][4];
+  std::uint8_t tangent[4][4];
+#else
   float halfWidth = 0.0f;
   std::uint8_t color[2][4]{};
   std::uint8_t tangent[4][4]{};
+#endif
 };
 
 struct beam_t {

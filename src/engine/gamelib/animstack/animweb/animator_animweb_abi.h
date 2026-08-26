@@ -13,6 +13,11 @@ enum animWebEvent_t : int;
 
 class idAnimator_AnimWeb {
 public:
+  idIndex<std::int16_t, idDeclAnimWeb::invalidSubWebIndex_t>
+  GetCurSubWebIndex() const;
+  idIndex<std::int16_t, idDeclAnimWeb::invalidStateIndex_t>
+  GetCurStateIndex() const;
+
   void TriggerEvent(const idDeclAnimWebNode* node,
                     animWebEvent_t eventType,
                     const idAnimWebEvent& event, int eventParm);

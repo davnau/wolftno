@@ -159,8 +159,15 @@ public:
   const char* GetStateName(
       idIndex<std::int16_t, invalidStateIndex_t> index) const;
   idAtomicString GetStateNameAtomic(animWebStateIndex_t index) const;
+#if defined(WOLFTNO_RETAIL_DRAGJOINTS_ANIMWEB_INDEX_ABI)
+  idIndex<std::int16_t, invalidStateIndex_t>
+  GetStateIndexForName(const char* name) const;
+  idIndex<std::int16_t, invalidSubWebIndex_t>
+  GetSubWebIndexForName(const char* name) const;
+#else
   animWebStateIndex_t GetStateIndexForName(const char* name) const;
   animWebSubWebIndex_t GetSubWebIndexForName(const char* name) const;
+#endif
   const char* GetSubWebName(animWebSubWebIndex_t index) const;
   const char* GetSubWebName(
       idIndex<std::int16_t, invalidSubWebIndex_t> index) const;
