@@ -10,7 +10,11 @@
 class idBounds;
 class idClip;
 class idCollisionModel;
+#if defined(WOLFTNO_RETAIL_PIECEEMITTER_IDJOINTMAT_CLASS_ABI)
+class idJointMat;
+#else
 struct idJointMat;
+#endif
 class idTraceModelCache;
 
 class idPositionedCollisionModel {

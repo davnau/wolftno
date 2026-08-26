@@ -55,7 +55,7 @@ public:
 class idEntity;
 class idScenePoint {
 public:
-  void ActivateTargets(idEntity* target);
+  virtual void ActivateTargets(idEntity* target);
 };
 
 extern idCollisionModelManager* collisionModelManager;
@@ -178,7 +178,7 @@ idList<idEffectPhysicsCuttable::piece_t, 5>::Resize(int newSize) {
     return true;
   }
   if (size > 0 || newSize == granularity) {
-    reinterpret_cast<idScenePoint*>(this)->ActivateTargets(
+    reinterpret_cast<idScenePoint*>(this)->idScenePoint::ActivateTargets(
         reinterpret_cast<idEntity*>(static_cast<std::intptr_t>(newSize)));
   }
   idEffectPhysicsCuttable::piece_t* const replacement =

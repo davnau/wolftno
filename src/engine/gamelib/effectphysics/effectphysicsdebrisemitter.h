@@ -10,11 +10,6 @@ class idDeclBreakable;
 class idRenderModelEffects;
 class idRenderWorld;
 
-class idRandom2 {
-public:
-  std::uint32_t seed;
-};
-
 class idEffectPhysicsDebrisEmitter {
 public:
   static constexpr int EMIT_DEBRIS_BUFFER_SIZE = 10;
@@ -60,4 +55,3 @@ static_assert(offsetof(idEffectPhysicsDebrisEmitter, random) == 0x21C,
               "debris random ABI drift");
 static_assert(sizeof(idEffectPhysicsDebrisEmitter) == 0x220,
               "idEffectPhysicsDebrisEmitter ABI drift");
-

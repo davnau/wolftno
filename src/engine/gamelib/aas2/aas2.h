@@ -66,6 +66,9 @@ public:
   void FreeClipLinks() override;
   idAASClipLink* LinkClipModel(idClipModel* clipModel) override;
   idAASClipLink* UnLinkClipModel(idAASClipLink* links) override;
+  void ClipGridToAreas(const idVec3& origin, int areaNum, int travelFlags,
+                       int cellSize, int dimension,
+                       unsigned char* reachable) const override;
 
   int GetNumCoverPoints() const override;
   const aas2Cover_t* GetCoverPoint(int coverIndex) const override;

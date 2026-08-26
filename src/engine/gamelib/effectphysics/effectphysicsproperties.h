@@ -11,6 +11,7 @@ class idTraceModelCache {
 public:
   int AllocTraceModel(const idTraceModel& traceModel,
                       const idMaterial* material);
+  void FreeTraceModel(int traceModelIndex);
   void GetMassProperties(int traceModelIndex, float density, float& mass,
                          idVec3& centerOfMass,
                          idMat3& inertiaTensor) const;

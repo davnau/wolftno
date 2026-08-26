@@ -19,6 +19,8 @@ class idAFTree;
 class idObstacleAvoidanceManagerLocal;
 class idPush;
 class idClass;
+class idEffectPhysicsPieceEmitter;
+class idDeferredVisCache;
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -44,6 +46,8 @@ public:
   friend class idObstacleAvoidanceManagerLocal;
   friend class idPush;
   friend class idClass;
+  friend class idEffectPhysicsPieceEmitter;
+  friend class idDeferredVisCache;
   T* list;
   int num;
   int size;
@@ -51,7 +55,8 @@ public:
   std::uint8_t memTag;
   std::uint8_t listStatic;
 
-#if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_DTOR_ABI)
+#if defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_DTOR_ABI) ||              \
+    defined(WOLFTNO_RETAIL_IDLIST_FORCEINLINE_CTOR_ABI)
   __forceinline
 #endif
   idList()
@@ -196,6 +201,9 @@ public:
     }
     num = 0;
   }
+#if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_DELETECONTENTS_ABI)
+  void DeleteContents();
+#else
   template <typename U = T>
   void DeleteContents() {
     for (int index = 0; index < num; ++index) {
@@ -204,6 +212,7 @@ public:
     }
     ClearFree();
   }
+#endif
   bool SetNum(int count) {
     if (count > size && !Resize(count))
       return false;

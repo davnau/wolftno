@@ -60,7 +60,9 @@ public:
   virtual const aas2Area_t& GetArea(int areaNum) const = 0;
   ID_AAS2_RECOVERED_SLOT(42);
   ID_AAS2_RECOVERED_SLOT(43);
-  ID_AAS2_RECOVERED_SLOT(44);
+  virtual void ClipGridToAreas(const idVec3& origin, int areaNum,
+                               int travelFlags, int cellSize, int dimension,
+                               unsigned char* reachable) const = 0;
   ID_AAS2_RECOVERED_SLOT(45);
   ID_AAS2_RECOVERED_SLOT(46);
   ID_AAS2_RECOVERED_SLOT(47);
