@@ -26,6 +26,7 @@ private:
 
 class idRandom2 {
 public:
+  int RandomInt(int maximum);
   std::uint32_t seed;
 };
 

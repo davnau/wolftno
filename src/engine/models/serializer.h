@@ -71,35 +71,11 @@ public:
     }
   }
 
-  void SerializeQ(idMat3* axis, int bits) {
-    const float scale = static_cast<float>((1 << (bits - 1)) - 1);
-    if (writing) {
-      idQuat quaternion = axis->ToQuat();
-      float values[4] = {quaternion.x, quaternion.y, quaternion.z, quaternion.w};
-      int largest = 0;
-      for (int index = 1; index < 4; ++index) {
-        if (std::fabs(values[index]) > std::fabs(values[largest]))
-          largest = index;
-      }
-      msg->WriteBits(largest, 2);
-      const float sign = values[largest] < 0.0f ? -1.0f : 1.0f;
-      for (int offset = 1; offset < 4; ++offset) {
-        const int index = (largest + offset) & 3;
-        msg->WriteBits(static_cast<int>(values[index] * sign * scale), -bits);
-      }
-    } else {
-      float values[4]{};
-      const int largest = msg->ReadBits(2);
-      float sum = 0.0f;
-      for (int offset = 1; offset < 4; ++offset) {
-        const int index = (largest + offset) & 3;
-        values[index] = static_cast<float>(msg->ReadBits(-bits)) / scale;
-        sum += values[index] * values[index];
-      }
-      values[largest] = std::sqrt(std::max(1.0f - sum, 1.17549435e-38f));
-      *axis = idQuat{values[0], values[1], values[2], values[3]}.ToMat3();
-    }
-  }
+  void Serialize(idVec3& value) { Serialize(&value); }
+  void Serialize(idVec6& value);
+  void Serialize(idMat3& value);
+
+  void SerializeQ(idMat3* axis, int bits);
 };
 
 static_assert(sizeof(idSerializer) == 16, "idSerializer ABI drift");

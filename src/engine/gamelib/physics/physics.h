@@ -36,6 +36,9 @@ public:
     return reinterpret_cast<Function>(vtable[index]);
   }
 
+  const char* GetName() {
+    return Slot<const char* (*)(idPhysicsCallbacks*)>(1)(this);
+  }
   bool GetMasterTransform(idVec3& origin, idMat3& axis) {
     return Slot<bool (*)(idPhysicsCallbacks*, idVec3&, idMat3&)>(2)(
         this, origin, axis);
@@ -44,6 +47,10 @@ public:
               const idVec3& velocity) {
     return Slot<int (*)(idPhysicsCallbacks*, int, trace_t&, const idVec3&)>(3)(
         this, physicsId_, collision, velocity);
+  }
+  int Contact(int physicsId_, contactInfo_t& contact) {
+    return Slot<int (*)(idPhysicsCallbacks*, int, contactInfo_t&)>(4)(
+        this, physicsId_, contact);
   }
   void ApplyImpulse(int physicsId_, int bodyId, const idVec3& point,
                     const idVec3& impulse) {
@@ -82,7 +89,8 @@ public:
   idPhysicsCallbacks* GetCallbacks() const { return callbacks; }
 
   virtual void SetClipModel(idClipModel*, float, int, bool) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual idClipModel* GetClipModel(int) const = 0;
   virtual int GetNumClipModels() const = 0;
 #else
@@ -90,19 +98,22 @@ public:
   virtual int GetNumClipModels() = 0;
 #endif
   virtual void SetMass(float, int) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual float GetMass(int) const = 0;
 #else
   virtual float GetMass(int) = 0;
 #endif
   virtual void SetContents(int, int) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual int GetContents(int) const = 0;
 #else
   virtual int GetContents(int) = 0;
 #endif
   virtual void SetClipMask(int, int) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual int GetClipMask(int) const = 0;
   virtual const idBounds& GetBounds(int) const = 0;
   virtual const idBounds& GetAbsBounds(int) const = 0;
@@ -115,36 +126,63 @@ public:
   virtual void SetAxis(const idMat3&, int) = 0;
   virtual void Translate(const idVec3&, int) = 0;
   virtual void Rotate(const idRotation&, int) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual const idVec3& GetOrigin(int) const = 0;
   virtual const idMat3& GetAxis(int) const = 0;
 #else
   virtual const idVec3& GetOrigin(int) = 0;
   virtual const idMat3& GetAxis(int) = 0;
 #endif
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual const idVec3& GetLocalOrigin(int) const = 0;
+  virtual const idMat3& GetLocalAxis(int) const = 0;
+#else
   virtual const idVec3& GetLocalOrigin(int) = 0;
   virtual const idMat3& GetLocalAxis(int) = 0;
+#endif
   virtual void SetLinearVelocity(const idVec3&, int) = 0;
   virtual void SetAngularVelocity(const idVec3&, int) = 0;
   virtual idVec3 GetLinearVelocity(int) const = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual idVec3 GetAngularVelocity(int) const = 0;
+#else
   virtual idVec3 GetAngularVelocity(int) = 0;
+#endif
   virtual void SetGravity(const idVec3&) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual const idVec3& GetGravity() const = 0;
+  virtual const idVec3& GetGravityNormal() const = 0;
+#else
   virtual const idVec3& GetGravity() = 0;
   virtual const idVec3& GetGravityNormal() = 0;
+#endif
   virtual void SetWaterLevel(float, int, bool, int, float) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual float GetWaterLevel(int) const = 0;
+#else
   virtual float GetWaterLevel(int) = 0;
+#endif
   virtual void SetWaterViscosity(float, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual float GetWaterViscosity(int) const = 0;
+  virtual int GetWaterEntNum() const = 0;
+  virtual float GetWaterSurfaceWrldHeight() const = 0;
+  virtual float GetBuoyancyScale() const = 0;
+#else
   virtual float GetWaterViscosity(int) = 0;
   virtual int GetWaterEntNum() = 0;
   virtual float GetWaterSurfaceWrldHeight() = 0;
   virtual float GetBuoyancyScale() = 0;
+#endif
   virtual void GetImpactInfo(int, const idVec3&, impactInfo_t&) const = 0;
   virtual void ApplyImpulse(int, const idVec3&, const idVec3&) = 0;
   virtual void ApplyForce(int, const idVec3&, const idVec3&) = 0;
   virtual void Activate() = 0;
   virtual void PutToRest() = 0;
   virtual bool IsAtRest() const = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual bool IsPushable(int) const = 0;
 #else
   virtual bool IsPushable(int) = 0;
@@ -153,7 +191,8 @@ public:
   virtual void RestoreState() = 0;
   virtual bool Evaluate(int, int) = 0;
   virtual void UpdateTime(int) = 0;
-#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI)
+#if defined(WOLFTNO_RETAIL_PHYSICS_ACTOR_CONST_ABI) ||                    \
+    defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
   virtual void ClipTranslation(trace_t&, const idVec3&,
                                const idClipModel*) const = 0;
   virtual void ClipRotation(trace_t&, const idRotation&,
@@ -171,27 +210,53 @@ public:
   virtual void UnlinkClip() = 0;
   virtual void LinkClip() = 0;
   virtual bool EvaluateContacts() = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual int GetNumContacts() const = 0;
+  virtual const contactInfo_t& GetContact(int) const = 0;
+#else
   virtual int GetNumContacts() = 0;
   virtual const contactInfo_t& GetContact(int) = 0;
+#endif
   virtual void ClearContacts() = 0;
   virtual void AddContactPhysics(idPhysics*) = 0;
   virtual void RemoveContactPhysics(idPhysics*) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual int GetNumContactPhysics() const = 0;
+  virtual idPhysics* GetContactPhysics(int) const = 0;
+#else
   virtual int GetNumContactPhysics() = 0;
   virtual idPhysics* GetContactPhysics(int) = 0;
+#endif
   virtual void ActivateContactPhysics() = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual bool HasGroundContacts() const = 0;
+  virtual bool IsGroundEntity(int) const = 0;
+  virtual bool IsGroundClipModel(int, int) const = 0;
+#else
   virtual bool HasGroundContacts() = 0;
   virtual bool IsGroundEntity(int) = 0;
   virtual bool IsGroundClipModel(int, int) = 0;
+#endif
   virtual void SetPushed(int) = 0;
   virtual idVec3 GetPushedLinearVelocity(int) const = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual idVec3 GetPushedAngularVelocity(int) const = 0;
+#else
   virtual idVec3 GetPushedAngularVelocity(int) = 0;
+#endif
   virtual void SetMaster(bool, const idVec3&, const idMat3&,
                          bindFlags_t) = 0;
   virtual void SetLocalOrigin(const idVec3&, int) = 0;
   virtual void SetLocalAxis(const idMat3&, int) = 0;
+#if defined(WOLFTNO_RETAIL_PHYSICS_STATIC_CONST_ABI)
+  virtual int GetBlockingEntityNum() const = 0;
+  virtual int GetLinearEndTime() const = 0;
+  virtual int GetAngularEndTime() const = 0;
+#else
   virtual int GetBlockingEntityNum() = 0;
   virtual int GetLinearEndTime() = 0;
   virtual int GetAngularEndTime() = 0;
+#endif
   virtual bool IsInNonResidentCollisionArea(bool assumeNonResident);
 
   void SetType(physicsType_t physicsType) { type = physicsType; }

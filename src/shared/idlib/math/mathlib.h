@@ -24,6 +24,7 @@ struct idMath {
   static float Cos(float a);
   static bool IsValid(float f);
   static float ASin(float value);
+  static float ACos16(float value);
   static float AngleNormalize360(float angle);
   static float AngleNormalize180(float angle);
   static float AngleDelta(float angle1, float angle2);

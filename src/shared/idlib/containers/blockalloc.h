@@ -8,6 +8,7 @@
 #include <new>
 
 class idTraceModelCache;
+class idClipModel;
 
 template <typename T, int BlockSize, int Tag> class idBlockAlloc {
 public:
@@ -29,7 +30,7 @@ public:
     int freeCount;
   };
 
-  explicit idBlockAlloc(bool clear = true)
+  explicit idBlockAlloc(bool clear = false)
       : blocks(nullptr), free(nullptr), total(0), active(0),
         allowAllocs(true), clearAllocs(clear) {}
 
@@ -100,6 +101,7 @@ public:
 
 private:
   friend class idTraceModelCache;
+  friend class idClipModel;
 
   void AllocNewBlock() {
 #if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)

@@ -140,6 +140,7 @@ public:
       idMat3& rotationDelta) const;
 
   idJointGroupCollection* GetJointGroupCollection() const;
+  idPropsCollection* GetPropsCollection();
   idPropsCollection* GetPropsCollection() const;
 
   void ApplyOriginDeltas(const idMat3& axis, const idVec3& origin,

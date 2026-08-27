@@ -114,7 +114,14 @@ public:
 };
 
 struct idSuspensionLeverDef {
-  enum leverDir_t : int { LEVER_DEFAULT = 0 };
+  enum leverDir_t : int {
+    DIR_RIGHT = 0,
+    DIR_LEFT = 1,
+    DIR_FORWARD = 2,
+    DIR_BACKWARD = 3,
+    DIR_ALIGN_TO = 4,
+    LEVER_DEFAULT = DIR_RIGHT,
+  };
   idAtomicString joint;
   idAtomicString alignToJoint;
   leverDir_t direction;
@@ -264,7 +271,11 @@ struct idVehicleEffectsDef {
 };
 
 struct steeringWheel_t {
-  enum rotationDirection_t : int { ROTATION_DEFAULT = 0 };
+  enum rotationDirection_t : int {
+    ROTATE_LEFT = 0,
+    ROTATE_RIGHT = 1,
+    ROTATION_DEFAULT = ROTATE_LEFT,
+  };
   idJointName jointName;
   int rotationAxis;
   rotationDirection_t rotationDirection;
@@ -272,8 +283,19 @@ struct steeringWheel_t {
   float speed;
 };
 
-enum dialAxis_t : int { DIAL_AXIS_DEFAULT = 0 };
-enum dialDirection_t : int { DIAL_DIRECTION_DEFAULT = 0 };
+enum dialAxis_t : int {
+  DIAL_AXIS_X = 0,
+  DIAL_AXIS_Y = 1,
+  DIAL_AXIS_Z = 2,
+  DIAL_AXIS_DEFAULT = DIAL_AXIS_X,
+};
+enum dialDirection_t : int {
+  DIAL_ROTATE_LEFT = 0,
+  DIAL_ROTATE_RIGHT = 1,
+  DIAL_MOVE_POSITIVE = 2,
+  DIAL_MOVE_NEGATIVE = 3,
+  DIAL_DIRECTION_DEFAULT = DIAL_ROTATE_LEFT,
+};
 struct dialMeter_t {
   idJointName jointName;
   dialAxis_t axis;

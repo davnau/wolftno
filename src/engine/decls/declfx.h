@@ -91,7 +91,8 @@ struct idFXRenderParm {
   idVec4 value;
 };
 
-struct idFXSingleAction {
+class idFXSingleAction {
+public:
   struct fxLightParms_t {
     idVec3 radius;
     float intensity;
@@ -230,7 +231,9 @@ public:
 
   int GetMaxDuration(fxCondition_t startCondition = FX_NONE) const;
   int GetMaxFadeOutTime(fxCondition_t startCondition = FX_NONE) const;
+  static const char* FXActionTypeToName(fxActionType_t type);
   static const char* FXActionTypeToName(int type);
+  static const char* FXConditionToName(fxCondition_t condition);
   static const char* FXConditionToName(int condition);
 
   idList<idFXSingleAction, 108> editEvents;

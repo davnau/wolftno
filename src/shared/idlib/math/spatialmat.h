@@ -12,12 +12,15 @@ public:
   ~idSpatialVec();
 
   void SetSize(int count);
+  void ChangeSize(int count);
+  void SetData(int count, float* data);
   int GetSize() const { return size; }
   float& operator[](int index) { return p[index]; }
   const float& operator[](int index) const { return p[index]; }
 
 protected:
   friend class idAFTree;
+  friend class idAFBody;
   friend class idSpatialMat;
 
   short size = 0;
@@ -27,7 +30,11 @@ protected:
 
 class idStaticSpatialVec : public idSpatialVec {
 public:
-#if defined(WOLFTNO_RETAIL_AFTREE_SPATIAL_CTOR_ABI)
+#if defined(WOLFTNO_RETAIL_AFBODY_SPATIAL_CTOR_ABI)
+  __forceinline idStaticSpatialVec() {
+    SetData(0, data);
+  }
+#elif defined(WOLFTNO_RETAIL_AFTREE_SPATIAL_CTOR_ABI)
   __forceinline idStaticSpatialVec() {
     size = 6;
     allocated = -8;
@@ -42,8 +49,13 @@ public:
 
 private:
   friend class idAFTree;
+  friend class idAFBody;
 
+#if defined(WOLFTNO_RETAIL_AFBODY_SPATIAL_CTOR_ABI)
+  float data[8];
+#else
   float data[8]{};
+#endif
 };
 
 class idSpatialMat {

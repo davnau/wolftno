@@ -23,6 +23,13 @@ class idEffectPhysicsPieceEmitter;
 class idDeferredVisCache;
 class idAnimator_DragJoints;
 class idRibbon;
+class idPhysics_DynamicBase;
+class idClipModel;
+class idFXManager;
+
+#if defined(WOLFTNO_RETAIL_IDLIST_EXACT_GROWTH_ABI)
+extern bool forceIdListsToReallocateEveryAppend;
+#endif
 
 template <typename T, typename = void>
 struct idListAllocReturnsReference : std::false_type {};
@@ -52,6 +59,9 @@ public:
   friend class idEffectPhysicsPieceEmitter;
   friend class idDeferredVisCache;
   friend class idAnimator_DragJoints;
+  friend class idPhysics_DynamicBase;
+  friend class idClipModel;
+  friend class idFXManager;
   T* list;
   int num;
   int size;
@@ -157,8 +167,27 @@ public:
 #if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_APPEND_ABI)
   int Append(const T& value);
 #else
+#if defined(WOLFTNO_RETAIL_IDLIST_NOINLINE_APPEND_ABI)
+  __declspec(noinline)
+#endif
   int Append(const T& value) {
+#if defined(WOLFTNO_RETAIL_IDLIST_EXACT_GROWTH_ABI)
+    const int required = num + 1;
+    if (required > size) {
+      int newSize;
+      if (forceIdListsToReallocateEveryAppend) {
+        newSize = required;
+      } else if (granularity != 0) {
+        newSize = num + granularity -
+                  (num + granularity) % granularity;
+      } else {
+        for (newSize = 1; newSize < required; newSize *= 2) {}
+      }
+      Resize(newSize);
+    }
+#else
     EnsureCapacity(num + 1);
+#endif
     if (num >= size)
       return num - 1;
     list[num] = value;
@@ -210,6 +239,16 @@ public:
     --num;
     return true;
   }
+#if defined(WOLFTNO_RETAIL_IDLIST_OUTOFLINE_ALLOCINDEX_ABI)
+  int AllocIndex();
+#else
+  int AllocIndex() {
+    EnsureCapacity(num + 1);
+    if (num >= size)
+      return size - 1;
+    return num++;
+  }
+#endif
   using AllocResult = std::conditional_t<
       DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
 #if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
@@ -227,7 +266,23 @@ public:
   AllocResult Alloc();
 #else
   AllocResult Alloc() {
+#if defined(WOLFTNO_RETAIL_IDLIST_EXACT_GROWTH_ABI)
+    const int required = num + 1;
+    if (required > size) {
+      int newSize;
+      if (forceIdListsToReallocateEveryAppend) {
+        newSize = required;
+      } else if (granularity != 0) {
+        newSize = num + granularity -
+                  (num + granularity) % granularity;
+      } else {
+        for (newSize = 1; newSize < required; newSize *= 2) {}
+      }
+      Resize(newSize);
+    }
+#else
     EnsureCapacity(num + 1);
+#endif
     const int index = num >= size ? size - 1 : num++;
     if constexpr (DefaultTag == 85 || std::is_same_v<T, idMD6MorphSet> ||
 #if defined(WOLFTNO_RETAIL_CHANNELWEIGHT_USHORT_ALLOC_REF_ABI)
@@ -281,12 +336,23 @@ public:
     return true;
   }
   bool SetNum(int count, const T& initialValue) {
+#if defined(WOLFTNO_RETAIL_IDLIST_EXACT_SETNUM_ABI)
+    if (count > size && !Resize(count))
+      return false;
+    const int oldNum = num;
+    const int newNum = std::min(count, size);
+    for (int i = oldNum; i < newNum; ++i)
+      list[i] = initialValue;
+    num = newNum;
+    return true;
+#else
     const int oldNum = num;
     EnsureCapacity(count);
     for (int i = oldNum; i < count; ++i)
       list[i] = initialValue;
     num = count;
     return true;
+#endif
   }
   void EnsureCapacity(int required) {
     if (required <= size)

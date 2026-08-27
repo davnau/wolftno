@@ -12,6 +12,7 @@
 class idAFConstraint;
 class idAFTree;
 class idCVar;
+class idSerializer;
 
 struct AFBodyPState_t {
   idVec3 worldOrigin;
@@ -20,14 +21,147 @@ struct AFBodyPState_t {
   idMat3 atRestAxis;
   idVec6 spatialVelocity;
   idVec6 externalForce;
+
+  AFBodyPState_t& operator=(const AFBodyPState_t& other);
 };
 
 class alignas(16) idAFBody {
 public:
+  idAFBody();
+  idAFBody(const char* bodyName, idClipModel* bodyClipModel,
+           float density);
+  virtual ~idAFBody();
+
+  static void operator delete(void* pointer) noexcept {
+    if (pointer == nullptr) {
+      return;
+    }
+#if defined(WOLFTNO_RETAIL_IDMEM_SINGLETON_ABI)
+    idMem::Singleton().Free(pointer, ALIGN_16);
+#else
+    idMem::Singleton()->Free(pointer, ALIGN_16);
+#endif
+  }
+
+  void Init();
+  const char* GetName() const { return name.str; }
+  void SetName(const char* bodyName) { name.Set(bodyName); }
+  void SetClipModel(idClipModel* bodyClipModel);
+  idClipModel* GetClipModel() const { return clipModel; }
+  void SetClipMask(const int mask) {
+    clipMask = mask;
+    fl |= 0x01u;
+  }
+  int GetClipMask() const { return clipMask; }
+  void SetSelfCollision(const bool enable) {
+    fl = static_cast<std::uint8_t>((fl & ~0x02u) |
+                                   (enable ? 0x02u : 0u));
+  }
+
+  void SetFriction(float linear, float angular, float contact);
+  float GetContactFriction() { return contactFriction; }
+  float GetContactFriction() const { return contactFriction; }
+  void SetBouncyness(float bounce);
+  float GetBouncyness() const { return bouncyness; }
+  void SetDensity(float density,
+                  const idMat3& inertiaScale = mat3_identity);
+  float GetInverseMass() const { return invMass; }
+  const idMat3 GetInverseWorldInertia() const {
+    idMat3 transpose;
+    transpose[0] = {current.worldAxis[0].x, current.worldAxis[1].x,
+                    current.worldAxis[2].x};
+    transpose[1] = {current.worldAxis[0].y, current.worldAxis[1].y,
+                    current.worldAxis[2].y};
+    transpose[2] = {current.worldAxis[0].z, current.worldAxis[1].z,
+                    current.worldAxis[2].z};
+    return transpose * inverseInertiaTensor * current.worldAxis;
+  }
+
+  void SetFrictionDirection(const idVec3& direction);
+  bool GetFrictionDirection(idVec3& direction) const;
+  void SetContactMotorDirection(const idVec3& direction);
+  bool GetContactMotorDirection(idVec3& direction) const;
+  void SetContactMotorVelocity(float velocity) {
+    contactMotorVelocity = velocity;
+  }
+  float GetContactMotorVelocity() const { return contactMotorVelocity; }
+  void SetContactMotorForce(float force) { contactMotorForce = force; }
+  float GetContactMotorForce() const { return contactMotorForce; }
+
+  void SetWorldPosition(const idVec3& origin, const idMat3& axis) {
+    current.worldOrigin = origin;
+    current.worldAxis = axis;
+  }
+  void SetWorldOrigin(const idVec3& origin) { current.worldOrigin = origin; }
+  void SetWorldAxis(const idMat3& axis) { current.worldAxis = axis; }
+  const idVec3& GetWorldOrigin() const { return current.worldOrigin; }
+  const idMat3& GetWorldAxis() const { return current.worldAxis; }
+  void SetLinearVelocity(const idVec3& velocity) {
+    *reinterpret_cast<idVec3*>(&current.spatialVelocity.p[0]) = velocity;
+  }
+  void SetAngularVelocity(const idVec3& velocity) {
+    *reinterpret_cast<idVec3*>(&current.spatialVelocity.p[3]) = velocity;
+  }
+  const idVec3& GetLinearVelocity() const {
+    return *reinterpret_cast<const idVec3*>(&current.spatialVelocity.p[0]);
+  }
+  const idVec3& GetAngularVelocity() const {
+    return *reinterpret_cast<const idVec3*>(&current.spatialVelocity.p[3]);
+  }
+  const idVec3 GetPointVelocity(const idVec3& point) const;
+
+  void AddForce(const idVec3& point, const idVec3& force);
+  const idVec3& GetLinearForce() const {
+    return *reinterpret_cast<const idVec3*>(&current.externalForce.p[0]);
+  }
+  const idVec3& GetAngularForce() const {
+    return *reinterpret_cast<const idVec3*>(&current.externalForce.p[3]);
+  }
+  void AddLinearForce(const idVec3& force) {
+    current.externalForce.p[0] += force.x;
+    current.externalForce.p[1] += force.y;
+    current.externalForce.p[2] += force.z;
+  }
+  void AddAngularForce(const idVec3& force) {
+    current.externalForce.p[3] += force.x;
+    current.externalForce.p[4] += force.y;
+    current.externalForce.p[5] += force.z;
+  }
+
   void InverseWorldSpatialInertiaMultiply(idSpatialVec& destination,
                                            const idSpatialVec& vector) const;
 
-  const void* const* vtable;
+  float GetLinearFriction() const { return linearFriction; }
+  float GetAngularFriction() const { return angularFriction; }
+  float GetMass() const { return mass; }
+  const idMat3& GetInertiaTensor() const { return inertiaTensor; }
+  void SetLinearFriction(float value);
+  void SetAngularFriction(float value);
+  void SetContactFriction(float value) { contactFriction = value; }
+  void SetMass(float value) {
+    mass = value;
+    invMass = 1.0f / value;
+  }
+  void SetNoSyncCollide(const bool enable) {
+    fl = static_cast<std::uint8_t>((fl & ~0x40u) |
+                                   (enable ? 0x40u : 0u));
+  }
+  bool GetNoSyncCollide() const { return (fl & 0x40u) != 0u; }
+  void SetClearClipMaskInSolid(const bool enable) {
+    fl = static_cast<std::uint8_t>((fl & ~0x80u) |
+                                   (enable ? 0x80u : 0u));
+  }
+  bool GetClearClipMaskInSolid() const { return (fl & 0x80u) != 0u; }
+  idClipQuery GetMotionQuery() const { return motionQuery; }
+  virtual void Serialize(idSerializer& serializer);
+
+  idAFBody* GetParent() { return parent; }
+  const idAFBody* GetParent() const { return parent; }
+  idAFConstraint* GetPrimaryConstraint() { return primaryConstraint; }
+  const idAFConstraint* GetPrimaryConstraint() const {
+    return primaryConstraint;
+  }
+
   idAtomicString name;
   idClipModel* clipModel;
   int clipMask;

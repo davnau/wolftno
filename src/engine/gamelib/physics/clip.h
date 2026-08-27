@@ -1,13 +1,16 @@
 #pragma once
 
 #include "engine/cm/collisionmodel.h"
+#include "shared/idlib/containers/BitArray.h"
+#include "shared/idlib/containers/blockalloc.h"
 #include "shared/idlib/containers/list.h"
+#include "shared/idlib/containers/staticlist.h"
 
 #include <cstdint>
 
 class idClipQuery {
 public:
-  idClipQuery() = default;
+  idClipQuery() : index(0) {}
   explicit idClipQuery(std::uint64_t queryIndex) : index(queryIndex) {}
 
   std::uint64_t index;
@@ -28,7 +31,52 @@ class idClip;
 class idTraceModelCache;
 class idMaterial;
 class idTypeInfoTools;
+class idTreeAnimator;
+#if defined(WOLFTNO_RETAIL_PIECEEMITTER_IDJOINTMAT_CLASS_ABI)
+class idJointMat;
+#else
+struct idJointMat;
+#endif
+class idSerializer;
+class idAAS2;
+class idAASClipLink;
 struct contactsResult_t;
+
+enum aasType_t : int {
+  AAS_FILE_EXTENSION_MAX = 11,
+};
+
+struct clipLink_t;
+
+struct clipSector_t {
+  int axis;
+  float dist;
+  clipSector_t* children[2];
+  clipLink_t* clipLinks;
+};
+
+struct clipLink_t {
+  class idClipModel* clipModel;
+  clipSector_t* sector;
+  clipLink_t* prevInSector;
+  clipLink_t* nextInSector;
+  clipLink_t* nextLink;
+};
+
+class idSphereFeatures {
+public:
+  explicit idSphereFeatures(idTreeAnimator* treeAnimator_);
+  explicit idSphereFeatures(const idSphereFeatures* sphereFeatures_);
+  ~idSphereFeatures();
+
+  const idTreeAnimator* GetTreeAnimator() const { return treeAnimator; }
+  const unsigned char* GetActiveFeatures() const {
+    return activeFeatures.buffer;
+  }
+
+  idTreeAnimator* treeAnimator;
+  idBitArray activeFeatures;
+};
 
 class idCollisionQuery {
 public:
@@ -43,22 +91,47 @@ public:
 
 class idClipModel {
 public:
+  idClipModel();
+  idClipModel(idClip* clip_, const char* name,
+              const idMaterial* overrideClipMaterial);
+  idClipModel(idClip* clip_, idCollisionModel* model);
   idClipModel(idClip* clip_, const idTraceModel* traceModels_,
               int numTraceModels, const idMaterial* material);
+  idClipModel(idClip* clip_, int numTraceModels,
+              const int* traceModelIndices);
+  idClipModel(idClip* clip_, idTreeAnimator* animatedModel);
+  idClipModel(idClip* clip_, const idClipModel* model);
+  virtual ~idClipModel();
+
   int GetNumCollisionModels() const;
   idCollisionModel* GetCollisionModel(int index) const;
+  const idJointMat* GetModelJoints() const;
+  float GetModelScale() const;
+  const unsigned char* GetActiveSphereFeatures() const;
   void Delete();
+  void Link();
   void Link(int entityNumber, int physicsId, int bodyId,
             const idVec3& origin, const idMat3& axis);
+  void Link(int entityNumber, int physicsId, int bodyId,
+            const idVec3& origin, const idMat3& axis,
+            const idBounds& bounds);
   void Unlink();
   void SetContents(int newContents);
+  void Serialize(idSerializer& serializer);
+  void LoadTraceModel(const idTraceModel* traceModels_, int numTraceModels,
+                      const idMaterial* material);
+  void LoadTraceModels(int numTraceModels, const int* traceModelIndices);
+  void GetMassProperties(float density, float& mass, idVec3& centerOfMass,
+                         idMat3& inertiaTensor) const;
+  void EnableSphereFeature(int sphereFeature);
+  void DisableSphereFeature(int sphereFeature);
+  void RemoveChild(idClipModel* clipModel);
   void SetLinkedPosition(const idVec3& linkedOrigin,
                          const idMat3& linkedAxis) {
     origin = linkedOrigin;
     axis = linkedAxis;
   }
 
-  const void* const* vtable;
   std::uint32_t flags;
   int physicsId;
   int bodyId;
@@ -72,18 +145,29 @@ public:
   idCollisionModel* collisionModel;
   idList<int, 13> traceModels;
   idList<idClipModel*, 13> children;
-  void* sphereFeatures;
+  idSphereFeatures* sphereFeatures;
   idClip* clip;
-  void* clipLinks;
+  clipLink_t* clipLinks;
   idCollisionQuery collisionQuery;
   idClipModel* nextDeleted;
-  std::uint8_t aasLinks[0x58];
+  idAASClipLink* aasLinks[AAS_FILE_EXTENSION_MAX];
 
 private:
   idCollisionModel* NoTraceModelWarning() const;
+  void Init(idClip* clip_);
+  void FreeModel();
+  bool LoadCollisionModel(const char* name,
+                          const idMaterial* overrideClipMaterial);
+  void LoadCollisionModel(idCollisionModel* model);
+  void LoadAnimator(idTreeAnimator* animatedModel);
+  void UpdateAbsBounds();
+  void Link_r(clipSector_t* node);
+  void LinkIntoAASes(aasType_t aasType);
+  void RelinkIntoAASes(aasType_t aasType);
 
   friend class idBuoyancy;
   friend class idEffectPhysicsBroadPhase;
+  friend class idClipModelABI;
 };
 
 class idClip {
@@ -106,6 +190,14 @@ public:
                           const idMat3& startAxis, int clipMask,
                           int passEntityNumber, bool moveClipModel,
                           const char* userName);
+  bool QueryIsValid(const idClipQuery& clipQuery) const;
+  idClipQuery MotionContacts(
+      trace_t* result, contactsResult_t* contacts, const idVec3& start,
+      const idVec3& end, const idRotation& rotation, float depth,
+      const idClipModel* clipModel, const idMat3& startAxis, int clipMask,
+      int passEntityNumber, bool moveClipModel, const char* userName);
+  bool GetMotionContactsResult(trace_t* result, contactsResult_t* contacts,
+                               const idClipQuery& query);
   idClipQuery Rotation(trace_t* result, const idVec3& start,
                        const idRotation& rotation,
                        const idClipModel* clipModel,
@@ -141,8 +233,16 @@ public:
       float stepDown, const idClipModel* clipModel,
       const idMat3& startAxis, int clipMask, int passEntityNumber,
       bool moveClipModel, const char* userName);
+  idClipQuery Contacts(contactsResult_t* contacts, const idVec3& start,
+                       const idVec3& direction, float depth,
+                       const idClipModel* clipModel,
+                       const idMat3& startAxis, int clipMask,
+                       int passEntityNumber, const char* userName);
   void ShowCollisionPoint(const contactInfo_t& contact,
                           const idTypeInfoTools* tools);
+  void DrawSingleClipModel(const idClipModel* model, const idVec3& origin,
+                           const idMat3& axis, bool drawAAS);
+  void DeleteClipModel(idClipModel* model);
 
   bool TracePoint(trace_t& result, const idVec3& start, const idVec3& end,
                   int clipMask, int passEntityNumber, const char* userName);
@@ -150,6 +250,7 @@ public:
                                   idClipModel** clipModelList,
                                   int maxCount) const;
   idResidencyQuery TestResidency(const idBounds& bounds);
+  const idBounds& GetWorldBounds() const;
 
 private:
   int GetPositionedModelsInternal(
@@ -177,7 +278,11 @@ public:
   idClipModel* clip24x24x96;
   idClipModel* clip32x32x96;
   idClipModel* clip48x48x96;
-  std::uint8_t recoveredPrefix[0x40078];
+  idBlockAlloc<clipLink_t, 256, TAG_COLLISION> clipLinkAllocator;
+  idStaticList<clipSector_t, 8191> clipSectors;
+  int touchCount;
+  std::uint32_t recoveredAASAlignment;
+  idAAS2* aases[AAS_FILE_EXTENSION_MAX];
   idTraceModelCache* traceModelCache;
   std::uint8_t recoveredQueryPrefix[0x1C188];
   idClipCollisionQuery collisionQueries[4096];
@@ -216,6 +321,14 @@ static_assert(offsetof(idClipModel, clip) == 0xC0,
               "idClipModel owner offset drift");
 static_assert(offsetof(idClip, defaultClipModel) == 0x10,
               "idClip default-model offset drift");
+static_assert(offsetof(idClip, clipLinkAllocator) == 0x80,
+              "idClip link-allocator offset drift");
+static_assert(offsetof(idClip, clipSectors) == 0xA0,
+              "idClip sector-list offset drift");
+static_assert(offsetof(idClip, touchCount) == 0x40098,
+              "idClip touch-count offset drift");
+static_assert(offsetof(idClip, aases) == 0x400A0,
+              "idClip AAS-array offset drift");
 static_assert(offsetof(idClip, traceModelCache) == 0x400F8,
               "idClip trace-model cache offset drift");
 static_assert(offsetof(idClip, collisionQueries) == 0x5C288,

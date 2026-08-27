@@ -26,11 +26,14 @@ public:
 #else
   int GetDurationMS() const;
 #endif
-  bool GetSourceFrames(const idMD6Anim* anim, std::int16_t* first, std::int16_t* last) const;
 #if defined(WOLFTNO_RETAIL_CHANNEL_BLENDPARMS_ABI)
+  bool GetSourceFrames(const idMD6Anim* anim, std::int16_t& first,
+                       std::int16_t& last) const;
   bool GetDestFrames(const idMD6Anim* anim, std::int16_t& first,
                      std::int16_t& duration) const;
 #else
+  bool GetSourceFrames(const idMD6Anim* anim, std::int16_t* first,
+                       std::int16_t* last) const;
   bool GetDestFrames(const idMD6Anim* anim, std::int16_t* first, std::int16_t* duration) const;
 #endif
   void SetDestStartFrame(int frame);

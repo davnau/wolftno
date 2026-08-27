@@ -13,7 +13,7 @@ public:
 
   idAtomicString() : str(nullAtomicString) {}
   explicit idAtomicString(const char* text) : str(nullAtomicString) { Set(text); }
-  void Set(const char* text);
+  void Set(const char* const text);
   static void FreeDynamic();
   operator const char*() const { return str; }
 };

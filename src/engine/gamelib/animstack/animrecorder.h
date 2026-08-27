@@ -42,6 +42,8 @@ public:
   }
 
 protected:
+  friend class idAnimStack;
+
   idAnimRecorder();
   virtual ~idAnimRecorder() { CloseFile(); }
   virtual void WriteHeaderBlock();

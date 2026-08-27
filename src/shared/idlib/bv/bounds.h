@@ -29,6 +29,7 @@ public:
   bool AddPoint(const idVec3& point);
   void AddBounds(const idBounds& bounds);
   float GetRadius() const;
+  idVec3 GetMaxExtents() const;
   float GetMaxDistFromOrigin() const;
   float GetInternalRadiusXY() const;
   float GetRadiusXY() const;

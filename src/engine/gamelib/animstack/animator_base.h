@@ -115,6 +115,14 @@ public:
              idTypesafeNumber<int, gameTimeUnique_t> curTime);
   void Unpause(const idAnimStack* stack,
                idTypesafeNumber<int, gameTimeUnique_t> curTime);
+  void PreBlendTree(const idAnimStack* stack, int curTime,
+                    int ticksPerSec) {
+    idMD6Branch* const mergeBranch = InternalGetMergeBranch();
+    if (mergeBranch != nullptr) {
+      mergeBranch->left = nullptr;
+    }
+    InternalPreBlendTree(stack, curTime, ticksPerSec);
+  }
   bool IsContributing() const;
   bool IsInitialized(idAnimStack* animStack) const;
   bool IsEnabled(idAnimStack* animStack) const;
@@ -179,6 +187,7 @@ protected:
   std::uint8_t flagsPadding : 6;
   std::uint8_t tailPadding[7];
 
+  friend class idAnimStack;
   friend class AnimatorPainValidationAccess;
   friend class AnimatorChannelValidationAccess;
 };

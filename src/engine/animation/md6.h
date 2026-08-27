@@ -767,7 +767,11 @@ static_assert(offsetof(idMD6Model, meshes)==176);
 static_assert(offsetof(idMD6Model, jointRemap)==200);
 class idMD6Allocator {
 public:
-  virtual ~idMD6Allocator()=default;
+  virtual ~idMD6Allocator()
+#if defined(WOLFTNO_RETAIL_SYNCED_DTOR_UNWIND_ABI)
+      noexcept(false)
+#endif
+      = default;
   virtual idMD6Node* Alloc(idMD6Node::nodeType_t type)=0;
   virtual void FreeMem(idMD6Node*node)=0;
   virtual void Condense()=0;

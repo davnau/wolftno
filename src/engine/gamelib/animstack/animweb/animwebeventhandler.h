@@ -1,23 +1,24 @@
 #pragma once
 
 #include "engine/decls/animwebs/declanimweb.h"
-#include "engine/gamelib/animstack/animweb/animator_animweb_abi.h"
 
 #include <cstddef>
 #include <cstdint>
 
 class idCVar;
+class idAnimator_AnimWeb;
 
 enum animWebEvent_t : int {
-  ANIMWEB_EVENT_DEST_CLAMPED = 0,
-  ANIMWEB_EVENT_START_BLEND_IN = 1,
-  ANIMWEB_EVENT_2 = 2,
-  ANIMWEB_EVENT_3 = 3,
-  ANIMWEB_EVENT_4 = 4,
-  ANIMWEB_EVENT_5 = 5,
-  ANIMWEB_EVENT_6 = 6,
+  ANIMWEB_EVENT_START_BLEND_IN = 0,
+  ANIMWEB_EVENT_START_BLEND_OUT = 1,
+  ANIMWEB_EVENT_END_BLEND_IN = 2,
+  ANIMWEB_EVENT_END_BLEND_OUT = 3,
+  ANIMWEB_EVENT_DEST_START_BLEND_IN = 4,
+  ANIMWEB_EVENT_DEST_END_BLEND_IN = 5,
+  ANIMWEB_EVENT_DEST_CLAMPED = 6,
   ANIMWEB_EVENT_7 = 7,
   ANIMWEB_EVENT_8 = 8,
+  ANIMWEB_EVENT_NONE = -1,
 };
 
 using idAnimWebSubWebIndex =
@@ -29,8 +30,11 @@ class idAnimWebEvent {
 public:
   enum priority_t : int {
     PRIORITY_LOW = 0,
-    PRIORITY_NORMAL = 1,
-    PRIORITY_HIGH = 2,
+    PRIORITY_MISC = PRIORITY_LOW,
+    PRIORITY_DEATH = 1,
+    PRIORITY_MAX = 2,
+    PRIORITY_NORMAL = PRIORITY_DEATH,
+    PRIORITY_HIGH = PRIORITY_MAX,
   };
 
   idAnimWebSubWebIndex swi;
@@ -71,8 +75,6 @@ static_assert(offsetof(idAnimWebEvent, eventNum) == 0x04,
               "AnimWeb event number offset drift");
 static_assert(offsetof(idAnimWebEvent, priority) == 0x08,
               "AnimWeb event priority offset drift");
-static_assert(offsetof(idAnimator_AnimWeb, decl) == 0x50,
-              "AnimWeb declaration offset drift");
 static_assert(offsetof(idAnimWebEventHandler_Zion, events) == 0x08,
               "AnimWeb event array offset drift");
 static_assert(sizeof(idAnimWebEventHandler_Zion) == 0x78,

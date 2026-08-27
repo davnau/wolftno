@@ -330,7 +330,7 @@ private:
   bspNode_t* bspNodes;
   int numBspNodes;
   std::uint32_t bspPadding;
-  int* obstacleIndices;
+  std::int16_t* obstacleIndices;
   expandedObstacle_t* expandedObstacles;
   int maxExpandedObstacles;
   int numExpandedObstacles;

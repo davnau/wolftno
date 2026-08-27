@@ -98,6 +98,7 @@ public:
     return length;
   }
   float NormalizeFast();
+  idVec3& Truncate(float length);
   void ProjectOntoPlane(const idVec3& normal, float overBounce);
   bool FixDenormals();
   bool FixDegenerateNormal();
@@ -211,6 +212,8 @@ public:
   idMat3 operator*(const idMat3& rhs) const;
   idMat3& operator*=(const idMat3& rhs);
   bool Compare(const idMat3& other, float epsilon) const;
+  bool IsDiagonal(float epsilon) const;
+  bool IsOrthoNormal(float epsilon) const;
   float Determinant() const;
   bool InverseSelf();
   idMat3& OrthoNormalizeSelf(std::uint8_t prio1, std::uint8_t prio2);
@@ -259,6 +262,7 @@ extern const idVec2 vec2_origin;
 extern const idVec3 vec3_origin;
 extern const idVec3 vec3_unit;
 extern const idVec3 vec3_infinity;
+extern const idVec3 vec3_down;
 extern const idVec6 vec6_infinity;
 extern idAngles ang_zero;
 extern const idMat3 mat3_identity;

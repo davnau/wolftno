@@ -26,8 +26,13 @@ public:
   void BeginPlaying(idAnimator_AnimWeb* web,
                     const idMD6AnimProps* animProps, int numAnimProps,
                     int curTime, int ticksPerSec);
+#if defined(WOLFTNO_RETAIL_ANIMWEB_BLENDTREE_CONST_PREBLEND_ABI)
+  void PreBlendTree(const idAnimator_AnimWeb* web, int curTime,
+                    int ticksPerSec) const;
+#else
   void PreBlendTree(const idAnimator_AnimWeb* web, int curTime,
                     int ticksPerSec);
+#endif
   bool GetAnimLength(int curTime, int ticksPerSec,
                      idMD6Leaf::wrapMode_t wrapMode, bool ignoreAdditive,
                      int& curFrame, int& numFrames, int& frameRate) const;

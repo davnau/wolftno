@@ -1,4 +1,5 @@
 #include "engine/gamelib/animstack/animweb/animwebeventhandler.h"
+#include "engine/gamelib/animstack/animweb/animator_animweb_abi.h"
 
 #include "engine/framework/common.h"
 #include "shared/idlib/csystems/cvarsystemlocal.h"
